@@ -14,6 +14,7 @@ mod native;
 mod native_oracle;
 mod native_solver;
 mod nonstereo_writer;
+mod persistent;
 mod prepared;
 mod solver;
 mod traversal;

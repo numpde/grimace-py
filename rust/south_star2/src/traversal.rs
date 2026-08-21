@@ -5,15 +5,17 @@
 //! assignment, remains outside structural traversal state.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use crate::ids::{AtomId, BondId};
+use crate::persistent::PagedStore;
 use crate::prepared::{AdjacentBond, PreparedGraph};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DenseSet {
     universe_len: usize,
     marked_count: usize,
-    words: Box<[u64]>,
+    words: PagedStore<u64>,
 }
 
 impl DenseSet {
@@ -22,7 +24,7 @@ impl DenseSet {
         Self {
             universe_len,
             marked_count: 0,
-            words: vec![0; word_count].into_boxed_slice(),
+            words: PagedStore::filled(word_count, 0),
         }
     }
 
@@ -75,7 +77,7 @@ enum BondProgress {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct GraphProgress {
     visited_atoms: DenseSet,
-    bonds: Box<[BondProgress]>,
+    bonds: PagedStore<BondProgress>,
     represented_bond_count: usize,
     open_ring_count: usize,
 }
@@ -84,7 +86,7 @@ impl GraphProgress {
     fn new(graph: &PreparedGraph) -> Self {
         Self {
             visited_atoms: DenseSet::new(graph.atom_count()),
-            bonds: vec![BondProgress::Unrepresented; graph.bond_count()].into_boxed_slice(),
+            bonds: PagedStore::filled(graph.bond_count(), BondProgress::Unrepresented),
             represented_bond_count: 0,
             open_ring_count: 0,
         }
@@ -216,51 +218,63 @@ pub(crate) struct ResidualAttachment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ResidualComponent {
-    atoms: BTreeSet<AtomId>,
+    ordered_members: Arc<[AtomId]>,
+    minimum_offset: usize,
+    atom_count: usize,
 }
 
 impl ResidualComponent {
     fn minimum(&self) -> AtomId {
-        *self
-            .atoms
-            .first()
-            .expect("a live residual component must contain an atom")
+        self.ordered_members[self.minimum_offset]
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct ResidualPartition {
-    component_by_atom: Box<[Option<usize>]>,
-    components: BTreeMap<usize, ResidualComponent>,
-    next_component: usize,
+    component_by_atom: PagedStore<Option<usize>>,
+    components: PagedStore<Option<Arc<ResidualComponent>>>,
     #[cfg(test)]
     atoms_scanned_while_splitting: usize,
+    #[cfg(test)]
+    minimum_members_skipped: usize,
 }
+
+impl PartialEq for ResidualPartition {
+    fn eq(&self, other: &Self) -> bool {
+        self.component_by_atom == other.component_by_atom && self.components == other.components
+    }
+}
+
+impl Eq for ResidualPartition {}
 
 impl ResidualPartition {
     fn new(graph: &PreparedGraph) -> Self {
         let mut component_by_atom = vec![None; graph.atom_count()];
-        let mut components = BTreeMap::new();
+        let mut components = vec![None; graph.atom_count()];
 
-        for (component, prepared) in graph.components().iter().enumerate() {
-            let atoms = prepared.atoms().iter().copied().collect::<BTreeSet<_>>();
-            for &atom in &atoms {
-                assert_eq!(
-                    graph.component_of_atom(atom),
-                    Some(component),
-                    "prepared component metadata must agree"
-                );
+        for prepared in graph.components() {
+            let component = prepared
+                .atoms()
+                .first()
+                .expect("a prepared component must contain an atom")
+                .index();
+            for &atom in prepared.atoms() {
                 component_by_atom[atom.index()] = Some(component);
             }
-            components.insert(component, ResidualComponent { atoms });
+            components[component] = Some(Arc::new(ResidualComponent {
+                ordered_members: Arc::from(prepared.atoms()),
+                minimum_offset: 0,
+                atom_count: prepared.atoms().len(),
+            }));
         }
 
         Self {
-            component_by_atom: component_by_atom.into_boxed_slice(),
-            components,
-            next_component: graph.components().len(),
+            component_by_atom: PagedStore::from_values(component_by_atom),
+            components: PagedStore::from_values(components),
             #[cfg(test)]
             atoms_scanned_while_splitting: 0,
+            #[cfg(test)]
+            minimum_members_skipped: 0,
         }
     }
 
@@ -276,14 +290,9 @@ impl ResidualPartition {
         let component_id = self.component_by_atom[atom.index()]
             .take()
             .expect("an entered atom must belong to one live residual component");
-        let mut component = self
-            .components
-            .remove(&component_id)
+        let mut component = self.components[component_id]
+            .take()
             .expect("a live atom component identifier must resolve");
-        assert!(
-            component.atoms.remove(&atom),
-            "the live residual component must contain its entered atom"
-        );
 
         let residual_neighbours = graph
             .neighbors(atom)
@@ -292,18 +301,31 @@ impl ResidualPartition {
             .filter(|incident| {
                 self.component_by_atom[incident.atom().index()] == Some(component_id)
             })
-            .count();
+            .map(|incident| incident.atom())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
 
-        match residual_neighbours {
+        match residual_neighbours.len() {
             0 => assert!(
-                component.atoms.is_empty(),
+                component.atom_count == 1,
                 "a connected residual component cannot retain atoms beyond an isolated deletion"
             ),
             1 => {
-                assert!(!component.atoms.is_empty());
-                self.components.insert(component_id, component);
+                let component_state = Arc::make_mut(&mut component);
+                component_state.atom_count -= 1;
+                while self.component_by_atom[component_state.minimum().index()]
+                    != Some(component_id)
+                {
+                    component_state.minimum_offset += 1;
+                    #[cfg(test)]
+                    {
+                        self.minimum_members_skipped += 1;
+                    }
+                }
+                self.components[component_id] = Some(component);
             }
-            _ => self.split_component(graph, component_id, component),
+            _ => self.split_component(graph, component_id, component, residual_neighbours),
         }
 
         #[cfg(test)]
@@ -314,17 +336,20 @@ impl ResidualPartition {
         &mut self,
         graph: &PreparedGraph,
         original_id: usize,
-        component: ResidualComponent,
+        component: Arc<ResidualComponent>,
+        residual_neighbours: Vec<AtomId>,
     ) {
         #[cfg(test)]
         {
-            self.atoms_scanned_while_splitting += component.atoms.len();
+            self.atoms_scanned_while_splitting += component.atom_count - 1;
         }
 
-        let mut unassigned = component.atoms;
+        let mut discovered = BTreeSet::new();
         let mut groups = Vec::new();
-        while let Some(&root) = unassigned.first() {
-            unassigned.remove(&root);
+        for root in residual_neighbours {
+            if !discovered.insert(root) {
+                continue;
+            }
             let mut atoms = BTreeSet::from([root]);
             let mut pending = VecDeque::from([root]);
             while let Some(current) = pending.pop_front() {
@@ -334,7 +359,7 @@ impl ResidualPartition {
                 {
                     let neighbour = incident.atom();
                     if self.component_by_atom[neighbour.index()] != Some(original_id)
-                        || !unassigned.remove(&neighbour)
+                        || !discovered.insert(neighbour)
                     {
                         continue;
                     }
@@ -344,20 +369,30 @@ impl ResidualPartition {
             }
             groups.push(atoms);
         }
+        assert_eq!(
+            discovered.len(),
+            component.atom_count - 1,
+            "residual neighbours must reach the entire affected component after deletion"
+        );
 
         for (offset, atoms) in groups.into_iter().enumerate() {
-            let component_id = if offset == 0 {
-                original_id
-            } else {
-                let fresh = self.next_component;
-                self.next_component += 1;
-                fresh
-            };
+            let component_id = atoms
+                .first()
+                .expect("a split residual component must contain an atom")
+                .index();
+            if offset == 0 {
+                debug_assert!(self.components[original_id].is_none());
+            }
             for &member in &atoms {
                 self.component_by_atom[member.index()] = Some(component_id);
             }
-            self.components
-                .insert(component_id, ResidualComponent { atoms });
+            assert!(self.components[component_id].is_none());
+            let atom_count = atoms.len();
+            self.components[component_id] = Some(Arc::new(ResidualComponent {
+                ordered_members: atoms.into_iter().collect::<Vec<_>>().into(),
+                minimum_offset: 0,
+                atom_count,
+            }));
         }
     }
 
@@ -383,7 +418,8 @@ impl ResidualPartition {
                 .expect("an unvisited endpoint must belong to a live residual component");
             let component = self
                 .components
-                .get(&component_id)
+                .get(component_id)
+                .and_then(Option::as_ref)
                 .expect("a live residual component identifier must resolve");
             groups
                 .entry((component.minimum(), component_id))
@@ -401,19 +437,26 @@ impl ResidualPartition {
         for atom in graph.atom_ids() {
             let component = self.component_by_atom[atom.index()];
             if let Some(component) = component {
-                assert!(self.components[&component].atoms.contains(&atom));
-            } else {
-                assert!(self
-                    .components
-                    .values()
-                    .all(|candidate| !candidate.atoms.contains(&atom)));
+                assert!(self.components[component]
+                    .as_ref()
+                    .expect("live component identifier must resolve")
+                    .ordered_members
+                    .contains(&atom));
             }
         }
-        for (&component, members) in &self.components {
-            assert!(!members.atoms.is_empty());
-            for &atom in &members.atoms {
-                assert_eq!(self.component_by_atom[atom.index()], Some(component));
-            }
+        for component in 0..self.components.len() {
+            let Some(members) = self.components[component].as_ref() else {
+                continue;
+            };
+            let live_members = graph
+                .atom_ids()
+                .filter(|atom| self.component_by_atom[atom.index()] == Some(component))
+                .collect::<Vec<_>>();
+            assert_eq!(live_members.len(), members.atom_count);
+            assert_eq!(live_members.first().copied(), Some(members.minimum()));
+            assert!(live_members
+                .iter()
+                .all(|atom| members.ordered_members.contains(atom)));
         }
     }
 }
@@ -428,6 +471,12 @@ impl ResidualAttachment {
 struct WriterFrame {
     atom: AtomId,
     attachments: Vec<ResidualAttachment>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FrameNode {
+    frame: Arc<WriterFrame>,
+    parent: Option<Arc<FrameNode>>,
 }
 
 impl WriterFrame {
@@ -490,8 +539,8 @@ pub(crate) enum IncidentBondState {
 pub(crate) struct TraversalState {
     progress: GraphProgress,
     residual: ResidualPartition,
-    active: Option<WriterFrame>,
-    branch_returns: Vec<WriterFrame>,
+    active: Option<Arc<WriterFrame>>,
+    branch_returns: Option<Arc<FrameNode>>,
 }
 
 impl TraversalState {
@@ -500,7 +549,7 @@ impl TraversalState {
             progress: GraphProgress::new(graph),
             residual: ResidualPartition::new(graph),
             active: None,
-            branch_returns: Vec::new(),
+            branch_returns: None,
         }
     }
 
@@ -513,8 +562,7 @@ impl TraversalState {
     }
 
     pub(crate) fn can_complete_path(&self) -> bool {
-        self.active.is_some()
-            && (!self.branch_returns.is_empty() || !self.progress.has_open_rings())
+        self.active.is_some() && (self.branch_returns.is_some() || !self.progress.has_open_rings())
     }
 
     pub(crate) fn active_attachments(&self) -> &[ResidualAttachment] {
@@ -536,18 +584,18 @@ impl TraversalState {
     pub(crate) fn begin_component(&mut self, graph: &PreparedGraph, root: AtomId) {
         assert!(
             self.active.is_none()
-                && self.branch_returns.is_empty()
+                && self.branch_returns.is_none()
                 && !self.progress.has_open_rings(),
             "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
         self.residual.remove_atom(graph, root);
-        self.active = Some(WriterFrame::new(
+        self.active = Some(Arc::new(WriterFrame::new(
             graph,
             &self.progress,
             &self.residual,
             root,
-        ));
+        )));
     }
 
     pub(crate) fn enter_inline_child(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
@@ -568,10 +616,12 @@ impl TraversalState {
             IncidentBondState::UnrepresentedToUnvisitedAtom,
             "a first ring endpoint must be written before its other atom is visited"
         );
-        self.active
-            .as_mut()
-            .expect("ring opening requires an active frame")
-            .remove_ring_incidence(incident);
+        Arc::make_mut(
+            self.active
+                .as_mut()
+                .expect("ring opening requires an active frame"),
+        )
+        .remove_ring_incidence(incident);
         self.progress.open_ring(incident.bond(), active_atom);
     }
 
@@ -607,7 +657,10 @@ impl TraversalState {
             active.attachments.is_empty(),
             "a path cannot complete with unresolved residual attachments"
         );
-        let restored = self.branch_returns.pop();
+        let restored = self.branch_returns.take().map(|node| {
+            self.branch_returns = node.parent.clone();
+            Arc::clone(&node.frame)
+        });
         if restored.is_none() {
             assert!(
                 !self.progress.has_open_rings(),
@@ -660,7 +713,7 @@ impl TraversalState {
             IncidentBondState::UnrepresentedToUnvisitedAtom,
             "a child edge must be unrepresented and lead to an unvisited atom"
         );
-        parent.consume_child_attachment(incident);
+        Arc::make_mut(&mut parent).consume_child_attachment(incident);
         let parent_atom = parent.atom;
 
         match placement {
@@ -669,7 +722,10 @@ impl TraversalState {
                     !parent.attachments.is_empty(),
                     "a branch requires another residual attachment for the main continuation"
                 );
-                self.branch_returns.push(parent);
+                self.branch_returns = Some(Arc::new(FrameNode {
+                    frame: parent,
+                    parent: self.branch_returns.take(),
+                }));
             }
             ChildPlacement::Inline => {
                 assert!(
@@ -684,17 +740,22 @@ impl TraversalState {
             .traverse_bond(incident.bond(), parent_atom, child);
         self.progress.visit_atom(child);
         self.residual.remove_atom(graph, child);
-        self.active = Some(WriterFrame::new(
+        self.active = Some(Arc::new(WriterFrame::new(
             graph,
             &self.progress,
             &self.residual,
             child,
-        ));
+        )));
     }
 
     #[cfg(test)]
     fn residual_split_scan_count(&self) -> usize {
         self.residual.atoms_scanned_while_splitting
+    }
+
+    #[cfg(test)]
+    fn residual_minimum_skip_count(&self) -> usize {
+        self.residual.minimum_members_skipped
     }
 }
 
@@ -858,10 +919,14 @@ mod tests {
     }
 
     fn incremental_components(residual: &ResidualPartition) -> Vec<Vec<AtomId>> {
-        let mut components = residual
-            .components
-            .values()
-            .map(|component| component.atoms.iter().copied().collect::<Vec<_>>())
+        let mut components = (0..residual.components.len())
+            .filter(|index| residual.components[*index].is_some())
+            .map(|component| {
+                (0..residual.component_by_atom.len())
+                    .filter(|atom| residual.component_by_atom[*atom] == Some(component))
+                    .map(|atom| AtomId::new(u32::try_from(atom).unwrap()))
+                    .collect::<Vec<_>>()
+            })
             .collect::<Vec<_>>();
         components.sort();
         components
@@ -927,6 +992,111 @@ mod tests {
         }
 
         assert_eq!(state.residual_split_scan_count(), 0);
+    }
+
+    #[test]
+    fn adversarial_path_minimum_work_is_counted_and_amortized() {
+        const ATOM_COUNT: usize = 66;
+
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms = (0..ATOM_COUNT)
+            .map(|_| builder.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let order = (1..ATOM_COUNT - 1)
+            .chain([0, ATOM_COUNT - 1])
+            .collect::<Vec<_>>();
+        let bonds = order
+            .windows(2)
+            .map(|pair| builder.add_bond(atoms[pair[0]], atoms[pair[1]]).unwrap())
+            .collect::<Vec<_>>();
+        let graph = builder.build();
+        let mut state = TraversalState::new(&graph);
+        state.begin_component(&graph, atoms[order[0]]);
+        for (bond, pair) in bonds.into_iter().zip(order.windows(2)) {
+            state.enter_inline_child(&graph, incident(&graph, atoms[pair[0]], bond));
+        }
+
+        assert_eq!(state.residual_split_scan_count(), 0);
+        assert_eq!(state.residual_minimum_skip_count(), ATOM_COUNT - 1);
+    }
+
+    #[test]
+    fn one_path_step_copies_only_touched_graph_pages() {
+        const ATOM_COUNT: usize = 130;
+
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms = (0..ATOM_COUNT)
+            .map(|_| builder.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let bonds = (0..ATOM_COUNT - 1)
+            .map(|index| builder.add_bond(atoms[index], atoms[index + 1]).unwrap())
+            .collect::<Vec<_>>();
+        let graph = builder.build();
+        let mut source = TraversalState::new(&graph);
+        source.begin_component(&graph, atoms[0]);
+        let mut successor = source.clone();
+
+        source.progress.visited_atoms.words.reset_copy_counts();
+        source.progress.bonds.reset_copy_counts();
+        source.residual.component_by_atom.reset_copy_counts();
+        source.residual.components.reset_copy_counts();
+        successor.enter_inline_child(&graph, incident(&graph, atoms[0], bonds[0]));
+
+        assert_eq!(source.progress.visited_atoms.words.copy_counts(), (0, 1));
+        assert_eq!(source.progress.bonds.copy_counts(), (1, 1));
+        assert_eq!(source.residual.component_by_atom.copy_counts(), (1, 1));
+        assert_eq!(source.residual.components.copy_counts(), (1, 1));
+        assert!(source
+            .progress
+            .bonds
+            .shares_value_page_with(&successor.progress.bonds, bonds[128].index()));
+        assert!(source
+            .residual
+            .component_by_atom
+            .shares_value_page_with(&successor.residual.component_by_atom, atoms[129].index()));
+        let source_component = source.residual.components[0].as_ref().unwrap();
+        let successor_component = successor.residual.components[0].as_ref().unwrap();
+        assert!(Arc::ptr_eq(
+            &source_component.ordered_members,
+            &successor_component.ordered_members
+        ));
+        assert_eq!(source.active_atom(), Some(atoms[0]));
+        assert_eq!(successor.active_atom(), Some(atoms[1]));
+    }
+
+    #[test]
+    fn branch_forks_and_returns_share_suspended_ancestors() {
+        let graph = graph_fixture(5, &[(0, 1), (0, 2), (1, 3), (1, 4)]);
+        let atoms = graph.atom_ids().collect::<Vec<_>>();
+        let mut state = TraversalState::new(&graph);
+        state.begin_component(&graph, atoms[0]);
+        let root_branch = graph.neighbors(atoms[0]).unwrap()[0];
+        state.enter_branch_child(&graph, root_branch);
+        let nested_branch = graph
+            .neighbors(atoms[1])
+            .unwrap()
+            .iter()
+            .copied()
+            .find(|incident| incident.atom() == atoms[3])
+            .unwrap();
+        state.enter_branch_child(&graph, nested_branch);
+
+        let fork = state.clone();
+        let state_top = state.branch_returns.as_ref().unwrap();
+        let fork_top = fork.branch_returns.as_ref().unwrap();
+        assert!(Arc::ptr_eq(state_top, fork_top));
+        assert!(Arc::ptr_eq(&state_top.frame, &fork_top.frame));
+        assert!(Arc::ptr_eq(
+            state_top.parent.as_ref().unwrap(),
+            fork_top.parent.as_ref().unwrap()
+        ));
+
+        assert_eq!(state.complete_path(&graph), Some(atoms[1]));
+        assert!(Arc::ptr_eq(
+            state.branch_returns.as_ref().unwrap(),
+            fork_top.parent.as_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(state.active.as_ref().unwrap(), &fork_top.frame));
     }
 
     #[test]

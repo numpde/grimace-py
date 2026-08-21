@@ -16,11 +16,12 @@ use crate::ids::{FactorId, VariableId};
 use crate::model::{
     BinaryRelationFactor, BondRole, ConstraintModel, FactorDefinition, SpanningTreeFactor,
 };
+use crate::persistent::PagedStore;
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeSolverState {
     model: Arc<ConstraintModel>,
-    domains: Box<[Domain]>,
+    domains: PagedStore<Domain>,
     #[cfg(test)]
     mixed_search_branches: Arc<AtomicUsize>,
 }
@@ -46,10 +47,7 @@ impl std::error::Error for NativeSolverError {}
 
 impl NativeSolverState {
     pub(crate) fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
-        let domains = model
-            .initial_domains()
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        let domains = PagedStore::from_values(model.initial_domains());
         let factor_count = model.factor_count();
         let variable_count = model.variable_count();
         let mut state = Self {
@@ -527,7 +525,7 @@ struct BinaryConstraintComponent {
 }
 
 impl BinaryConstraintComponent {
-    fn requires_exact_search(&self, domains: &[Domain]) -> bool {
+    fn requires_exact_search(&self, domains: &PagedStore<Domain>) -> bool {
         let unresolved = self
             .variables
             .iter()
@@ -685,7 +683,7 @@ struct SearchNode {
 
 fn revise_binary_relation(
     factor: &BinaryRelationFactor,
-    domains: &mut [Domain],
+    domains: &mut PagedStore<Domain>,
 ) -> Result<[Option<VariableId>; 2], NativeSolverError> {
     let left = factor.left();
     let right = factor.right();
@@ -738,7 +736,7 @@ fn values_with_support(
 
 fn revise_spanning_tree(
     factor: &SpanningTreeFactor,
-    domains: &mut [Domain],
+    domains: &mut PagedStore<Domain>,
 ) -> Result<Vec<VariableId>, NativeSolverError> {
     let traversal = BondRole::Traversal;
     let ring = BondRole::Ring;
@@ -1170,6 +1168,56 @@ mod tests {
         assert!(Arc::ptr_eq(&source.model, &successor.model));
         assert_eq!(domains_for(&source, &variables), source_domains);
         assert_ne!(domains_for(&successor, &variables), source_domains);
+    }
+
+    #[test]
+    fn one_restriction_copies_only_its_domain_page() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables = (0..130)
+            .map(|_| builder.add_variable(two_values()).unwrap())
+            .collect::<Vec<_>>();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        source.domains.reset_copy_counts();
+
+        let successor = source
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
+            .unwrap();
+
+        assert_eq!(source.domains.copy_counts(), (1, 1));
+        assert!(source
+            .domains
+            .shares_value_page_with(&successor.domains, variables[129].index()));
+        assert_eq!(source.domain(variables[0]), Some(two_values()));
+        assert_eq!(
+            successor.domain(variables[0]),
+            Some(Domain::singleton(0).unwrap())
+        );
+    }
+
+    #[test]
+    fn rejected_restriction_does_not_copy_a_dense_domain_successor() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables = (0..130)
+            .map(|_| builder.add_variable(two_values()).unwrap())
+            .collect::<Vec<_>>();
+        builder
+            .add_binary_relation(variables[0], variables[129], [(0, 0), (1, 1)])
+            .unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        source.domains.reset_copy_counts();
+
+        assert!(matches!(
+            source.with_restrictions([
+                (variables[0], Domain::singleton(0).unwrap()),
+                (variables[129], Domain::singleton(1).unwrap()),
+            ]),
+            Err(NativeSolverError::Contradiction)
+        ));
+
+        assert_eq!(source.domains.copy_counts(), (1, 2));
+        assert_eq!(source.domain(variables[0]), Some(two_values()));
+        assert_eq!(source.domain(variables[64]), Some(two_values()));
+        assert_eq!(source.domain(variables[129]), Some(two_values()));
     }
 
     #[test]

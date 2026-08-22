@@ -21,9 +21,14 @@ use crate::persistent::PagedStore;
 #[derive(Clone, Debug)]
 pub(crate) struct NativeSolverState {
     model: Arc<ConstraintModel>,
+    exact_plan: Arc<NativeExactPlan>,
     domains: PagedStore<Domain>,
     #[cfg(test)]
     mixed_search_branches: Arc<AtomicUsize>,
+    #[cfg(test)]
+    binary_exact_runs: Arc<AtomicUsize>,
+    #[cfg(test)]
+    mixed_exact_runs: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,13 +53,19 @@ impl std::error::Error for NativeSolverError {}
 impl NativeSolverState {
     pub(crate) fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
         let domains = PagedStore::from_values(model.initial_domains());
+        let exact_plan = Arc::new(NativeExactPlan::compile(&model));
         let factor_count = model.factor_count();
         let variable_count = model.variable_count();
         let mut state = Self {
             model,
+            exact_plan,
             domains,
             #[cfg(test)]
             mixed_search_branches: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            binary_exact_runs: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            mixed_exact_runs: Arc::new(AtomicUsize::new(0)),
         };
         state.enforce_consistency(
             (0..factor_count).map(factor_id_from_index),
@@ -75,6 +86,20 @@ impl NativeSolverState {
     #[cfg(test)]
     fn mixed_search_branch_count(&self) -> usize {
         self.mixed_search_branches.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    fn reset_exact_run_counts(&self) {
+        self.binary_exact_runs.store(0, Ordering::Relaxed);
+        self.mixed_exact_runs.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    fn exact_run_counts(&self) -> (usize, usize) {
+        (
+            self.binary_exact_runs.load(Ordering::Relaxed),
+            self.mixed_exact_runs.load(Ordering::Relaxed),
+        )
     }
 
     /// Return one atomically restricted and propagated successor.
@@ -138,9 +163,7 @@ impl NativeSolverState {
 
         while !exact_seeds.is_empty() {
             let seeds = exact_seeds.iter().copied().collect::<Vec<_>>();
-            let mut exact_reductions =
-                self.complete_filter_binary_components(seeds.iter().copied())?;
-            exact_reductions.extend(self.complete_filter_mixed_components(seeds)?);
+            let exact_reductions = self.complete_filter_exact_components(seeds)?;
             if exact_reductions.is_empty() {
                 break;
             }
@@ -212,20 +235,30 @@ impl NativeSolverState {
         Ok(all_reductions)
     }
 
-    fn complete_filter_binary_components(
+    fn complete_filter_exact_components(
         &mut self,
         seeds: impl IntoIterator<Item = VariableId>,
     ) -> Result<BTreeSet<VariableId>, NativeSolverError> {
-        let mut covered = BTreeSet::new();
+        let component_ids = seeds
+            .into_iter()
+            .filter_map(|variable| self.exact_plan.component_for(variable))
+            .collect::<BTreeSet<_>>();
+        let plan = Arc::clone(&self.exact_plan);
         let mut reductions = BTreeSet::new();
 
-        for seed in seeds {
-            if covered.contains(&seed) {
-                continue;
+        for component_id in component_ids {
+            match &plan.components[component_id] {
+                ExactComponent::Binary(component) => {
+                    #[cfg(test)]
+                    self.binary_exact_runs.fetch_add(1, Ordering::Relaxed);
+                    reductions.extend(self.complete_filter_binary_component(component)?);
+                }
+                ExactComponent::Mixed(component) => {
+                    #[cfg(test)]
+                    self.mixed_exact_runs.fetch_add(1, Ordering::Relaxed);
+                    reductions.extend(self.complete_filter_mixed_component(component)?);
+                }
             }
-            let component = self.binary_constraint_component(seed);
-            covered.extend(component.variables.iter().copied());
-            reductions.extend(self.complete_filter_binary_component(&component)?);
         }
 
         Ok(reductions)
@@ -233,21 +266,23 @@ impl NativeSolverState {
 
     fn complete_filter_binary_component(
         &mut self,
-        component: &BinaryConstraintComponent,
+        component: &BinaryExactComponent,
     ) -> Result<Vec<VariableId>, NativeSolverError> {
-        if !component.requires_exact_search(&self.domains) {
+        if !component
+            .variables
+            .iter()
+            .any(|variable| self.domains[variable.index()].len() > 1)
+        {
             return Ok(Vec::new());
         }
 
-        let model = Arc::clone(&self.model);
-        let local = LocalBinaryComponent::new(model.as_ref(), component);
         let domains = component
             .variables
             .iter()
             .map(|variable| self.domains[variable.index()])
             .collect::<Vec<_>>();
-        let supported = local
-            .exact_supported_domains(domains)
+        let supported = component
+            .exact_supported_domains(&self.model, domains)
             .ok_or(NativeSolverError::Contradiction)?;
 
         let mut reductions = Vec::new();
@@ -262,64 +297,9 @@ impl NativeSolverState {
         Ok(reductions)
     }
 
-    fn binary_constraint_component(&self, seed: VariableId) -> BinaryConstraintComponent {
-        let mut variables = BTreeSet::new();
-        let mut factors = BTreeSet::new();
-        let mut pending = VecDeque::from([seed]);
-
-        while let Some(variable) = pending.pop_front() {
-            if !variables.insert(variable) {
-                continue;
-            }
-
-            for &factor_id in self
-                .model
-                .factors_for_variable(variable)
-                .expect("known variable must have an adjacency row")
-            {
-                let factor = self
-                    .model
-                    .factor(factor_id)
-                    .expect("factor adjacency must reference a prepared factor");
-                let FactorDefinition::BinaryRelation(relation) = factor else {
-                    continue;
-                };
-                if factors.insert(factor_id) {
-                    pending.extend(relation.variables().iter().copied());
-                }
-            }
-        }
-
-        BinaryConstraintComponent {
-            variables: variables.into_iter().collect(),
-            factors: factors.into_iter().collect(),
-        }
-    }
-
-    fn complete_filter_mixed_components(
-        &mut self,
-        seeds: impl IntoIterator<Item = VariableId>,
-    ) -> Result<BTreeSet<VariableId>, NativeSolverError> {
-        let mut covered = BTreeSet::new();
-        let mut reductions = BTreeSet::new();
-
-        for seed in seeds {
-            if covered.contains(&seed) {
-                continue;
-            }
-            let Some(component) = self.mixed_semantic_component(seed) else {
-                continue;
-            };
-            covered.extend(component.projected_variables.iter().copied());
-            reductions.extend(self.complete_filter_mixed_component(&component)?);
-        }
-
-        Ok(reductions)
-    }
-
     fn complete_filter_mixed_component(
         &mut self,
-        component: &MixedSemanticComponent,
+        component: &MixedExactComponent,
     ) -> Result<Vec<VariableId>, NativeSolverError> {
         if !component
             .core_variables
@@ -396,94 +376,6 @@ impl NativeSolverState {
         Ok(reductions)
     }
 
-    fn mixed_semantic_component(&self, seed: VariableId) -> Option<MixedSemanticComponent> {
-        let mut core_variables = BTreeSet::new();
-        let mut structural_factors = BTreeSet::new();
-        let mut projected_variables = BTreeSet::new();
-        let mut pending = VecDeque::new();
-        if self.variable_has_binary_factor(seed) {
-            pending.push_back(seed);
-        } else {
-            for &factor_id in self
-                .model
-                .factors_for_variable(seed)
-                .expect("known variable must have an adjacency row")
-            {
-                let FactorDefinition::SpanningTree(spanning_tree) = self
-                    .model
-                    .factor(factor_id)
-                    .expect("factor adjacency must reference a prepared factor")
-                else {
-                    continue;
-                };
-                pending.extend(
-                    spanning_tree
-                        .variables()
-                        .iter()
-                        .copied()
-                        .filter(|candidate| self.variable_has_binary_factor(*candidate)),
-                );
-            }
-        }
-        if pending.is_empty() {
-            return None;
-        }
-
-        while let Some(variable) = pending.pop_front() {
-            if !core_variables.insert(variable) {
-                continue;
-            }
-            projected_variables.insert(variable);
-
-            for &factor_id in self
-                .model
-                .factors_for_variable(variable)
-                .expect("known variable must have an adjacency row")
-            {
-                match self
-                    .model
-                    .factor(factor_id)
-                    .expect("factor adjacency must reference a prepared factor")
-                {
-                    FactorDefinition::BinaryRelation(relation) => {
-                        pending.extend(relation.variables().iter().copied());
-                    }
-                    FactorDefinition::SpanningTree(spanning_tree) => {
-                        structural_factors.insert(factor_id);
-                        projected_variables.extend(spanning_tree.variables().iter().copied());
-                        pending.extend(
-                            spanning_tree
-                                .variables()
-                                .iter()
-                                .copied()
-                                .filter(|candidate| self.variable_has_binary_factor(*candidate)),
-                        );
-                    }
-                }
-            }
-        }
-
-        (!structural_factors.is_empty()).then(|| MixedSemanticComponent {
-            core_variables: core_variables.into_iter().collect(),
-            projected_variables: projected_variables.into_iter().collect(),
-        })
-    }
-
-    fn variable_has_binary_factor(&self, variable: VariableId) -> bool {
-        self.model
-            .factors_for_variable(variable)
-            .expect("known variable must have an adjacency row")
-            .iter()
-            .any(|factor_id| {
-                matches!(
-                    self.model
-                        .factor(*factor_id)
-                        .expect("factor adjacency must reference a prepared factor"),
-                    FactorDefinition::BinaryRelation(_)
-                )
-            })
-    }
-
     fn restricted_and_propagated(
         &self,
         variable: VariableId,
@@ -513,65 +405,200 @@ impl NativeSolverState {
 }
 
 #[derive(Debug)]
-struct MixedSemanticComponent {
-    core_variables: Vec<VariableId>,
-    projected_variables: Vec<VariableId>,
+struct NativeExactPlan {
+    components: Box<[ExactComponent]>,
+    component_by_variable: Box<[Option<usize>]>,
 }
 
-#[derive(Debug)]
-struct BinaryConstraintComponent {
-    variables: Vec<VariableId>,
-    factors: Vec<FactorId>,
-}
+impl NativeExactPlan {
+    fn compile(model: &ConstraintModel) -> Self {
+        let variable_count = model.variable_count();
+        let has_binary_factor = (0..variable_count)
+            .map(|index| {
+                let variable = variable_id_from_index(index);
+                model
+                    .factors_for_variable(variable)
+                    .expect("known variable must have an adjacency row")
+                    .iter()
+                    .any(|factor_id| {
+                        matches!(
+                            model
+                                .factor(*factor_id)
+                                .expect("factor adjacency must reference a prepared factor"),
+                            FactorDefinition::BinaryRelation(_)
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        let mut visited_core = vec![false; variable_count];
+        let mut components = Vec::new();
+        let mut component_by_variable = vec![None; variable_count];
 
-impl BinaryConstraintComponent {
-    fn requires_exact_search(&self, domains: &PagedStore<Domain>) -> bool {
-        let unresolved = self
-            .variables
-            .iter()
-            .any(|variable| domains[variable.index()].len() > 1);
+        for seed_index in 0..variable_count {
+            if !has_binary_factor[seed_index] || visited_core[seed_index] {
+                continue;
+            }
 
-        // This component contains only binary relations. For a connected
-        // variable/factor incidence graph, a cycle exists exactly when the
-        // number of factors is at least the number of variables.
-        unresolved && self.factors.len() >= self.variables.len()
+            let mut core_variables = BTreeSet::new();
+            let mut binary_factors = BTreeSet::new();
+            let mut structural_factors = BTreeSet::new();
+            let mut pending = VecDeque::from([variable_id_from_index(seed_index)]);
+
+            while let Some(variable) = pending.pop_front() {
+                if !core_variables.insert(variable) {
+                    continue;
+                }
+                visited_core[variable.index()] = true;
+
+                for &factor_id in model
+                    .factors_for_variable(variable)
+                    .expect("known variable must have an adjacency row")
+                {
+                    match model
+                        .factor(factor_id)
+                        .expect("factor adjacency must reference a prepared factor")
+                    {
+                        FactorDefinition::BinaryRelation(relation) => {
+                            if binary_factors.insert(factor_id) {
+                                pending.extend(relation.variables().iter().copied());
+                            }
+                        }
+                        FactorDefinition::SpanningTree(spanning_tree) => {
+                            if structural_factors.insert(factor_id) {
+                                pending.extend(
+                                    spanning_tree
+                                        .variables()
+                                        .iter()
+                                        .copied()
+                                        .filter(|candidate| has_binary_factor[candidate.index()]),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            let core_variables = core_variables.into_iter().collect::<Vec<_>>();
+            let component = if structural_factors.is_empty() {
+                // Arc consistency is exact on an acyclic binary incidence
+                // graph, so only cyclic pure-binary components need search.
+                (binary_factors.len() >= core_variables.len()).then(|| {
+                    ExactComponent::Binary(BinaryExactComponent::compile(
+                        model,
+                        core_variables,
+                        binary_factors.into_iter().collect(),
+                    ))
+                })
+            } else {
+                let mut projected_variables =
+                    core_variables.iter().copied().collect::<BTreeSet<_>>();
+                for factor_id in structural_factors {
+                    let FactorDefinition::SpanningTree(spanning_tree) = model
+                        .factor(factor_id)
+                        .expect("prepared structural factor must resolve")
+                    else {
+                        unreachable!("mixed component structural IDs must be spanning factors");
+                    };
+                    projected_variables.extend(spanning_tree.variables().iter().copied());
+                }
+                Some(ExactComponent::Mixed(MixedExactComponent {
+                    core_variables: core_variables.into_boxed_slice(),
+                    projected_variables: projected_variables
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                }))
+            };
+
+            let Some(component) = component else {
+                continue;
+            };
+            let component_id = components.len();
+            for variable in component.projected_variables() {
+                assert_eq!(
+                    component_by_variable[variable.index()],
+                    None,
+                    "native exact components must be disjoint"
+                );
+                component_by_variable[variable.index()] = Some(component_id);
+            }
+            components.push(component);
+        }
+
+        Self {
+            components: components.into_boxed_slice(),
+            component_by_variable: component_by_variable.into_boxed_slice(),
+        }
+    }
+
+    fn component_for(&self, variable: VariableId) -> Option<usize> {
+        self.component_by_variable
+            .get(variable.index())
+            .copied()
+            .flatten()
     }
 }
 
-struct LocalBinaryFactor<'a> {
-    relation: &'a BinaryRelationFactor,
+#[derive(Debug)]
+enum ExactComponent {
+    Binary(BinaryExactComponent),
+    Mixed(MixedExactComponent),
+}
+
+impl ExactComponent {
+    fn projected_variables(&self) -> &[VariableId] {
+        match self {
+            Self::Binary(component) => &component.variables,
+            Self::Mixed(component) => &component.projected_variables,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MixedExactComponent {
+    core_variables: Box<[VariableId]>,
+    projected_variables: Box<[VariableId]>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct LocalBinaryFactor {
+    factor: FactorId,
     left: usize,
     right: usize,
 }
 
-struct LocalBinaryComponent<'a> {
-    factors: Vec<LocalBinaryFactor<'a>>,
+#[derive(Debug)]
+struct BinaryExactComponent {
+    variables: Box<[VariableId]>,
+    factors: Box<[LocalBinaryFactor]>,
     factors_by_variable: Vec<Vec<usize>>,
 }
 
-impl<'a> LocalBinaryComponent<'a> {
-    fn new(model: &'a ConstraintModel, component: &BinaryConstraintComponent) -> Self {
-        let mut factors = Vec::with_capacity(component.factors.len());
-        let mut factors_by_variable = vec![Vec::new(); component.variables.len()];
+impl BinaryExactComponent {
+    fn compile(
+        model: &ConstraintModel,
+        variables: Vec<VariableId>,
+        factor_ids: Vec<FactorId>,
+    ) -> Self {
+        let mut factors = Vec::with_capacity(factor_ids.len());
+        let mut factors_by_variable = vec![Vec::new(); variables.len()];
 
-        for factor_id in &component.factors {
+        for factor_id in factor_ids {
             let FactorDefinition::BinaryRelation(relation) = model
-                .factor(*factor_id)
+                .factor(factor_id)
                 .expect("component factor must exist")
             else {
                 unreachable!("binary component must contain only binary relations");
             };
-            let left = component
-                .variables
+            let left = variables
                 .binary_search(&relation.left())
                 .expect("component must contain the factor's left variable");
-            let right = component
-                .variables
+            let right = variables
                 .binary_search(&relation.right())
                 .expect("component must contain the factor's right variable");
             let local_factor = factors.len();
             factors.push(LocalBinaryFactor {
-                relation,
+                factor: factor_id,
                 left,
                 right,
             });
@@ -580,14 +607,19 @@ impl<'a> LocalBinaryComponent<'a> {
         }
 
         Self {
-            factors,
+            variables: variables.into_boxed_slice(),
+            factors: factors.into_boxed_slice(),
             factors_by_variable,
         }
     }
 
-    fn exact_supported_domains(&self, mut domains: Vec<Domain>) -> Option<Vec<Domain>> {
+    fn exact_supported_domains(
+        &self,
+        model: &ConstraintModel,
+        mut domains: Vec<Domain>,
+    ) -> Option<Vec<Domain>> {
         let all_factors = (0..self.factors.len()).collect::<Vec<_>>();
-        self.propagate(&mut domains, all_factors).ok()?;
+        self.propagate(model, &mut domains, all_factors).ok()?;
 
         let target_domains = domains.clone();
         let mut supported = vec![Domain::empty(); domains.len()];
@@ -599,7 +631,7 @@ impl<'a> LocalBinaryComponent<'a> {
 
         while let Some(node) = stack.pop() {
             let mut candidate = node.domains;
-            if self.propagate(&mut candidate, node.seeds).is_err() {
+            if self.propagate(model, &mut candidate, node.seeds).is_err() {
                 continue;
             }
 
@@ -631,6 +663,7 @@ impl<'a> LocalBinaryComponent<'a> {
 
     fn propagate(
         &self,
+        model: &ConstraintModel,
         domains: &mut [Domain],
         seeds: impl IntoIterator<Item = usize>,
     ) -> Result<(), NativeSolverError> {
@@ -647,10 +680,15 @@ impl<'a> LocalBinaryComponent<'a> {
         while let Some(factor_index) = queue.pop_front() {
             queued[factor_index] = false;
             let factor = &self.factors[factor_index];
+            let FactorDefinition::BinaryRelation(relation) = model
+                .factor(factor.factor)
+                .expect("compiled binary factor must resolve")
+            else {
+                unreachable!("compiled binary factor ID must retain its kind");
+            };
             let old_left = domains[factor.left];
             let old_right = domains[factor.right];
-            let (new_left, new_right) =
-                revised_binary_domains(factor.relation, old_left, old_right)?;
+            let (new_left, new_right) = revised_binary_domains(relation, old_left, old_right)?;
 
             if new_left != old_left {
                 domains[factor.left] = new_left;
@@ -1166,6 +1204,7 @@ mod tests {
             .unwrap();
 
         assert!(Arc::ptr_eq(&source.model, &successor.model));
+        assert!(Arc::ptr_eq(&source.exact_plan, &successor.exact_plan));
         assert_eq!(domains_for(&source, &variables), source_domains);
         assert_ne!(domains_for(&successor, &variables), source_domains);
     }
@@ -1192,6 +1231,36 @@ mod tests {
             successor.domain(variables[0]),
             Some(Domain::singleton(0).unwrap())
         );
+    }
+
+    #[test]
+    fn successful_restriction_preserves_the_complete_solver_contract() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables = (0..130)
+            .map(|_| builder.add_variable(two_values()).unwrap())
+            .collect::<Vec<_>>();
+        builder
+            .add_binary_relation(variables[0], variables[129], [(0, 0), (1, 1)])
+            .unwrap();
+        let model = Arc::new(builder.build());
+        let source = NativeSolverState::initial(Arc::clone(&model)).unwrap();
+        let allowed = Domain::singleton(0).unwrap();
+
+        let successor = source.with_restrictions([(variables[0], allowed)]).unwrap();
+
+        assert!(Arc::ptr_eq(&source.model, &successor.model));
+        for &variable in &variables {
+            let prepared = model.variable(variable).unwrap().initial_domain();
+            let source_domain = source.domain(variable).unwrap();
+            let successor_domain = successor.domain(variable).unwrap();
+            assert!(!successor_domain.is_empty());
+            assert!(successor_domain.is_subset_of(prepared));
+            assert!(successor_domain.is_subset_of(source_domain));
+        }
+        assert!(successor
+            .domain(variables[0])
+            .unwrap()
+            .is_subset_of(allowed));
     }
 
     #[test]
@@ -1352,6 +1421,208 @@ mod tests {
         assert_eq!(state.mixed_search_branch_count(), 1);
         state.reset_mixed_search_branch_count();
         assert_eq!(state.mixed_search_branch_count(), 0);
+    }
+
+    #[test]
+    fn pure_spanning_model_has_no_semantic_exact_descriptor_or_run() {
+        const EDGE_COUNT: usize = 100;
+
+        let mut builder = ConstraintModelBuilder::new();
+        let variables = (0..EDGE_COUNT)
+            .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let atoms = (0..EDGE_COUNT)
+            .map(|index| crate::AtomId::new(u32::try_from(index).unwrap()))
+            .collect::<Vec<_>>();
+        let edges = (0..EDGE_COUNT)
+            .map(|index| {
+                SpanningTreeEdge::new(
+                    variables[index],
+                    atoms[index],
+                    atoms[(index + 1) % EDGE_COUNT],
+                )
+            })
+            .collect::<Vec<_>>();
+        builder.add_spanning_tree(atoms, edges).unwrap();
+
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        assert!(state.exact_plan.components.is_empty());
+        assert_eq!(state.exact_run_counts(), (0, 0));
+    }
+
+    #[test]
+    fn acyclic_binary_components_need_no_exact_descriptor() {
+        let (model, _) = equality_chain();
+
+        let state = NativeSolverState::initial(model).unwrap();
+
+        assert!(state.exact_plan.components.is_empty());
+        assert_eq!(state.exact_run_counts(), (0, 0));
+    }
+
+    #[test]
+    fn cyclic_binary_component_is_compiled_once() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 3] =
+            std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
+        for (left, right) in [(0, 1), (1, 2), (2, 0)] {
+            builder
+                .add_binary_relation(variables[left], variables[right], [(0, 0), (1, 1)])
+                .unwrap();
+        }
+
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        assert_eq!(state.exact_plan.components.len(), 1);
+        assert!(matches!(
+            state.exact_plan.components[0],
+            ExactComponent::Binary(_)
+        ));
+        assert_eq!(state.exact_run_counts(), (1, 0));
+    }
+
+    #[test]
+    fn one_spanning_projector_joins_binary_disconnected_semantic_relations() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 4] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        builder
+            .add_binary_relation(variables[0], variables[1], [(0, 0), (1, 1)])
+            .unwrap();
+        builder
+            .add_binary_relation(variables[2], variables[3], [(0, 1), (1, 0)])
+            .unwrap();
+        let atoms: [crate::AtomId; 4] =
+            std::array::from_fn(|index| crate::AtomId::new(u32::try_from(index).unwrap()));
+        builder
+            .add_spanning_tree(
+                atoms,
+                (0..4).map(|index| {
+                    SpanningTreeEdge::new(variables[index], atoms[index], atoms[(index + 1) % 4])
+                }),
+            )
+            .unwrap();
+
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        assert_eq!(state.exact_plan.components.len(), 1);
+        assert!(matches!(
+            state.exact_plan.components[0],
+            ExactComponent::Mixed(_)
+        ));
+        let component = state.exact_plan.component_for(variables[0]).unwrap();
+        assert!(variables
+            .iter()
+            .all(|variable| state.exact_plan.component_for(*variable) == Some(component)));
+    }
+
+    #[test]
+    fn binary_relation_joins_multiple_spanning_projectors() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 6] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        let atoms: [crate::AtomId; 6] =
+            std::array::from_fn(|index| crate::AtomId::new(u32::try_from(index).unwrap()));
+        builder
+            .add_binary_relation(variables[0], variables[3], [(0, 0), (0, 1), (1, 0), (1, 1)])
+            .unwrap();
+        for offset in [0, 3] {
+            builder
+                .add_spanning_tree(
+                    atoms[offset..offset + 3].iter().copied(),
+                    [
+                        SpanningTreeEdge::new(variables[offset], atoms[offset], atoms[offset + 1]),
+                        SpanningTreeEdge::new(
+                            variables[offset + 1],
+                            atoms[offset + 1],
+                            atoms[offset + 2],
+                        ),
+                        SpanningTreeEdge::new(
+                            variables[offset + 2],
+                            atoms[offset + 2],
+                            atoms[offset],
+                        ),
+                    ],
+                )
+                .unwrap();
+        }
+
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        assert_eq!(state.exact_plan.components.len(), 1);
+        assert!(matches!(
+            state.exact_plan.components[0],
+            ExactComponent::Mixed(_)
+        ));
+        let component = state.exact_plan.component_for(variables[0]).unwrap();
+        assert!(variables
+            .iter()
+            .all(|variable| state.exact_plan.component_for(*variable) == Some(component)));
+    }
+
+    #[test]
+    fn restriction_runs_only_its_compiled_mixed_component() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 6] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        let atoms: [crate::AtomId; 6] =
+            std::array::from_fn(|index| crate::AtomId::new(u32::try_from(index).unwrap()));
+        for offset in [0, 3] {
+            builder
+                .add_binary_relation(
+                    variables[offset],
+                    variables[offset + 1],
+                    [(0, 0), (0, 1), (1, 0), (1, 1)],
+                )
+                .unwrap();
+            builder
+                .add_spanning_tree(
+                    atoms[offset..offset + 3].iter().copied(),
+                    [
+                        SpanningTreeEdge::new(variables[offset], atoms[offset], atoms[offset + 1]),
+                        SpanningTreeEdge::new(
+                            variables[offset + 1],
+                            atoms[offset + 1],
+                            atoms[offset + 2],
+                        ),
+                        SpanningTreeEdge::new(
+                            variables[offset + 2],
+                            atoms[offset + 2],
+                            atoms[offset],
+                        ),
+                    ],
+                )
+                .unwrap();
+        }
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        assert_eq!(state.exact_plan.components.len(), 2);
+        assert_eq!(
+            state.exact_plan.component_for(variables[0]),
+            state.exact_plan.component_for(variables[2]),
+            "a structural-only projected variable must route to the mixed descriptor"
+        );
+        assert_ne!(
+            state.exact_plan.component_for(variables[0]),
+            state.exact_plan.component_for(variables[3])
+        );
+        state.reset_exact_run_counts();
+
+        let successor = state
+            .with_restrictions([(variables[0], BondRole::Traversal.singleton_domain())])
+            .unwrap();
+
+        assert_eq!(successor.exact_run_counts(), (0, 1));
+        assert_eq!(
+            successor.domain(variables[3]),
+            Some(BondRole::role_domain())
+        );
+
+        state.reset_exact_run_counts();
+        let structural_successor = state
+            .with_restrictions([(variables[2], BondRole::Ring.singleton_domain())])
+            .unwrap();
+        assert_eq!(structural_successor.exact_run_counts(), (0, 1));
     }
 
     #[test]

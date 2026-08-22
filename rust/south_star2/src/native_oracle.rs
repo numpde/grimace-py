@@ -362,15 +362,53 @@ fn split_semantic_core_model() -> (Arc<ConstraintModel>, Vec<VariableId>) {
     (Arc::new(builder.build()), variables)
 }
 
+fn coupled_triangle_projectors_model() -> (Arc<ConstraintModel>, Vec<VariableId>) {
+    let mut builder = ConstraintModelBuilder::new();
+    let variables = (0..6)
+        .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+        .collect::<Vec<_>>();
+    builder
+        .add_binary_relation(variables[0], variables[3], [(0, 0), (1, 1)])
+        .unwrap();
+    builder
+        .add_binary_relation(variables[1], variables[4], [(0, 1), (1, 0)])
+        .unwrap();
+
+    for offset in [0, 3] {
+        let atoms = [
+            AtomId::new(u32::try_from(offset).unwrap()),
+            AtomId::new(u32::try_from(offset + 1).unwrap()),
+            AtomId::new(u32::try_from(offset + 2).unwrap()),
+        ];
+        builder
+            .add_spanning_tree(
+                atoms,
+                [
+                    SpanningTreeEdge::new(variables[offset], atoms[0], atoms[1]),
+                    SpanningTreeEdge::new(variables[offset + 1], atoms[1], atoms[2]),
+                    SpanningTreeEdge::new(variables[offset + 2], atoms[2], atoms[0]),
+                ],
+            )
+            .unwrap();
+    }
+
+    (Arc::new(builder.build()), variables)
+}
+
 fn solve_role_domains<S: ConstraintSolver>(
     model: Arc<ConstraintModel>,
     variables: &[VariableId],
     restrictions: &[(VariableId, Domain)],
 ) -> Option<Vec<Domain>> {
-    let Consistency::Consistent(state) = S::initial(model).ok()? else {
+    let Consistency::Consistent(state) = S::initial(model)
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+    else {
         return None;
     };
-    let Consistency::Consistent(state) = state.restricted(restrictions).ok()? else {
+    let Consistency::Consistent(state) = state
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+    else {
         return None;
     };
     Some(
@@ -542,6 +580,27 @@ fn structural_only_restrictions_join_disconnected_semantic_relations() {
                 &restrictions,
             ),
             "structural-only restrictions {restrictions:?}"
+        );
+    }
+}
+
+#[test]
+fn coupled_spanning_projectors_match_exhaustive_projection() {
+    let (model, variables) = coupled_triangle_projectors_model();
+    let initial = solve_role_domains::<ExhaustiveSolverState>(Arc::clone(&model), &variables, &[])
+        .expect("cyclically coupled projectors must be satisfiable");
+    assert_eq!(initial[0], BondRole::Traversal.singleton_domain());
+    assert_eq!(initial[3], BondRole::Traversal.singleton_domain());
+
+    for restrictions in partial_role_restrictions(&variables) {
+        assert_eq!(
+            solve_role_domains::<NativeSolverState>(Arc::clone(&model), &variables, &restrictions,),
+            solve_role_domains::<ExhaustiveSolverState>(
+                Arc::clone(&model),
+                &variables,
+                &restrictions,
+            ),
+            "coupled triangle projector restrictions {restrictions:?}"
         );
     }
 }

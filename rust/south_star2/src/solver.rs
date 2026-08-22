@@ -37,8 +37,9 @@ impl<S> Consistency<S> {
 pub(crate) trait ConstraintSolver: Clone + Sized {
     type Failure: Error;
 
-    /// Build a solver state containing every prepared variable with a nonempty
-    /// domain that refines its model domain.
+    /// Return `Contradiction` exactly when the prepared model has no satisfying
+    /// assignment. A consistent state represents exactly all satisfying model
+    /// assignments, and every exposed domain is their exact projection.
     fn initial(model: Arc<ConstraintModel>) -> Result<Consistency<Self>, Self::Failure>;
 
     /// Apply every supplied restriction to the same model and variable set.
@@ -51,5 +52,7 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
         restrictions: &[(VariableId, Domain)],
     ) -> Result<Consistency<Self>, Self::Failure>;
 
+    /// Return the exact projected domain of a known variable in this state, or
+    /// `None` when the variable does not belong to the prepared model.
     fn domain(&self, variable: VariableId) -> Option<Domain>;
 }

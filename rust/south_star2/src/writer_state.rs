@@ -12,7 +12,9 @@ use crate::solver::{Consistency, ConstraintSolver};
 use crate::traversal::{IncidentBondState, TraversalState};
 
 #[cfg(test)]
-use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(test)]
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub(crate) struct StructuralFrontier {
@@ -98,20 +100,20 @@ pub(crate) struct WriterState<S> {
     traversal: TraversalState,
     constraints: S,
     #[cfg(test)]
-    candidate_batch_derivations: Cell<usize>,
+    candidate_batch_derivations: Arc<AtomicUsize>,
 }
 
 impl<S: ConstraintSolver> WriterState<S> {
     pub(crate) fn initial(prepared: &PreparedMolecule) -> Result<Consistency<Self>, S::Failure> {
         Ok(
             S::initial(prepared.constraint_model_arc())?.map(|constraints| {
-                assert_solver_shape(prepared, &constraints);
+                assert_initial_solver_shape(prepared, &constraints);
                 Self {
                     prepared: prepared.clone(),
                     traversal: TraversalState::new(prepared.graph()),
                     constraints,
                     #[cfg(test)]
-                    candidate_batch_derivations: Cell::new(0),
+                    candidate_batch_derivations: Arc::new(AtomicUsize::new(0)),
                 }
             }),
         )
@@ -135,7 +137,7 @@ impl<S: ConstraintSolver> WriterState<S> {
     pub(crate) fn structural_frontier(&self) -> StructuralFrontier {
         #[cfg(test)]
         self.candidate_batch_derivations
-            .set(self.candidate_batch_derivations.get() + 1);
+            .fetch_add(1, Ordering::Relaxed);
 
         let graph = self.prepared.graph();
         let Some(active) = self.traversal.active_atom() else {
@@ -295,7 +297,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         candidate: StructuralCandidate,
     ) -> Result<Consistency<Self>, S::Failure> {
-        match candidate {
+        let attempted = match candidate {
             StructuralCandidate::Root { atom } => {
                 let mut successor = self.clone();
                 successor
@@ -347,12 +349,25 @@ impl<S: ConstraintSolver> WriterState<S> {
                 successor.traversal.complete_path(self.prepared.graph());
                 Ok(Consistency::Consistent(successor))
             }
+        };
+        #[cfg(test)]
+        {
+            attempted.map(|consistency| {
+                consistency.map(|mut successor| {
+                    successor.candidate_batch_derivations = Arc::new(AtomicUsize::new(0));
+                    successor
+                })
+            })
+        }
+        #[cfg(not(test))]
+        {
+            attempted
         }
     }
 
     #[cfg(test)]
     pub(crate) fn candidate_batch_derivation_count(&self) -> usize {
-        self.candidate_batch_derivations.get()
+        self.candidate_batch_derivations.load(Ordering::Relaxed)
     }
 
     pub(crate) fn enter_committed_inline_child(&self, incident: AdjacentBond) -> Self {
@@ -386,17 +401,12 @@ impl<S: ConstraintSolver> WriterState<S> {
         if self.bond_role_domain(bond) == domain {
             return Ok(Consistency::Consistent(self.constraints.clone()));
         }
-        Ok(self
-            .constraints
-            .restricted(&[(role_variable(&self.prepared, bond), domain)])?
-            .map(|constraints| {
-                assert_solver_shape(&self.prepared, &constraints);
-                constraints
-            }))
+        self.constraints
+            .restricted(&[(role_variable(&self.prepared, bond), domain)])
     }
 }
 
-fn assert_solver_shape<S: ConstraintSolver>(prepared: &PreparedMolecule, constraints: &S) {
+fn assert_initial_solver_shape<S: ConstraintSolver>(prepared: &PreparedMolecule, constraints: &S) {
     for index in 0..prepared.constraint_model().variable_count() {
         let variable = VariableId::new(
             u32::try_from(index).expect("prepared variable count must fit the identifier space"),
@@ -434,6 +444,7 @@ fn role_restriction(
 #[cfg(test)]
 mod tests {
     use std::convert::Infallible;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     use super::*;
@@ -461,6 +472,45 @@ mod tests {
 
         fn domain(&self, _variable: VariableId) -> Option<Domain> {
             None
+        }
+    }
+
+    #[derive(Clone)]
+    struct DomainCountingSolver {
+        native: NativeSolverState,
+        domain_reads: Arc<AtomicUsize>,
+    }
+
+    impl ConstraintSolver for DomainCountingSolver {
+        type Failure = crate::native_solver::NativeSolverFailure;
+
+        fn initial(
+            model: Arc<crate::model::ConstraintModel>,
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            Ok(
+                <NativeSolverState as ConstraintSolver>::initial(model)?.map(|native| Self {
+                    native,
+                    domain_reads: Arc::new(AtomicUsize::new(0)),
+                }),
+            )
+        }
+
+        fn restricted(
+            &self,
+            restrictions: &[(VariableId, Domain)],
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            Ok(
+                <NativeSolverState as ConstraintSolver>::restricted(&self.native, restrictions)?
+                    .map(|native| Self {
+                        native,
+                        domain_reads: Arc::clone(&self.domain_reads),
+                    }),
+            )
+        }
+
+        fn domain(&self, variable: VariableId) -> Option<Domain> {
+            self.domain_reads.fetch_add(1, Ordering::Relaxed);
+            self.native.domain(variable)
         }
     }
 
@@ -505,6 +555,33 @@ mod tests {
         let prepared = PreparedMolecule::new(graph.build());
 
         let _ = WriterState::<MissingDomainSolver>::initial(&prepared);
+    }
+
+    #[test]
+    fn role_restriction_does_not_rescan_the_solver_domain_shape() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        graph.add_bond(atoms[0], atoms[2]).unwrap();
+        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        for _ in 0..128 {
+            let a = graph.add_atom().unwrap();
+            let b = graph.add_atom().unwrap();
+            graph.add_bond(a, b).unwrap();
+        }
+        let prepared = PreparedMolecule::new(graph.build());
+        assert_eq!(prepared.constraint_model().variable_count(), 131);
+        let state = WriterState::<DomainCountingSolver>::initial(&prepared)
+            .unwrap()
+            .unwrap_consistent();
+        state.constraints.domain_reads.store(0, Ordering::Relaxed);
+
+        let _ = state
+            .restricted_role(left, BondRole::Ring)
+            .unwrap()
+            .unwrap_consistent();
+
+        assert_eq!(state.constraints.domain_reads.load(Ordering::Relaxed), 1);
     }
 
     #[test]

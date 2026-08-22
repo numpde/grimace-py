@@ -37,8 +37,15 @@ impl<S> Consistency<S> {
 pub(crate) trait ConstraintSolver: Clone + Sized {
     type Failure: Error;
 
+    /// Build a solver state containing every prepared variable with a nonempty
+    /// domain that refines its model domain.
     fn initial(model: Arc<ConstraintModel>) -> Result<Consistency<Self>, Self::Failure>;
 
+    /// Apply every supplied restriction to the same model and variable set.
+    /// A consistent result must represent exactly the source assignments that
+    /// satisfy all restrictions; every returned domain is nonempty, refines
+    /// both the source and prepared domain, and is contained in its supplied
+    /// restriction when that variable was restricted.
     fn restricted(
         &self,
         restrictions: &[(VariableId, Domain)],

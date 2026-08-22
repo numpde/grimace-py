@@ -53,6 +53,42 @@ impl ConstraintSolver for FailingRestrictionSolver {
 }
 
 #[derive(Clone, Debug)]
+struct FailSecondVariableSolver(NativeSolverState);
+
+impl ConstraintSolver for FailSecondVariableSolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| *variable == crate::ids::VariableId::new(1))
+        {
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
 struct RejectFirstVariableSolver(NativeSolverState);
 
 impl ConstraintSolver for RejectFirstVariableSolver {
@@ -81,6 +117,32 @@ impl ConstraintSolver for RejectFirstVariableSolver {
                 .map_err(InjectedSolverFailure::Native)?
                 .map(Self),
         )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RejectEveryRestrictionSolver(NativeSolverState);
+
+impl ConstraintSolver for RejectEveryRestrictionSolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        _restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(Consistency::Contradiction)
     }
 
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -315,6 +377,16 @@ fn equal_text_choices_retain_distinct_successors() {
 }
 
 #[test]
+fn accepted_state_returns_an_ordinary_empty_choice_result() {
+    let surface = fixture(&["C"], &[]).0;
+    let initial = initial(&surface);
+    let (_, accepted) = only_choice(&initial, "C");
+
+    assert!(accepted.is_accepted());
+    assert!(accepted.choices().unwrap().is_empty());
+}
+
+#[test]
 fn choices_derives_the_source_frontier_once() {
     let surface = fixture(
         &["C", "C", "C"],
@@ -358,6 +430,35 @@ fn backend_failure_aborts_the_candidate_batch() {
     let initial = ConnectedNonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Backend(InjectedSolverFailure::Restriction))
+    ));
+}
+
+#[test]
+fn late_backend_failure_discards_an_earlier_accepted_choice() {
+    let surface = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    )
+    .0;
+    let initial = ConnectedNonStereoWriterState::<FailSecondVariableSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
     let rooted = initial
         .choices()
         .unwrap()
@@ -368,7 +469,7 @@ fn backend_failure_aborts_the_candidate_batch() {
 
     assert!(matches!(
         rooted.choices(),
-        Err(InjectedSolverFailure::Restriction)
+        Err(ChoiceFailure::Backend(InjectedSolverFailure::Restriction))
     ));
 }
 
@@ -460,7 +561,7 @@ fn writer_policy_contradiction_is_candidate_local() {
 }
 
 #[test]
-fn pending_atom_is_not_advertised_before_its_successor_is_valid() {
+fn all_candidate_contradiction_is_an_explicit_live_state_failure() {
     let (surface, atoms, _) = fixture(
         &["R", "A", "B", "C"],
         &[
@@ -481,7 +582,108 @@ fn pending_atom_is_not_advertised_before_its_successor_is_valid() {
         .unwrap()
         .into_successor();
 
-    assert!(rooted.choices().unwrap().is_empty());
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 1 }
+        ))
+    ));
+}
+
+#[test]
+fn all_candidate_spelling_exhaustion_is_typed() {
+    let (surface, atoms, _) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Spelling(
+            SpellingFailure::RingLabelExhausted {
+                next_label: 1,
+                maximum_label: 0,
+                blocked_candidate_count: 2
+            }
+        ))
+    ));
+}
+
+#[test]
+fn viable_unspellable_candidate_outweighs_a_contradictory_sibling() {
+    let (surface, atoms, _) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = ConnectedNonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Spelling(
+            SpellingFailure::RingLabelExhausted {
+                next_label: 1,
+                maximum_label: 0,
+                blocked_candidate_count: 1
+            }
+        ))
+    ));
+}
+
+#[test]
+fn contradiction_precedes_spelling_for_each_candidate() {
+    let (surface, atoms, _) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = ConnectedNonStereoWriterState::<RejectEveryRestrictionSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 2 }
+        ))
+    ));
 }
 
 #[test]

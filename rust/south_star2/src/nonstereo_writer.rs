@@ -191,11 +191,18 @@ impl RingLabels {
     }
 
     fn next_label_text(&self, slot: RingLabelSlot) -> Option<String> {
+        try_ring_label_text_with_maximum(slot, self.maximum_spelling_label())
+    }
+
+    fn maximum_spelling_label(&self) -> usize {
         #[cfg(test)]
-        let maximum = self.maximum_spelling_label.unwrap_or(99);
+        {
+            self.maximum_spelling_label.unwrap_or(99)
+        }
         #[cfg(not(test))]
-        let maximum = 99;
-        try_ring_label_text_with_maximum(slot, maximum)
+        {
+            99
+        }
     }
 
     fn allocate(&mut self, bond: BondId) -> RingLabelSlot {
@@ -282,13 +289,99 @@ impl<S> Choice<S> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum CandidateRejection {
     Contradiction,
-    RingLabelUnavailable,
+    RingLabelUnavailable {
+        next_label: usize,
+        maximum_label: usize,
+    },
 }
 
 enum CandidateAttempt<S, E> {
     Accepted { text: String, successor: S },
     Rejected { reason: CandidateRejection },
     Failed(E),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SpellingFailure {
+    RingLabelExhausted {
+        next_label: usize,
+        maximum_label: usize,
+        blocked_candidate_count: usize,
+    },
+}
+
+impl fmt::Display for SpellingFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RingLabelExhausted {
+                next_label,
+                maximum_label,
+                blocked_candidate_count,
+            } => write!(
+                formatter,
+                "ring label {next_label} exceeds the selected dialect maximum {maximum_label} for {blocked_candidate_count} candidate(s)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SpellingFailure {}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WriterInvariantFailure {
+    StructuralContradiction,
+    NoStructuralCandidates,
+    PendingEmissionRejected,
+    AllCandidatesSemanticallyRejected { candidate_count: usize },
+}
+
+impl fmt::Display for WriterInvariantFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::StructuralContradiction => {
+                formatter.write_str("a live writer state has a contradictory structural frontier")
+            }
+            Self::NoStructuralCandidates => {
+                formatter.write_str("a live writer state has no structural candidates")
+            }
+            Self::PendingEmissionRejected => {
+                formatter.write_str("a stored pending emission no longer has a valid successor")
+            }
+            Self::AllCandidatesSemanticallyRejected { candidate_count } => write!(
+                formatter,
+                "all {candidate_count} structural candidate(s) contradicted immediate writer consistency"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WriterInvariantFailure {}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ChoiceFailure<E> {
+    Backend(E),
+    Spelling(SpellingFailure),
+    Invariant(WriterInvariantFailure),
+}
+
+impl<E: fmt::Display> fmt::Display for ChoiceFailure<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Backend(failure) => write!(formatter, "constraint backend failure: {failure}"),
+            Self::Spelling(failure) => failure.fmt(formatter),
+            Self::Invariant(failure) => write!(formatter, "writer invariant failure: {failure}"),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ChoiceFailure<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Backend(failure) => Some(failure),
+            Self::Spelling(failure) => Some(failure),
+            Self::Invariant(failure) => Some(failure),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -328,7 +421,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             && self.structural.graph_is_complete()
     }
 
-    pub(crate) fn choices(&self) -> Result<Vec<Choice<Self>>, S::Failure> {
+    pub(crate) fn choices(&self) -> Result<Vec<Choice<Self>>, ChoiceFailure<S::Failure>> {
         if self.is_accepted() {
             return Ok(Vec::new());
         }
@@ -337,19 +430,40 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 CandidateAttempt::Accepted { text, successor } => {
                     Ok(vec![Choice { text, successor }])
                 }
-                CandidateAttempt::Rejected { reason } => {
-                    panic!("stored pending emission was rejected: {reason:?}")
-                }
-                CandidateAttempt::Failed(failure) => Err(failure),
+                CandidateAttempt::Rejected { reason } => match reason {
+                    CandidateRejection::Contradiction => Err(ChoiceFailure::Invariant(
+                        WriterInvariantFailure::PendingEmissionRejected,
+                    )),
+                    CandidateRejection::RingLabelUnavailable {
+                        next_label,
+                        maximum_label,
+                    } => Err(ChoiceFailure::Spelling(
+                        SpellingFailure::RingLabelExhausted {
+                            next_label,
+                            maximum_label,
+                            blocked_candidate_count: 1,
+                        },
+                    )),
+                },
+                CandidateAttempt::Failed(failure) => Err(ChoiceFailure::Backend(failure)),
             };
         }
 
         let batch = self.structural.derive_candidates();
-        assert!(
-            !batch.is_contradiction(),
-            "connected non-stereo writer reached a structural contradiction"
-        );
+        if batch.is_contradiction() {
+            return Err(ChoiceFailure::Invariant(
+                WriterInvariantFailure::StructuralContradiction,
+            ));
+        }
+        if batch.candidates().is_empty() {
+            return Err(ChoiceFailure::Invariant(
+                WriterInvariantFailure::NoStructuralCandidates,
+            ));
+        }
         let mut choices = Vec::new();
+        let mut first_unavailable_label = None;
+        let mut spelling_rejection_count = 0;
+        let mut semantic_rejection_count = 0;
         for &candidate in batch.candidates() {
             if candidate == StructuralCandidate::CompletePath && self.structural.graph_is_complete()
             {
@@ -359,11 +473,47 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 CandidateAttempt::Accepted { text, successor } => {
                     choices.push(Choice { text, successor });
                 }
-                CandidateAttempt::Rejected { reason: _ } => {}
-                CandidateAttempt::Failed(failure) => return Err(failure),
+                CandidateAttempt::Rejected { reason } => match reason {
+                    CandidateRejection::Contradiction => {
+                        semantic_rejection_count += 1;
+                    }
+                    CandidateRejection::RingLabelUnavailable {
+                        next_label,
+                        maximum_label,
+                    } => {
+                        first_unavailable_label.get_or_insert((next_label, maximum_label));
+                        spelling_rejection_count += 1;
+                    }
+                },
+                CandidateAttempt::Failed(failure) => {
+                    return Err(ChoiceFailure::Backend(failure));
+                }
             }
         }
-        Ok(choices)
+        if !choices.is_empty() {
+            return Ok(choices);
+        }
+        match first_unavailable_label {
+            Some((next_label, maximum_label)) => Err(ChoiceFailure::Spelling(
+                SpellingFailure::RingLabelExhausted {
+                    next_label,
+                    maximum_label,
+                    blocked_candidate_count: spelling_rejection_count,
+                },
+            )),
+            None => {
+                assert_eq!(
+                    semantic_rejection_count,
+                    batch.candidates().len(),
+                    "every unaccepted candidate must have a classified rejection"
+                );
+                Err(ChoiceFailure::Invariant(
+                    WriterInvariantFailure::AllCandidatesSemanticallyRejected {
+                        candidate_count: semantic_rejection_count,
+                    },
+                ))
+            }
+        }
     }
 
     fn attempt_structural(
@@ -397,11 +547,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             }
             StructuralCandidate::RingOpen { incident } => {
                 let label_slot = self.labels.next_available();
-                let Some(text) = self.labels.next_label_text(label_slot) else {
-                    return CandidateAttempt::Rejected {
-                        reason: CandidateRejection::RingLabelUnavailable,
-                    };
-                };
                 let structural = match self.structural.attempt_candidate(candidate) {
                     Ok(Consistency::Consistent(structural)) => structural,
                     Ok(Consistency::Contradiction) => {
@@ -417,15 +562,29 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     slot, label_slot,
                     "advertised ring label must match the allocated label"
                 );
-                self.finish_attempt(
-                    text,
-                    Self {
-                        surface: self.surface.clone(),
-                        structural,
-                        labels,
-                        pending: None,
+                let successor = Self {
+                    surface: self.surface.clone(),
+                    structural,
+                    labels,
+                    pending: None,
+                };
+                match successor.normalize_and_check() {
+                    Ok(Consistency::Consistent(successor)) => {
+                        let Some(text) = self.labels.next_label_text(label_slot) else {
+                            return CandidateAttempt::Rejected {
+                                reason: CandidateRejection::RingLabelUnavailable {
+                                    next_label: label_slot.index() + 1,
+                                    maximum_label: self.labels.maximum_spelling_label(),
+                                },
+                            };
+                        };
+                        CandidateAttempt::Accepted { text, successor }
+                    }
+                    Ok(Consistency::Contradiction) => CandidateAttempt::Rejected {
+                        reason: CandidateRejection::Contradiction,
                     },
-                )
+                    Err(failure) => CandidateAttempt::Failed(failure),
+                }
             }
             StructuralCandidate::RingClose {
                 incident,

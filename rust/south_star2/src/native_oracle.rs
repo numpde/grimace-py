@@ -260,10 +260,15 @@ fn solve_triangle<S: ConstraintSolver>(
     variables: [VariableId; 3],
     restrictions: &[(VariableId, Domain)],
 ) -> Option<[Domain; 3]> {
-    let Consistency::Consistent(state) = S::initial(model).ok()? else {
+    let Consistency::Consistent(state) = S::initial(model)
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+    else {
         return None;
     };
-    let Consistency::Consistent(state) = state.restricted(restrictions).ok()? else {
+    let Consistency::Consistent(state) = state
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+    else {
         return None;
     };
     Some(std::array::from_fn(|index| {

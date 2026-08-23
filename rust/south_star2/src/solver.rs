@@ -43,6 +43,8 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
     fn initial(model: Arc<ConstraintModel>) -> Result<Consistency<Self>, Self::Failure>;
 
     /// Apply every supplied restriction to the same model and variable set.
+    /// Return `Contradiction` exactly when no assignment represented by the
+    /// source state satisfies every restriction.
     /// A consistent result must represent exactly the source assignments that
     /// satisfy all restrictions; every returned domain is nonempty, refines
     /// both the source and prepared domain, and is contained in its supplied

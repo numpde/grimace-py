@@ -946,7 +946,7 @@ fn explicit_ring_bond_is_emitted_at_closure_before_its_label() {
     let (bond, pending_label) = only_choice(&walked, "=");
     assert_eq!(bond, "=");
     assert_eq!(pending_label.active_atom(), Some(atoms[1]));
-    assert!(!pending_label.graph_is_complete());
+    assert!(pending_label.graph_is_complete());
 
     let (label, accepted) = only_choice(&pending_label, "1");
     assert_eq!(
@@ -1037,7 +1037,104 @@ fn explicit_ring_opening_choices_refine_the_fixed_endpoint_plan() {
 }
 
 #[test]
-fn directed_ring_closure_uses_the_first_endpoint_orientation() {
+fn explicit_ring_closure_resolves_opening_only_closure_only_and_both_plans() {
+    let (surface, atoms, bonds) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let (root_text, rooted) = choice_at(&initial, atoms[0].index());
+    let opening_choices = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| {
+            choice
+                .successor()
+                .labels
+                .bonds_by_slot
+                .values()
+                .any(|bond| *bond == bonds[0])
+        })
+        .collect::<Vec<_>>();
+    let omitted_opening = opening_choices
+        .iter()
+        .find(|choice| choice.text() == "1")
+        .unwrap()
+        .successor()
+        .clone();
+    let emitted_opening = opening_choices
+        .into_iter()
+        .find(|choice| choice.text() == "=")
+        .unwrap()
+        .into_successor();
+
+    let (_, walked) = only_choice(&omitted_opening, "C");
+    let (_, walked) = only_choice(&walked, "C");
+    let (closure_text, pending_label) = only_choice(&walked, "=");
+    assert_eq!(
+        pending_label.structural.bond_decision_domain(bonds[0]),
+        BondRepresentation::Ring01.singleton_domain()
+    );
+    let (closure_label, closure_only) = only_choice(&pending_label, "1");
+    assert_eq!(
+        [root_text.as_str(), "1CC", &closure_text, &closure_label].concat(),
+        "C1CC=1"
+    );
+    assert!(closure_only.is_accepted());
+
+    let (opening_label, emitted_opening) = only_choice(&emitted_opening, "1");
+    let (_, walked) = only_choice(&emitted_opening, "C");
+    let (_, walked) = only_choice(&walked, "C");
+    assert_eq!(
+        walked.structural.bond_decision_domain(bonds[0]),
+        BondRepresentation::Ring10
+            .singleton_domain()
+            .union(BondRepresentation::Ring11.singleton_domain())
+    );
+    let closure_choices = walked.choices().unwrap();
+    assert_eq!(closure_choices.len(), 2);
+
+    let omitted_closure = closure_choices
+        .iter()
+        .find(|choice| choice.text() == "1")
+        .unwrap();
+    assert_eq!(
+        omitted_closure
+            .successor()
+            .structural
+            .bond_decision_domain(bonds[0]),
+        BondRepresentation::Ring10.singleton_domain()
+    );
+    assert_eq!(
+        [root_text.as_str(), "=", &opening_label, "CC", "1"].concat(),
+        "C=1CC1"
+    );
+    assert!(omitted_closure.successor().is_accepted());
+
+    let emitted_closure = closure_choices
+        .into_iter()
+        .find(|choice| choice.text() == "=")
+        .unwrap()
+        .into_successor();
+    assert_eq!(
+        emitted_closure.structural.bond_decision_domain(bonds[0]),
+        BondRepresentation::Ring11.singleton_domain()
+    );
+    let (label, both) = only_choice(&emitted_closure, "1");
+    assert_eq!(
+        [root_text.as_str(), "=", &opening_label, "CC=", &label,].concat(),
+        "C=1CC=1"
+    );
+    assert!(both.is_accepted());
+}
+
+#[test]
+fn directed_ring_closure_uses_the_emitting_fixed_endpoint_orientation() {
     let (surface, atoms, bonds) = fixture(
         &["N", "B", "C"],
         &[
@@ -1074,12 +1171,12 @@ fn directed_ring_closure_uses_the_first_endpoint_orientation() {
     assert_eq!(between.bond(), bonds[2]);
     assert_eq!(closing.bond(), bonds[0]);
 
-    let (bond, pending_label) = only_choice(&walked, "->");
+    let (bond, pending_label) = only_choice(&walked, "<-");
     let (label, accepted) = only_choice(&pending_label, "1");
 
     assert_eq!(
         [root, open, first_child, second_child, bond, label].concat(),
-        "N1CB->1"
+        "N1CB<-1"
     );
     assert!(accepted.is_accepted());
 }

@@ -791,6 +791,34 @@ fn multivalue_spanning_tree_partitions_match_exhaustive_projection() {
 }
 
 #[test]
+fn triangle_multivalue_projection_matches_every_combined_partial_domain() {
+    let (model, variables) = multivalue_spanning_model(3, &[(0, 1), (1, 2), (2, 0)]);
+    let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+        .unwrap()
+        .unwrap_consistent();
+    let exhaustive = ExhaustiveSolverState::initial(model)
+        .unwrap()
+        .unwrap_consistent();
+
+    for first in 1_u64..0b10_0000 {
+        for second in 1_u64..0b10_0000 {
+            for third in 1_u64..0b10_0000 {
+                let restrictions = [
+                    (variables[0], Domain::from_bits(first)),
+                    (variables[1], Domain::from_bits(second)),
+                    (variables[2], Domain::from_bits(third)),
+                ];
+                assert_eq!(
+                    restricted_domains(&native, &variables, &restrictions),
+                    restricted_domains(&exhaustive, &variables, &restrictions),
+                    "combined placement restrictions {restrictions:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn contraction_preserves_parallel_quotient_edges() {
     let (model, variables) = spanning_model(&[SpanningFixture {
         atoms: &[0, 1, 2],

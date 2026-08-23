@@ -356,7 +356,11 @@ impl ConstraintModelBuilder {
                 .initial_domain;
             let traversal_values = initial_domain.intersect(edge.role_partition.traversal_values());
             let ring_values = initial_domain.intersect(edge.role_partition.ring_values());
-            if !traversal_values.intersect(ring_values).is_empty()
+            if !edge
+                .role_partition
+                .traversal_values()
+                .intersect(edge.role_partition.ring_values())
+                .is_empty()
                 || traversal_values.union(ring_values) != initial_domain
             {
                 return Err(ConstraintModelError::InvalidEdgeRolePartition(variable));
@@ -715,6 +719,9 @@ mod tests {
         let invalid_role = builder
             .add_variable(Domain::from_indices([0, 2]).unwrap())
             .unwrap();
+        let globally_overlapping_role = builder
+            .add_variable(Domain::from_indices([0, 1]).unwrap())
+            .unwrap();
 
         assert_eq!(
             builder.add_spanning_tree([], std::iter::empty()),
@@ -750,6 +757,23 @@ mod tests {
                 )],
             ),
             Err(ConstraintModelError::InvalidEdgeRolePartition(invalid_role))
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1)],
+                [SpanningTreeEdge::with_role_partition(
+                    globally_overlapping_role,
+                    AtomId::new(0),
+                    AtomId::new(1),
+                    EdgeRolePartition::new(
+                        Domain::from_indices([0, 2]).unwrap(),
+                        Domain::from_indices([1, 2]).unwrap(),
+                    ),
+                )],
+            ),
+            Err(ConstraintModelError::InvalidEdgeRolePartition(
+                globally_overlapping_role
+            ))
         );
         assert_eq!(
             builder.add_spanning_tree(

@@ -89,6 +89,56 @@ impl ConstraintSolver for FailSecondVariableSolver {
 }
 
 #[derive(Clone, Debug)]
+struct FailFirstRingAlternativeSolver(NativeSolverState);
+
+impl ConstraintSolver for FailFirstRingAlternativeSolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if matches!(
+            restrictions,
+            [(variable, domain)]
+                if *variable == crate::ids::VariableId::new(0)
+                    && *domain == BondRepresentation::Ring01.singleton_domain()
+        ) {
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        assert!(
+            !matches!(
+                restrictions,
+                [(variable, domain)]
+                    if *variable == crate::ids::VariableId::new(0)
+                        && *domain
+                            == BondRepresentation::Ring10
+                                .singleton_domain()
+                                .union(BondRepresentation::Ring11.singleton_domain())
+            ),
+            "choice generation must stop after the first backend failure"
+        );
+        Ok(
+            <NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
 struct RejectFirstVariableSolver(NativeSolverState);
 
 impl ConstraintSolver for RejectFirstVariableSolver {
@@ -570,6 +620,49 @@ fn late_backend_failure_discards_an_earlier_accepted_choice() {
 }
 
 #[test]
+fn ring_alternative_generation_stops_at_the_first_backend_failure() {
+    let (surface, atoms, bonds) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = NonStereoWriterState::<FailFirstRingAlternativeSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let candidate = rooted
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(
+                candidate,
+                StructuralCandidate::RingOpen { incident } if incident.bond() == bonds[0]
+            )
+        })
+        .unwrap();
+    let StructuralCandidate::RingOpen { incident } = candidate else {
+        unreachable!()
+    };
+
+    assert!(matches!(
+        rooted.attempt_ring_openings(candidate, incident),
+        Err(InjectedSolverFailure::Restriction)
+    ));
+}
+
+#[test]
 fn contradictory_candidate_is_filtered_without_suppressing_its_sibling() {
     let (surface, atoms, bonds) = fixture(
         &["C", "C", "C"],
@@ -861,6 +954,57 @@ fn contradiction_precedes_spelling_for_each_candidate() {
             WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 2 }
         ))
     ));
+}
+
+#[test]
+fn explicit_endpoint_contradiction_precedes_pending_label_spelling() {
+    let (surface, atoms, bonds) = fixture(
+        &["R", "A", "B", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Elided),
+            (0, 3, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+            (2, 3, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = NonStereoWriterState::<WriterPolicyContradictionSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+    let candidate = rooted
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(
+                candidate,
+                StructuralCandidate::RingOpen { incident } if incident.bond() == bonds[0]
+            )
+        })
+        .unwrap();
+    let StructuralCandidate::RingOpen { incident } = candidate else {
+        unreachable!()
+    };
+
+    let attempts = rooted.attempt_ring_openings(candidate, incident).unwrap();
+
+    assert_eq!(attempts.len(), 2);
+    assert!(attempts.into_iter().all(|attempt| matches!(
+        attempt,
+        CandidateAttempt::Rejected {
+            reason: CandidateRejection::Contradiction
+        }
+    )));
 }
 
 #[test]
@@ -1293,7 +1437,13 @@ fn fixed_ring_placement_results_from(
         })
         .collect::<Vec<_>>();
     let mut complete = Vec::new();
+    let mut visited_state_count = 0_usize;
     while let Some((state, prefix)) = pending.pop() {
+        visited_state_count += 1;
+        assert!(
+            visited_state_count <= 100_000,
+            "explicit ring exploration exceeded its bounded test envelope"
+        );
         if state.is_accepted() {
             let plan = state.structural.bond_decision_domain(bonds[0]);
             assert!(plan.is_singleton());
@@ -1313,6 +1463,23 @@ fn fixed_ring_placement_results(token: NonStereoBondToken) -> Vec<(String, Domai
     fixed_ring_placement_results_from(token, 0)
 }
 
+fn assert_ring_placement_mapping(
+    token: NonStereoBondToken,
+    root_index: usize,
+    expected: &[(&str, BondRepresentation)],
+) {
+    let actual = fixed_ring_placement_results_from(token, root_index);
+    assert_eq!(actual.len(), expected.len());
+    for &(text, plan) in expected {
+        assert!(
+            actual.iter().any(|(actual_text, actual_plan)| {
+                actual_text == text && *actual_plan == plan.singleton_domain()
+            }),
+            "missing ring placement {text:?} -> {plan:?} in {actual:?}"
+        );
+    }
+}
+
 #[test]
 fn every_prepared_ring_token_uses_endpoint_relative_placement() {
     let standard = [
@@ -1322,62 +1489,52 @@ fn every_prepared_ring_token_uses_endpoint_relative_placement() {
         (NonStereoBondToken::Triple, "#"),
     ];
     for (token, text) in standard {
-        assert_eq!(
-            fixed_ring_placement_results(token)
-                .into_iter()
-                .map(|(text, _)| text)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from([
-                format!("A{text}1CB1"),
-                format!("A1CB{text}1"),
-                format!("A{text}1CB{text}1"),
-            ])
+        assert_ring_placement_mapping(
+            token,
+            0,
+            &[
+                (&format!("A{text}1CB1"), BondRepresentation::Ring10),
+                (&format!("A1CB{text}1"), BondRepresentation::Ring01),
+                (&format!("A{text}1CB{text}1"), BondRepresentation::Ring11),
+            ],
         );
     }
 
-    assert_eq!(
-        fixed_ring_placement_results(NonStereoBondToken::DativeAToB)
-            .into_iter()
-            .map(|(text, _)| text)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "A->1CB1".to_owned(),
-            "A1CB<-1".to_owned(),
-            "A->1CB<-1".to_owned(),
-        ])
+    assert_ring_placement_mapping(
+        NonStereoBondToken::DativeAToB,
+        0,
+        &[
+            ("A->1CB1", BondRepresentation::Ring10),
+            ("A1CB<-1", BondRepresentation::Ring01),
+            ("A->1CB<-1", BondRepresentation::Ring11),
+        ],
     );
-    assert_eq!(
-        fixed_ring_placement_results(NonStereoBondToken::DativeBToA)
-            .into_iter()
-            .map(|(text, _)| text)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "A<-1CB1".to_owned(),
-            "A1CB->1".to_owned(),
-            "A<-1CB->1".to_owned(),
-        ])
+    assert_ring_placement_mapping(
+        NonStereoBondToken::DativeBToA,
+        0,
+        &[
+            ("A<-1CB1", BondRepresentation::Ring10),
+            ("A1CB->1", BondRepresentation::Ring01),
+            ("A<-1CB->1", BondRepresentation::Ring11),
+        ],
     );
-    assert_eq!(
-        fixed_ring_placement_results_from(NonStereoBondToken::DativeAToB, 1)
-            .into_iter()
-            .map(|(text, _)| text)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "B<-1CA1".to_owned(),
-            "B1CA->1".to_owned(),
-            "B<-1CA->1".to_owned(),
-        ])
+    assert_ring_placement_mapping(
+        NonStereoBondToken::DativeAToB,
+        1,
+        &[
+            ("B<-1CA1", BondRepresentation::Ring01),
+            ("B1CA->1", BondRepresentation::Ring10),
+            ("B<-1CA->1", BondRepresentation::Ring11),
+        ],
     );
-    assert_eq!(
-        fixed_ring_placement_results_from(NonStereoBondToken::DativeBToA, 1)
-            .into_iter()
-            .map(|(text, _)| text)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "B->1CA1".to_owned(),
-            "B1CA<-1".to_owned(),
-            "B->1CA<-1".to_owned(),
-        ])
+    assert_ring_placement_mapping(
+        NonStereoBondToken::DativeBToA,
+        1,
+        &[
+            ("B->1CA1", BondRepresentation::Ring01),
+            ("B1CA<-1", BondRepresentation::Ring10),
+            ("B->1CA<-1", BondRepresentation::Ring11),
+        ],
     );
     assert_eq!(
         fixed_ring_placement_results(NonStereoBondToken::Elided),

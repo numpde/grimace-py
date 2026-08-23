@@ -383,6 +383,38 @@ fn top_level_component_completion_is_silent_normalization() {
 }
 
 #[test]
+fn equal_dot_choices_commit_distinct_pending_component_roots() {
+    let (surface, atoms, _) = fixture(&["A", "B", "C"], &[]);
+    let initial = initial(&surface);
+    let after_first = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "A")
+        .unwrap()
+        .into_successor();
+
+    let choices = after_first.choices().unwrap();
+    assert_eq!(choices.len(), 2);
+    assert!(choices.iter().all(|choice| choice.text() == "."));
+    assert_eq!(
+        after_first.active_atom(),
+        None,
+        "the source remains unchanged"
+    );
+    for (choice, root) in choices.iter().zip(&atoms[1..]) {
+        assert_eq!(choice.successor().active_atom(), Some(*root));
+        assert_eq!(
+            choice.successor().pending,
+            Some(PendingEmission::ComponentRootAtom(*root))
+        );
+        let atom_choice = choice.successor().choices().unwrap();
+        assert_eq!(atom_choice.len(), 1);
+        assert_eq!(atom_choice[0].text(), surface.atom_text(*root));
+    }
+}
+
+#[test]
 fn equal_text_choices_retain_distinct_successors() {
     let (surface, atoms, _) = fixture(&["C", "C"], &[(0, 1, NonStereoBondToken::Elided)]);
     let initial = initial(&surface);

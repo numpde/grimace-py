@@ -143,6 +143,10 @@ impl GraphProgress {
         self.visited_atoms.is_complete() && self.represented_bond_count == self.bonds.len()
     }
 
+    const fn has_visited_atoms(&self) -> bool {
+        self.visited_atoms.marked_count != 0
+    }
+
     const fn has_open_rings(&self) -> bool {
         self.open_ring_count != 0
     }
@@ -565,6 +569,10 @@ impl TraversalState {
 
     pub(crate) const fn graph_is_complete(&self) -> bool {
         self.progress.is_complete()
+    }
+
+    pub(crate) const fn has_visited_atoms(&self) -> bool {
+        self.progress.has_visited_atoms()
     }
 
     pub(crate) fn path_completion(&self) -> Option<PathCompletion> {

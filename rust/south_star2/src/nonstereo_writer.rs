@@ -231,6 +231,7 @@ impl RingLabels {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum PendingEmission {
+    ComponentRootAtom(AtomId),
     InlineAtom(AdjacentBond),
     BranchBondOrAtom(AdjacentBond),
     BranchAtom(AdjacentBond),
@@ -239,17 +240,6 @@ enum PendingEmission {
         first_endpoint: AtomId,
         label_slot: RingLabelSlot,
     },
-}
-
-impl PendingEmission {
-    const fn incident(self) -> AdjacentBond {
-        match self {
-            Self::InlineAtom(incident)
-            | Self::BranchBondOrAtom(incident)
-            | Self::BranchAtom(incident)
-            | Self::RingClosureLabel { incident, .. } => incident,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -518,15 +508,27 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                     Err(failure) => return CandidateAttempt::Failed(failure),
                 };
-                self.finish_attempt(
-                    self.surface.atom_text(atom).to_owned(),
-                    Self {
-                        surface: self.surface.clone(),
-                        structural,
-                        labels: self.labels.clone(),
-                        pending: None,
-                    },
-                )
+                if self.structural.has_visited_atoms() {
+                    self.finish_attempt(
+                        ".".to_owned(),
+                        Self {
+                            surface: self.surface.clone(),
+                            structural,
+                            labels: self.labels.clone(),
+                            pending: Some(PendingEmission::ComponentRootAtom(atom)),
+                        },
+                    )
+                } else {
+                    self.finish_attempt(
+                        self.surface.atom_text(atom).to_owned(),
+                        Self {
+                            surface: self.surface.clone(),
+                            structural,
+                            labels: self.labels.clone(),
+                            pending: None,
+                        },
+                    )
+                }
             }
             StructuralCandidate::RingOpen { incident } => {
                 let label_slot = self.labels.next_available();
@@ -699,10 +701,17 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     }
 
     fn attempt_pending(&self, pending: PendingEmission) -> CandidateAttempt<Self, S::Failure> {
-        let incident = pending.incident();
-
         match pending {
-            PendingEmission::InlineAtom(_) => self.finish_attempt(
+            PendingEmission::ComponentRootAtom(atom) => self.finish_attempt(
+                self.surface.atom_text(atom).to_owned(),
+                Self {
+                    surface: self.surface.clone(),
+                    structural: self.structural.clone(),
+                    labels: self.labels.clone(),
+                    pending: None,
+                },
+            ),
+            PendingEmission::InlineAtom(incident) => self.finish_attempt(
                 self.surface.atom_text(incident.atom()).to_owned(),
                 Self {
                     surface: self.surface.clone(),
@@ -711,7 +720,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     pending: None,
                 },
             ),
-            PendingEmission::BranchBondOrAtom(_) => {
+            PendingEmission::BranchBondOrAtom(incident) => {
                 let parent = self
                     .structural
                     .active_atom()
@@ -738,7 +747,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     )
                 }
             }
-            PendingEmission::BranchAtom(_) => self.finish_attempt(
+            PendingEmission::BranchAtom(incident) => self.finish_attempt(
                 self.surface.atom_text(incident.atom()).to_owned(),
                 Self {
                     surface: self.surface.clone(),
@@ -748,6 +757,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 },
             ),
             PendingEmission::RingClosureLabel {
+                incident,
                 first_endpoint,
                 label_slot,
                 ..

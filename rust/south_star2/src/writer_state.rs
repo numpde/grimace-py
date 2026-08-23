@@ -128,6 +128,10 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
+    pub(crate) const fn has_visited_atoms(&self) -> bool {
+        self.traversal.has_visited_atoms()
+    }
+
     fn bond_role_domain(&self, bond: BondId) -> Domain {
         let variable = role_variable(&self.prepared, bond);
         self.constraints

@@ -535,6 +535,12 @@ pub(crate) enum IncidentBondState {
     RingOpenAtOtherAtom,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PathCompletion {
+    CloseBranch,
+    FinishComponent,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TraversalState {
     progress: GraphProgress,
@@ -561,8 +567,15 @@ impl TraversalState {
         self.progress.is_complete()
     }
 
-    pub(crate) fn can_complete_path(&self) -> bool {
-        self.active.is_some() && (self.branch_returns.is_some() || !self.progress.has_open_rings())
+    pub(crate) fn path_completion(&self) -> Option<PathCompletion> {
+        self.active.as_ref()?;
+        if self.branch_returns.is_some() {
+            Some(PathCompletion::CloseBranch)
+        } else if self.progress.has_open_rings() {
+            None
+        } else {
+            Some(PathCompletion::FinishComponent)
+        }
     }
 
     pub(crate) fn active_attachments(&self) -> &[ResidualAttachment] {

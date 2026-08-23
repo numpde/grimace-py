@@ -465,7 +465,8 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         let mut spelling_rejection_count = 0;
         let mut semantic_rejection_count = 0;
         for &candidate in batch.candidates() {
-            if candidate == StructuralCandidate::CompletePath && self.structural.graph_is_complete()
+            if candidate == StructuralCandidate::FinishComponent
+                && self.structural.graph_is_complete()
             {
                 panic!("a complete connected writer state must already be normalized");
             }
@@ -688,11 +689,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     )
                 }
             }
-            StructuralCandidate::CompletePath => {
-                assert!(
-                    !self.structural.graph_is_complete(),
-                    "top-level completion is normalized without a visible token"
-                );
+            StructuralCandidate::CloseBranch => {
                 let structural = match self.structural.attempt_candidate(candidate) {
                     Ok(Consistency::Consistent(structural)) => structural,
                     Ok(Consistency::Contradiction) => {
@@ -712,6 +709,9 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                         pending: None,
                     },
                 )
+            }
+            StructuralCandidate::FinishComponent => {
+                panic!("top-level completion is normalized without a visible token")
             }
         }
     }
@@ -843,12 +843,12 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         let batch = self.structural.derive_candidates();
         assert_eq!(
             batch.candidates(),
-            &[StructuralCandidate::CompletePath],
+            &[StructuralCandidate::FinishComponent],
             "a complete connected graph must have one silent top-level completion"
         );
         let completed = match self
             .structural
-            .attempt_candidate(StructuralCandidate::CompletePath)?
+            .attempt_candidate(StructuralCandidate::FinishComponent)?
         {
             Consistency::Consistent(completed) => completed,
             Consistency::Contradiction => {

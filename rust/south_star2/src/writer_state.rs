@@ -9,7 +9,7 @@ use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::BondRole;
 use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
-use crate::traversal::{IncidentBondState, TraversalState};
+use crate::traversal::{IncidentBondState, PathCompletion, TraversalState};
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,7 +23,7 @@ pub(crate) struct StructuralFrontier {
     inline_children: Vec<AdjacentBond>,
     ring_openings: Vec<AdjacentBond>,
     ring_closures: Vec<AdjacentBond>,
-    can_complete_path: bool,
+    path_completion: Option<PathCompletion>,
     contradiction: bool,
 }
 
@@ -48,8 +48,8 @@ impl StructuralFrontier {
         &self.ring_closures
     }
 
-    pub(crate) const fn can_complete_path(&self) -> bool {
-        self.can_complete_path
+    pub(crate) const fn path_completion(&self) -> Option<PathCompletion> {
+        self.path_completion
     }
 
     pub(crate) const fn is_contradiction(&self) -> bool {
@@ -75,7 +75,8 @@ pub(crate) enum StructuralCandidate {
     InlineChild {
         incident: AdjacentBond,
     },
-    CompletePath,
+    CloseBranch,
+    FinishComponent,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -228,7 +229,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         }
 
         match children.len() {
-            0 => frontier.can_complete_path = self.traversal.can_complete_path(),
+            0 => frontier.path_completion = self.traversal.path_completion(),
             1 => frontier.inline_children = children,
             _ => frontier.branch_children = children,
         }
@@ -283,8 +284,14 @@ impl<S: ConstraintSolver> WriterState<S> {
                 .copied()
                 .map(|incident| StructuralCandidate::InlineChild { incident }),
         );
-        if frontier.can_complete_path() {
-            candidates.push(StructuralCandidate::CompletePath);
+        match frontier.path_completion() {
+            Some(PathCompletion::CloseBranch) => {
+                candidates.push(StructuralCandidate::CloseBranch);
+            }
+            Some(PathCompletion::FinishComponent) => {
+                candidates.push(StructuralCandidate::FinishComponent);
+            }
+            None => {}
         }
 
         StructuralCandidateBatch {
@@ -344,9 +351,24 @@ impl<S: ConstraintSolver> WriterState<S> {
                     #[cfg(test)]
                     candidate_batch_derivations: self.candidate_batch_derivations.clone(),
                 })),
-            StructuralCandidate::CompletePath => {
+            StructuralCandidate::CloseBranch => {
                 let mut successor = self.clone();
-                successor.traversal.complete_path(self.prepared.graph());
+                assert!(
+                    successor
+                        .traversal
+                        .complete_path(self.prepared.graph())
+                        .is_some(),
+                    "closing a branch must restore its suspended parent"
+                );
+                Ok(Consistency::Consistent(successor))
+            }
+            StructuralCandidate::FinishComponent => {
+                let mut successor = self.clone();
+                assert_eq!(
+                    successor.traversal.complete_path(self.prepared.graph()),
+                    None,
+                    "finishing a component must not restore a branch parent"
+                );
                 Ok(Consistency::Consistent(successor))
             }
         };
@@ -585,6 +607,27 @@ mod tests {
     }
 
     #[test]
+    fn completion_distinguishes_branch_return_from_component_finish() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let prepared = PreparedMolecule::new(graph.build());
+        let rooted = rooted(&prepared, atoms[0]);
+
+        assert!(!rooted.graph_is_complete());
+        assert_eq!(
+            rooted.derive_candidates().candidates(),
+            &[StructuralCandidate::FinishComponent]
+        );
+
+        let finished = attempt(&rooted, StructuralCandidate::FinishComponent);
+        assert_eq!(finished.active_atom(), None);
+        assert_eq!(
+            finished.derive_candidates().candidates(),
+            &[StructuralCandidate::Root { atom: atoms[1] }]
+        );
+    }
+
+    #[test]
     fn triangle_requires_one_ring_before_its_single_attachment_entry() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
@@ -656,7 +699,11 @@ mod tests {
 
         let closed = attempt(&walked, closing_candidate);
         assert!(closed.graph_is_complete());
-        let finished = attempt(&closed, StructuralCandidate::CompletePath);
+        assert_eq!(
+            closed.structural_frontier().path_completion(),
+            Some(PathCompletion::FinishComponent)
+        );
+        let finished = attempt(&closed, StructuralCandidate::FinishComponent);
         assert_eq!(finished.active_atom(), None);
     }
 
@@ -713,7 +760,11 @@ mod tests {
             },
         );
         let branch = committed.enter_committed_branch_child(children[0]);
-        let restored = attempt(&branch, StructuralCandidate::CompletePath);
+        assert_eq!(
+            branch.structural_frontier().path_completion(),
+            Some(PathCompletion::CloseBranch)
+        );
+        let restored = attempt(&branch, StructuralCandidate::CloseBranch);
 
         assert_eq!(
             restored.structural_frontier().branch_children(),
@@ -726,7 +777,7 @@ mod tests {
             },
         );
         let branch = committed.enter_committed_branch_child(children[1]);
-        let restored = attempt(&branch, StructuralCandidate::CompletePath);
+        let restored = attempt(&branch, StructuralCandidate::CloseBranch);
         assert_eq!(
             restored.structural_frontier().inline_children(),
             &[children[2]]

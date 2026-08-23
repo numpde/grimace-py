@@ -718,6 +718,88 @@ fn all_candidate_spelling_exhaustion_is_typed() {
 }
 
 #[test]
+fn explicit_pending_labels_retain_spelling_exhaustion_classification() {
+    let (surface, atoms, _) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Double),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let mut rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Spelling(
+            SpellingFailure::RingLabelExhausted {
+                next_label: 1,
+                maximum_label: 0,
+                blocked_candidate_count: 4
+            }
+        ))
+    ));
+}
+
+#[test]
+fn explicit_closure_pending_label_retains_spelling_exhaustion_classification() {
+    let (surface, atoms, bonds) = fixture(
+        &["C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let opening = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "="
+                && choice
+                    .successor()
+                    .labels
+                    .bonds_by_slot
+                    .values()
+                    .any(|bond| *bond == bonds[0])
+        })
+        .unwrap()
+        .into_successor();
+    let (_, opened) = only_choice(&opening, "1");
+    let (_, walked) = only_choice(&opened, "C");
+    let (_, mut walked) = only_choice(&walked, "C");
+    walked.labels.maximum_spelling_label = Some(0);
+
+    assert!(matches!(
+        walked.choices(),
+        Err(ChoiceFailure::Spelling(
+            SpellingFailure::RingLabelExhausted {
+                next_label: 1,
+                maximum_label: 0,
+                blocked_candidate_count: 2
+            }
+        ))
+    ));
+}
+
+#[test]
 fn viable_unspellable_candidate_outweighs_a_contradictory_sibling() {
     let (surface, atoms, _) = fixture(
         &["C", "C", "C"],
@@ -1133,6 +1215,179 @@ fn explicit_ring_closure_resolves_opening_only_closure_only_and_both_plans() {
     assert!(both.is_accepted());
 }
 
+fn independent_ring_endpoint_projection(
+    domain: Domain,
+    endpoint: FixedBondEndpoint,
+    spelling: RingEndpointSpelling,
+) -> Domain {
+    Domain::from_indices(domain.iter().filter(|value| {
+        let placement = match *value {
+            value if value == BondRepresentation::Traversal.value_index() => return false,
+            value if value == BondRepresentation::Ring00.value_index() => (false, false),
+            value if value == BondRepresentation::Ring10.value_index() => (true, false),
+            value if value == BondRepresentation::Ring01.value_index() => (false, true),
+            value if value == BondRepresentation::Ring11.value_index() => (true, true),
+            _ => panic!("ring-plan oracle received an unknown representation value"),
+        };
+        let emitted = match endpoint {
+            FixedBondEndpoint::A => placement.0,
+            FixedBondEndpoint::B => placement.1,
+        };
+        emitted == (spelling == RingEndpointSpelling::Emit)
+    }))
+    .unwrap()
+}
+
+#[test]
+fn endpoint_projection_masks_match_an_independent_ring_plan_oracle() {
+    for bits in 0_u64..(1_u64 << 5) {
+        let domain = Domain::from_bits(bits);
+        for endpoint in [FixedBondEndpoint::A, FixedBondEndpoint::B] {
+            for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
+                assert_eq!(
+                    domain.intersect(BondRepresentation::endpoint_domain(endpoint, spelling)),
+                    independent_ring_endpoint_projection(domain, endpoint, spelling),
+                    "domain {domain:?}, endpoint {endpoint:?}, spelling {spelling:?}"
+                );
+            }
+        }
+    }
+}
+
+fn fixed_ring_placement_results_from(
+    token: NonStereoBondToken,
+    root_index: usize,
+) -> Vec<(String, Domain)> {
+    let (surface, atoms, bonds) = fixture(
+        &["A", "B", "C"],
+        &[
+            (0, 1, token),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let root = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[root_index]))
+        .unwrap();
+    let root_text = root.text().to_owned();
+    let mut pending = root
+        .successor()
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| {
+            choice
+                .successor()
+                .labels
+                .bonds_by_slot
+                .values()
+                .any(|bond| *bond == bonds[0])
+        })
+        .map(|choice| {
+            let prefix = format!("{root_text}{}", choice.text());
+            (choice.into_successor(), prefix)
+        })
+        .collect::<Vec<_>>();
+    let mut complete = Vec::new();
+    while let Some((state, prefix)) = pending.pop() {
+        if state.is_accepted() {
+            let plan = state.structural.bond_decision_domain(bonds[0]);
+            assert!(plan.is_singleton());
+            complete.push((prefix, plan));
+            continue;
+        }
+        for choice in state.choices().unwrap() {
+            let text = choice.text().to_owned();
+            pending.push((choice.into_successor(), format!("{prefix}{text}")));
+        }
+    }
+    complete.sort_by(|left, right| left.0.cmp(&right.0));
+    complete
+}
+
+fn fixed_ring_placement_results(token: NonStereoBondToken) -> Vec<(String, Domain)> {
+    fixed_ring_placement_results_from(token, 0)
+}
+
+#[test]
+fn every_prepared_ring_token_uses_endpoint_relative_placement() {
+    let standard = [
+        (NonStereoBondToken::Aromatic, ":"),
+        (NonStereoBondToken::Single, "-"),
+        (NonStereoBondToken::Double, "="),
+        (NonStereoBondToken::Triple, "#"),
+    ];
+    for (token, text) in standard {
+        assert_eq!(
+            fixed_ring_placement_results(token)
+                .into_iter()
+                .map(|(text, _)| text)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                format!("A{text}1CB1"),
+                format!("A1CB{text}1"),
+                format!("A{text}1CB{text}1"),
+            ])
+        );
+    }
+
+    assert_eq!(
+        fixed_ring_placement_results(NonStereoBondToken::DativeAToB)
+            .into_iter()
+            .map(|(text, _)| text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "A->1CB1".to_owned(),
+            "A1CB<-1".to_owned(),
+            "A->1CB<-1".to_owned(),
+        ])
+    );
+    assert_eq!(
+        fixed_ring_placement_results(NonStereoBondToken::DativeBToA)
+            .into_iter()
+            .map(|(text, _)| text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "A<-1CB1".to_owned(),
+            "A1CB->1".to_owned(),
+            "A<-1CB->1".to_owned(),
+        ])
+    );
+    assert_eq!(
+        fixed_ring_placement_results_from(NonStereoBondToken::DativeAToB, 1)
+            .into_iter()
+            .map(|(text, _)| text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "B<-1CA1".to_owned(),
+            "B1CA->1".to_owned(),
+            "B<-1CA->1".to_owned(),
+        ])
+    );
+    assert_eq!(
+        fixed_ring_placement_results_from(NonStereoBondToken::DativeBToA, 1)
+            .into_iter()
+            .map(|(text, _)| text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "B->1CA1".to_owned(),
+            "B1CA<-1".to_owned(),
+            "B->1CA<-1".to_owned(),
+        ])
+    );
+    assert_eq!(
+        fixed_ring_placement_results(NonStereoBondToken::Elided),
+        vec![(
+            "A1CB1".to_owned(),
+            BondRepresentation::Ring00.singleton_domain(),
+        )]
+    );
+}
+
 #[test]
 fn directed_ring_closure_uses_the_emitting_fixed_endpoint_orientation() {
     let (surface, atoms, bonds) = fixture(
@@ -1528,6 +1783,10 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
     assert_eq!(boundary.active_atom(), None);
     assert!(boundary.labels.is_clean());
     assert!(!boundary.graph_is_complete());
+    assert!(bonds[..3].iter().all(|bond| boundary
+        .structural
+        .bond_decision_domain(*bond)
+        .is_singleton()));
     let dot_choice = boundary
         .choices()
         .unwrap()
@@ -1567,6 +1826,10 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
     );
     assert!(accepted.labels.is_clean());
     assert!(accepted.is_accepted());
+    assert!(bonds.iter().all(|bond| accepted
+        .structural
+        .bond_decision_domain(*bond)
+        .is_singleton()));
 
     let terminal_paths = reachable_terminal_paths(&surface);
     assert_eq!(terminal_paths.len(), 72);

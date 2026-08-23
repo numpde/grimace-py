@@ -700,6 +700,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         Err(failure) => CandidateAttempt::Failed(failure),
                     },
                     RingEndpointSpelling::Emit => {
+                        if self.labels.next_label_text(label_slot).is_none() {
+                            return Some(CandidateAttempt::Rejected {
+                                reason: CandidateRejection::RingLabelUnavailable {
+                                    next_label: label_slot.index() + 1,
+                                    maximum_label: self.labels.maximum_spelling_label(),
+                                },
+                            });
+                        }
                         let text = self.surface.bond_text(incident.bond(), active);
                         assert!(
                             !text.is_empty(),
@@ -784,6 +792,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         }
                     }
                     RingEndpointSpelling::Emit => {
+                        if self.labels.next_label_text(label_slot).is_none() {
+                            return Some(CandidateAttempt::Rejected {
+                                reason: CandidateRejection::RingLabelUnavailable {
+                                    next_label: label_slot.index() + 1,
+                                    maximum_label: self.labels.maximum_spelling_label(),
+                                },
+                            });
+                        }
                         let text = self.surface.bond_text(incident.bond(), active);
                         assert!(
                             !text.is_empty(),

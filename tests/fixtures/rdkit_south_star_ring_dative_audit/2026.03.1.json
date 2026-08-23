@@ -1,0 +1,21 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "dative_a_to_b_explicit_at_both_ring_endpoints",
+      "source": "RDKit 2026.03.1 parser qualification extending Code/GraphMol/SmilesParse/catch_tests.cpp:dative ring closures to both endpoints",
+      "smiles": "N->1C[Pt]<-1",
+      "bond_atoms": [0, 2],
+      "expected_begin_atom": 0,
+      "expected_end_atom": 2
+    },
+    {
+      "id": "dative_b_to_a_explicit_at_both_ring_endpoints",
+      "source": "RDKit 2026.03.1 parser qualification extending Code/GraphMol/SmilesParse/catch_tests.cpp:dative ring closures to both endpoints",
+      "smiles": "N<-1C[Pt]->1",
+      "bond_atoms": [0, 2],
+      "expected_begin_atom": 2,
+      "expected_end_atom": 0
+    }
+  ]
+}

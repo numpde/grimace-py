@@ -732,8 +732,8 @@ mod tests {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
-        graph.add_bond(atoms[0], atoms[2]).unwrap();
-        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let right = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let between = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let binary = PreparedMolecule::new(graph.build());
         let traversal = Domain::from_bits(1);
         let ring = Domain::from_bits(0b1_1110);
@@ -750,7 +750,7 @@ mod tests {
             .attempt_candidate(StructuralCandidate::Root { atom: atoms[0] })
             .unwrap()
             .unwrap_consistent();
-        let incident = incident(&prepared, atoms[0], left);
+        let opening_incident = incident(&prepared, atoms[0], left);
         rooted
             .constraints
             .restriction_calls
@@ -759,7 +759,9 @@ mod tests {
         let selected = Domain::from_bits(0b1_0100);
         let opened = rooted
             .attempt_candidate_with_bond_refinement(
-                StructuralCandidate::RingOpen { incident },
+                StructuralCandidate::RingOpen {
+                    incident: opening_incident,
+                },
                 selected,
             )
             .unwrap()
@@ -775,6 +777,46 @@ mod tests {
             opened.bond_role_domain(left),
             BondRole::Ring.singleton_domain()
         );
+
+        let right_incident = incident(&prepared, atoms[0], right);
+        let walked = opened
+            .attempt_candidate(StructuralCandidate::InlineChild {
+                incident: right_incident,
+            })
+            .unwrap()
+            .unwrap_consistent()
+            .enter_committed_inline_child(right_incident);
+        let between_incident = incident(&prepared, atoms[2], between);
+        let walked = walked
+            .attempt_candidate(StructuralCandidate::InlineChild {
+                incident: between_incident,
+            })
+            .unwrap()
+            .unwrap_consistent()
+            .enter_committed_inline_child(between_incident);
+        let closing_incident = incident(&prepared, atoms[1], left);
+        walked
+            .constraints
+            .restriction_calls
+            .store(0, Ordering::Relaxed);
+        let resolved = Domain::from_bits(0b1_0000);
+        let closed = walked
+            .attempt_candidate_with_bond_refinement(
+                StructuralCandidate::RingClose {
+                    incident: closing_incident,
+                    first_endpoint: atoms[0],
+                },
+                resolved,
+            )
+            .unwrap()
+            .unwrap_consistent();
+
+        assert_eq!(
+            walked.constraints.restriction_calls.load(Ordering::Relaxed),
+            1
+        );
+        assert_eq!(walked.bond_decision_domain(left), selected);
+        assert_eq!(closed.bond_decision_domain(left), resolved);
     }
 
     #[test]

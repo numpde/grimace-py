@@ -170,9 +170,15 @@ impl ConstraintSolver for WriterPolicyContradictionSolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         let role_partition = BondRepresentation::role_partition();
 
-        let first_ring = (crate::ids::VariableId::new(0), role_partition.ring_values());
-        let requested_first_ring = restrictions == [first_ring];
+        let requested_first_ring = matches!(
+            restrictions,
+            [(variable, domain)]
+                if *variable == crate::ids::VariableId::new(0)
+                    && !domain.is_empty()
+                    && domain.is_subset_of(role_partition.ring_values())
+        );
         let effective = if requested_first_ring {
+            let first_ring = restrictions[0];
             vec![
                 first_ring,
                 (
@@ -948,6 +954,86 @@ fn explicit_ring_bond_is_emitted_at_closure_before_its_label() {
         "C1CC=1"
     );
     assert!(accepted.is_accepted());
+}
+
+#[test]
+fn explicit_ring_opening_choices_refine_the_fixed_endpoint_plan() {
+    let (surface, atoms, bonds) = fixture(
+        &["A", "B", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Double),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let initial_plan = BondRepresentation::explicit_domain();
+
+    for (root, omitted_plan, emitted_plan) in [
+        (
+            atoms[0],
+            BondRepresentation::Ring01.singleton_domain(),
+            BondRepresentation::Ring10
+                .singleton_domain()
+                .union(BondRepresentation::Ring11.singleton_domain()),
+        ),
+        (
+            atoms[1],
+            BondRepresentation::Ring10.singleton_domain(),
+            BondRepresentation::Ring01
+                .singleton_domain()
+                .union(BondRepresentation::Ring11.singleton_domain()),
+        ),
+    ] {
+        let rooted = initial
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| choice.successor().active_atom() == Some(root))
+            .unwrap()
+            .into_successor();
+        let choices = rooted
+            .choices()
+            .unwrap()
+            .into_iter()
+            .filter(|choice| {
+                choice
+                    .successor()
+                    .labels
+                    .bonds_by_slot
+                    .values()
+                    .any(|bond| *bond == bonds[0])
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(choices.len(), 2);
+        let omitted = choices.iter().find(|choice| choice.text() == "1").unwrap();
+        let emitted = choices.iter().find(|choice| choice.text() == "=").unwrap();
+        assert_eq!(
+            omitted
+                .successor()
+                .structural
+                .bond_decision_domain(bonds[0]),
+            omitted_plan
+        );
+        assert_eq!(
+            emitted
+                .successor()
+                .structural
+                .bond_decision_domain(bonds[0]),
+            emitted_plan
+        );
+        assert!(matches!(
+            emitted.successor().pending,
+            Some(PendingEmission::RingOpeningLabel { incident, .. })
+                if incident.bond() == bonds[0]
+        ));
+        assert_eq!(emitted.successor().choices().unwrap()[0].text(), "1");
+        assert_eq!(
+            rooted.structural.bond_decision_domain(bonds[0]),
+            initial_plan
+        );
+    }
 }
 
 #[test]

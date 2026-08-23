@@ -59,6 +59,38 @@ impl BondRepresentation {
             .union(Self::Ring01.singleton_domain())
             .union(Self::Ring11.singleton_domain())
     }
+
+    const fn endpoint_domain(
+        endpoint: FixedBondEndpoint,
+        spelling: RingEndpointSpelling,
+    ) -> Domain {
+        match (endpoint, spelling) {
+            (FixedBondEndpoint::A, RingEndpointSpelling::Omit) => Self::Ring00
+                .singleton_domain()
+                .union(Self::Ring01.singleton_domain()),
+            (FixedBondEndpoint::A, RingEndpointSpelling::Emit) => Self::Ring10
+                .singleton_domain()
+                .union(Self::Ring11.singleton_domain()),
+            (FixedBondEndpoint::B, RingEndpointSpelling::Omit) => Self::Ring00
+                .singleton_domain()
+                .union(Self::Ring10.singleton_domain()),
+            (FixedBondEndpoint::B, RingEndpointSpelling::Emit) => Self::Ring01
+                .singleton_domain()
+                .union(Self::Ring11.singleton_domain()),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum FixedBondEndpoint {
+    A,
+    B,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum RingEndpointSpelling {
+    Omit,
+    Emit,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -184,6 +216,30 @@ impl PreparedNonStereo {
             .expect("prepared bond token must match the bound molecule")
             .text_from(topology, from)
     }
+
+    fn fixed_endpoint(&self, bond: BondId, atom: AtomId) -> FixedBondEndpoint {
+        let topology = self
+            .molecule
+            .graph()
+            .bond(bond)
+            .expect("prepared bond token must match the bound molecule");
+        if topology.a() == atom {
+            FixedBondEndpoint::A
+        } else if topology.b() == atom {
+            FixedBondEndpoint::B
+        } else {
+            panic!("ring spelling requires one fixed endpoint of the prepared bond")
+        }
+    }
+
+    fn ring_endpoint_domain(
+        &self,
+        bond: BondId,
+        atom: AtomId,
+        spelling: RingEndpointSpelling,
+    ) -> Domain {
+        BondRepresentation::endpoint_domain(self.fixed_endpoint(bond, atom), spelling)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,6 +359,10 @@ enum PendingEmission {
     InlineAtom(AdjacentBond),
     BranchBondOrAtom(AdjacentBond),
     BranchAtom(AdjacentBond),
+    RingOpeningLabel {
+        incident: AdjacentBond,
+        label_slot: RingLabelSlot,
+    },
     RingClosureLabel {
         incident: AdjacentBond,
         first_endpoint: AtomId,
@@ -506,28 +566,38 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let mut first_unavailable_label = None;
         let mut spelling_rejection_count = 0;
         let mut semantic_rejection_count = 0;
+        let mut attempted_choice_count = 0;
         for &candidate in batch.candidates() {
             if candidate == StructuralCandidate::FinishComponent {
                 panic!("component completion must already be normalized");
             }
-            match self.attempt_structural(candidate) {
-                CandidateAttempt::Accepted { text, successor } => {
-                    choices.push(Choice { text, successor });
+            let attempts = match candidate {
+                StructuralCandidate::RingOpen { incident } => {
+                    self.attempt_ring_openings(candidate, incident)
                 }
-                CandidateAttempt::Rejected { reason } => match reason {
-                    CandidateRejection::Contradiction => {
-                        semantic_rejection_count += 1;
+                _ => vec![self.attempt_structural(candidate)],
+            };
+            for attempt in attempts {
+                attempted_choice_count += 1;
+                match attempt {
+                    CandidateAttempt::Accepted { text, successor } => {
+                        choices.push(Choice { text, successor });
                     }
-                    CandidateRejection::RingLabelUnavailable {
-                        next_label,
-                        maximum_label,
-                    } => {
-                        first_unavailable_label.get_or_insert((next_label, maximum_label));
-                        spelling_rejection_count += 1;
+                    CandidateAttempt::Rejected { reason } => match reason {
+                        CandidateRejection::Contradiction => {
+                            semantic_rejection_count += 1;
+                        }
+                        CandidateRejection::RingLabelUnavailable {
+                            next_label,
+                            maximum_label,
+                        } => {
+                            first_unavailable_label.get_or_insert((next_label, maximum_label));
+                            spelling_rejection_count += 1;
+                        }
+                    },
+                    CandidateAttempt::Failed(failure) => {
+                        return Err(ChoiceFailure::Backend(failure));
                     }
-                },
-                CandidateAttempt::Failed(failure) => {
-                    return Err(ChoiceFailure::Backend(failure));
                 }
             }
         }
@@ -544,8 +614,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             )),
             None => {
                 assert_eq!(
-                    semantic_rejection_count,
-                    batch.candidates().len(),
+                    semantic_rejection_count, attempted_choice_count,
                     "every unaccepted candidate must have a classified rejection"
                 );
                 Err(ChoiceFailure::Invariant(
@@ -555,6 +624,90 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 ))
             }
         }
+    }
+
+    fn attempt_ring_openings(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+    ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        let active = self
+            .structural
+            .active_atom()
+            .expect("ring opening spelling requires an active endpoint");
+        let current = self.structural.bond_decision_domain(incident.bond());
+        [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit]
+            .into_iter()
+            .filter_map(|spelling| {
+                let allowed = current.intersect(self.surface.ring_endpoint_domain(
+                    incident.bond(),
+                    active,
+                    spelling,
+                ));
+                if allowed.is_empty() {
+                    return None;
+                }
+                let structural = match self
+                    .structural
+                    .attempt_candidate_with_bond_refinement(candidate, allowed)
+                {
+                    Ok(Consistency::Consistent(structural)) => structural,
+                    Ok(Consistency::Contradiction) => {
+                        return Some(CandidateAttempt::Rejected {
+                            reason: CandidateRejection::Contradiction,
+                        });
+                    }
+                    Err(failure) => return Some(CandidateAttempt::Failed(failure)),
+                };
+                let label_slot = self.labels.next_available();
+                let mut labels = self.labels.clone();
+                let allocated = labels.allocate(incident.bond());
+                assert_eq!(
+                    allocated, label_slot,
+                    "advertised ring label must match the allocated label"
+                );
+                let pending = match spelling {
+                    RingEndpointSpelling::Omit => None,
+                    RingEndpointSpelling::Emit => Some(PendingEmission::RingOpeningLabel {
+                        incident,
+                        label_slot,
+                    }),
+                };
+                let successor = Self {
+                    surface: self.surface.clone(),
+                    structural,
+                    labels,
+                    pending,
+                };
+                Some(match spelling {
+                    RingEndpointSpelling::Omit => match successor.normalize_and_check() {
+                        Ok(Consistency::Consistent(successor)) => {
+                            let Some(text) = self.labels.next_label_text(label_slot) else {
+                                return Some(CandidateAttempt::Rejected {
+                                    reason: CandidateRejection::RingLabelUnavailable {
+                                        next_label: label_slot.index() + 1,
+                                        maximum_label: self.labels.maximum_spelling_label(),
+                                    },
+                                });
+                            };
+                            CandidateAttempt::Accepted { text, successor }
+                        }
+                        Ok(Consistency::Contradiction) => CandidateAttempt::Rejected {
+                            reason: CandidateRejection::Contradiction,
+                        },
+                        Err(failure) => CandidateAttempt::Failed(failure),
+                    },
+                    RingEndpointSpelling::Emit => {
+                        let text = self.surface.bond_text(incident.bond(), active);
+                        assert!(
+                            !text.is_empty(),
+                            "an emitted ring endpoint must have prepared bond text"
+                        );
+                        self.finish_attempt(text.to_owned(), successor)
+                    }
+                })
+            })
+            .collect()
     }
 
     fn attempt_structural(
@@ -599,45 +752,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 }
             }
             StructuralCandidate::RingOpen { incident } => {
-                let label_slot = self.labels.next_available();
-                let structural = match self.structural.attempt_candidate(candidate) {
-                    Ok(Consistency::Consistent(structural)) => structural,
-                    Ok(Consistency::Contradiction) => {
-                        return CandidateAttempt::Rejected {
-                            reason: CandidateRejection::Contradiction,
-                        };
-                    }
-                    Err(failure) => return CandidateAttempt::Failed(failure),
-                };
-                let mut labels = self.labels.clone();
-                let slot = labels.allocate(incident.bond());
-                assert_eq!(
-                    slot, label_slot,
-                    "advertised ring label must match the allocated label"
-                );
-                let successor = Self {
-                    surface: self.surface.clone(),
-                    structural,
-                    labels,
-                    pending: None,
-                };
-                match successor.normalize_and_check() {
-                    Ok(Consistency::Consistent(successor)) => {
-                        let Some(text) = self.labels.next_label_text(label_slot) else {
-                            return CandidateAttempt::Rejected {
-                                reason: CandidateRejection::RingLabelUnavailable {
-                                    next_label: label_slot.index() + 1,
-                                    maximum_label: self.labels.maximum_spelling_label(),
-                                },
-                            };
-                        };
-                        CandidateAttempt::Accepted { text, successor }
-                    }
-                    Ok(Consistency::Contradiction) => CandidateAttempt::Rejected {
-                        reason: CandidateRejection::Contradiction,
-                    },
-                    Err(failure) => CandidateAttempt::Failed(failure),
-                }
+                panic!("ring openings expand into endpoint-spelling candidates: {incident:?}")
             }
             StructuralCandidate::RingClose {
                 incident,
@@ -824,6 +939,33 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     pending: None,
                 },
             ),
+            PendingEmission::RingOpeningLabel {
+                incident,
+                label_slot,
+            } => {
+                assert_eq!(
+                    self.labels.slot_for_bond(incident.bond()),
+                    label_slot,
+                    "a pending opening label must retain its assignment"
+                );
+                let Some(text) = self.labels.next_label_text(label_slot) else {
+                    return CandidateAttempt::Rejected {
+                        reason: CandidateRejection::RingLabelUnavailable {
+                            next_label: label_slot.index() + 1,
+                            maximum_label: self.labels.maximum_spelling_label(),
+                        },
+                    };
+                };
+                self.finish_attempt(
+                    text,
+                    Self {
+                        surface: self.surface.clone(),
+                        structural: self.structural.clone(),
+                        labels: self.labels.clone(),
+                        pending: None,
+                    },
+                )
+            }
             PendingEmission::RingClosureLabel {
                 incident,
                 first_endpoint,

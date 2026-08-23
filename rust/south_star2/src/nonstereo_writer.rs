@@ -8,10 +8,58 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::Domain;
 use crate::ids::{AtomId, BondId};
+use crate::model::EdgeRolePartition;
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::writer_state::{StructuralCandidate, WriterState};
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum BondRepresentation {
+    Traversal = 0,
+    Ring00 = 1,
+    Ring10 = 2,
+    Ring01 = 3,
+    Ring11 = 4,
+}
+
+impl BondRepresentation {
+    const fn value_index(self) -> u8 {
+        self as u8
+    }
+
+    const fn singleton_domain(self) -> Domain {
+        Domain::from_bits(1_u64 << self.value_index())
+    }
+
+    const fn role_partition() -> EdgeRolePartition {
+        EdgeRolePartition::new(
+            Self::Traversal.singleton_domain(),
+            Domain::from_bits(
+                (1_u64 << Self::Ring00.value_index())
+                    | (1_u64 << Self::Ring10.value_index())
+                    | (1_u64 << Self::Ring01.value_index())
+                    | (1_u64 << Self::Ring11.value_index()),
+            ),
+        )
+    }
+
+    const fn elided_domain() -> Domain {
+        Self::Traversal
+            .singleton_domain()
+            .union(Self::Ring00.singleton_domain())
+    }
+
+    const fn explicit_domain() -> Domain {
+        Self::Traversal
+            .singleton_domain()
+            .union(Self::Ring10.singleton_domain())
+            .union(Self::Ring01.singleton_domain())
+            .union(Self::Ring11.singleton_domain())
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NonStereoBondToken {
@@ -25,6 +73,18 @@ pub(crate) enum NonStereoBondToken {
 }
 
 impl NonStereoBondToken {
+    const fn representation_domain(self) -> Domain {
+        match self {
+            Self::Elided => BondRepresentation::elided_domain(),
+            Self::Aromatic
+            | Self::Single
+            | Self::Double
+            | Self::Triple
+            | Self::DativeAToB
+            | Self::DativeBToA => BondRepresentation::explicit_domain(),
+        }
+    }
+
     fn text_from(self, bond: PreparedBond, from: AtomId) -> &'static str {
         let from_a = if bond.a() == from {
             true
@@ -79,6 +139,14 @@ impl PreparedNonStereo {
                 return Err(PreparedNonStereoError::EmptyAtomText(atom));
             }
         }
+        let decision_domains = bond_tokens
+            .iter()
+            .copied()
+            .map(NonStereoBondToken::representation_domain)
+            .collect::<Vec<_>>();
+        let role_partitions = vec![BondRepresentation::role_partition(); graph.bond_count()];
+        let molecule =
+            PreparedMolecule::with_bond_decisions(&molecule, &decision_domains, &role_partitions);
 
         Ok(Self {
             molecule,

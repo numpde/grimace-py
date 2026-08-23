@@ -168,32 +168,26 @@ impl ConstraintSolver for WriterPolicyContradictionSolver {
         &self,
         restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
     ) -> Result<Consistency<Self>, Self::Failure> {
-        use crate::model::BondRole;
+        let role_partition = BondRepresentation::role_partition();
 
-        let first_ring = (
-            crate::ids::VariableId::new(0),
-            BondRole::Ring.singleton_domain(),
-        );
+        let first_ring = (crate::ids::VariableId::new(0), role_partition.ring_values());
         let requested_first_ring = restrictions == [first_ring];
         let effective = if requested_first_ring {
             vec![
                 first_ring,
                 (
                     crate::ids::VariableId::new(1),
-                    BondRole::Traversal.singleton_domain(),
+                    role_partition.traversal_values(),
                 ),
                 (
                     crate::ids::VariableId::new(2),
-                    BondRole::Traversal.singleton_domain(),
+                    role_partition.traversal_values(),
                 ),
                 (
                     crate::ids::VariableId::new(3),
-                    BondRole::Traversal.singleton_domain(),
+                    role_partition.traversal_values(),
                 ),
-                (
-                    crate::ids::VariableId::new(4),
-                    BondRole::Ring.singleton_domain(),
-                ),
+                (crate::ids::VariableId::new(4), role_partition.ring_values()),
             ]
         } else {
             restrictions.to_vec()
@@ -356,6 +350,41 @@ fn surface_accepts_general_graphs_and_rejects_invalid_bindings() {
     assert!(matches!(
         PreparedNonStereo::new(bonded, vec!["C".to_owned(), "O".to_owned()], Vec::new(),),
         Err(PreparedNonStereoError::BondTokenCountMismatch { .. })
+    ));
+}
+
+#[test]
+fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
+    let (surface, _, bonds) = fixture(
+        &["A", "B", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Double),
+        ],
+    );
+    let molecule = surface.molecule();
+    let model = molecule.constraint_model();
+    let initial_domain = |bond| {
+        let variable = molecule.bond_decision_variable(bond).unwrap();
+        model.variable(variable).unwrap().initial_domain()
+    };
+
+    assert_eq!(
+        initial_domain(bonds[0]),
+        BondRepresentation::elided_domain()
+    );
+    assert_eq!(
+        initial_domain(bonds[1]),
+        BondRepresentation::explicit_domain()
+    );
+    assert_eq!(
+        molecule.bond_role_partition(bonds[0]),
+        Some(BondRepresentation::role_partition())
+    );
+    assert_eq!(model.factor_count(), 1);
+    assert!(matches!(
+        model.factor(crate::ids::FactorId::new(0)),
+        Some(crate::model::FactorDefinition::SpanningTree(_))
     ));
 }
 
@@ -545,7 +574,7 @@ fn contradictory_candidate_is_filtered_without_suppressing_its_sibling() {
         ],
     );
     assert_eq!(
-        surface.molecule().bond_role_variable(bonds[0]),
+        surface.molecule().bond_decision_variable(bonds[0]),
         Some(crate::ids::VariableId::new(0))
     );
     let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)

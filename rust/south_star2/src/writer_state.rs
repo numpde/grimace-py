@@ -138,10 +138,29 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     fn bond_role_domain(&self, bond: BondId) -> Domain {
-        let variable = role_variable(&self.prepared, bond);
-        self.constraints
+        let variable = decision_variable(&self.prepared, bond);
+        let decision_domain = self
+            .constraints
             .domain(variable)
-            .expect("prepared bond role must belong to the writer constraint model")
+            .expect("prepared bond decision must belong to the writer constraint model");
+        let partition = self
+            .prepared
+            .bond_role_partition(bond)
+            .expect("prepared bond must have a role partition");
+        let mut roles = Domain::empty();
+        if !decision_domain
+            .intersect(partition.traversal_values())
+            .is_empty()
+        {
+            roles = roles.union(BondRole::Traversal.singleton_domain());
+        }
+        if !decision_domain
+            .intersect(partition.ring_values())
+            .is_empty()
+        {
+            roles = roles.union(BondRole::Ring.singleton_domain());
+        }
+        roles
     }
 
     pub(crate) fn structural_frontier(&self) -> StructuralFrontier {
@@ -428,12 +447,23 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     fn restricted_role(&self, bond: BondId, role: BondRole) -> Result<Consistency<S>, S::Failure> {
-        let domain = role.singleton_domain();
-        if self.bond_role_domain(bond) == domain {
+        let partition = self
+            .prepared
+            .bond_role_partition(bond)
+            .expect("prepared bond must have a role partition");
+        let allowed = match role {
+            BondRole::Traversal => partition.traversal_values(),
+            BondRole::Ring => partition.ring_values(),
+        };
+        let variable = decision_variable(&self.prepared, bond);
+        let current = self
+            .constraints
+            .domain(variable)
+            .expect("prepared bond decision must belong to the writer constraint model");
+        if current.is_subset_of(allowed) {
             return Ok(Consistency::Consistent(self.constraints.clone()));
         }
-        self.constraints
-            .restricted(&[(role_variable(&self.prepared, bond), domain)])
+        self.constraints.restricted(&[(variable, allowed)])
     }
 }
 
@@ -457,10 +487,10 @@ fn assert_initial_solver_shape<S: ConstraintSolver>(prepared: &PreparedMolecule,
     }
 }
 
-fn role_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {
+fn decision_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {
     prepared
-        .bond_role_variable(bond)
-        .expect("prepared bond must have a role variable")
+        .bond_decision_variable(bond)
+        .expect("prepared bond must have a decision variable")
 }
 
 #[cfg(test)]
@@ -469,7 +499,14 @@ fn role_restriction(
     bond: BondId,
     role: BondRole,
 ) -> (VariableId, Domain) {
-    (role_variable(prepared, bond), role.singleton_domain())
+    let partition = prepared
+        .bond_role_partition(bond)
+        .expect("prepared bond must have a role partition");
+    let domain = match role {
+        BondRole::Traversal => partition.traversal_values(),
+        BondRole::Ring => partition.ring_values(),
+    };
+    (decision_variable(prepared, bond), domain)
 }
 
 #[cfg(test)]

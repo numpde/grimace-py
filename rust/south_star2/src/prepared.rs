@@ -8,8 +8,11 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, VariableId};
-use crate::model::{BondRole, ConstraintModel, ConstraintModelBuilder, SpanningTreeEdge};
+use crate::model::{
+    BondRole, ConstraintModel, ConstraintModelBuilder, EdgeRolePartition, SpanningTreeEdge,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PreparedBond {
@@ -116,16 +119,48 @@ impl PreparedGraph {
 pub struct PreparedMolecule {
     graph: Arc<PreparedGraph>,
     constraints: Arc<ConstraintModel>,
-    bond_role_variables: Arc<[VariableId]>,
+    bond_decision_variables: Arc<[VariableId]>,
+    bond_role_partitions: Arc<[EdgeRolePartition]>,
 }
 
 impl PreparedMolecule {
     pub fn new(graph: PreparedGraph) -> Self {
-        let (constraints, bond_role_variables) = compile_graph_constraints(&graph);
+        let graph = Arc::new(graph);
+        let initial_domains = vec![BondRole::role_domain(); graph.bond_count()];
+        let role_partitions = vec![EdgeRolePartition::bond_role(); graph.bond_count()];
+        Self::from_decisions(graph, &initial_domains, &role_partitions)
+    }
+
+    pub(crate) fn with_bond_decisions(
+        source: &Self,
+        initial_domains: &[Domain],
+        role_partitions: &[EdgeRolePartition],
+    ) -> Self {
+        assert_eq!(
+            initial_domains.len(),
+            source.graph.bond_count(),
+            "prepared bond decisions must match the graph bond count"
+        );
+        assert_eq!(
+            role_partitions.len(),
+            source.graph.bond_count(),
+            "prepared bond role partitions must match the graph bond count"
+        );
+        Self::from_decisions(Arc::clone(&source.graph), initial_domains, role_partitions)
+    }
+
+    fn from_decisions(
+        graph: Arc<PreparedGraph>,
+        initial_domains: &[Domain],
+        role_partitions: &[EdgeRolePartition],
+    ) -> Self {
+        let (constraints, bond_decision_variables) =
+            compile_graph_constraints(&graph, initial_domains, role_partitions);
         Self {
-            graph: Arc::new(graph),
+            graph,
             constraints: Arc::new(constraints),
-            bond_role_variables: Arc::from(bond_role_variables),
+            bond_decision_variables: Arc::from(bond_decision_variables),
+            bond_role_partitions: Arc::from(role_partitions),
         }
     }
 
@@ -141,20 +176,28 @@ impl PreparedMolecule {
         Arc::clone(&self.constraints)
     }
 
-    pub(crate) fn bond_role_variable(&self, bond: BondId) -> Option<VariableId> {
-        self.bond_role_variables.get(bond.index()).copied()
+    pub(crate) fn bond_decision_variable(&self, bond: BondId) -> Option<VariableId> {
+        self.bond_decision_variables.get(bond.index()).copied()
+    }
+
+    pub(crate) fn bond_role_partition(&self, bond: BondId) -> Option<EdgeRolePartition> {
+        self.bond_role_partitions.get(bond.index()).copied()
     }
 }
 
-fn compile_graph_constraints(graph: &PreparedGraph) -> (ConstraintModel, Box<[VariableId]>) {
+fn compile_graph_constraints(
+    graph: &PreparedGraph,
+    initial_domains: &[Domain],
+    role_partitions: &[EdgeRolePartition],
+) -> (ConstraintModel, Box<[VariableId]>) {
     let mut builder = ConstraintModelBuilder::new();
-    let mut bond_role_variables = Vec::with_capacity(graph.bond_count());
+    let mut bond_decision_variables = Vec::with_capacity(graph.bond_count());
 
-    for _bond in graph.bond_ids() {
-        bond_role_variables.push(
+    for bond in graph.bond_ids() {
+        bond_decision_variables.push(
             builder
-                .add_variable(BondRole::role_domain())
-                .expect("prepared bond roles must fit the constraint identifier space"),
+                .add_variable(initial_domains[bond.index()])
+                .expect("prepared bond decisions must fit the constraint identifier space"),
         );
     }
 
@@ -163,14 +206,19 @@ fn compile_graph_constraints(graph: &PreparedGraph) -> (ConstraintModel, Box<[Va
             let bond = graph
                 .bond(*bond_id)
                 .expect("component bond must belong to the prepared graph");
-            SpanningTreeEdge::new(bond_role_variables[bond_id.index()], bond.a(), bond.b())
+            SpanningTreeEdge::with_role_partition(
+                bond_decision_variables[bond_id.index()],
+                bond.a(),
+                bond.b(),
+                role_partitions[bond_id.index()],
+            )
         });
         builder
             .add_spanning_tree(component.atoms().iter().copied(), edges)
             .expect("prepared components must define valid spanning-tree factors");
     }
 
-    (builder.build(), bond_role_variables.into_boxed_slice())
+    (builder.build(), bond_decision_variables.into_boxed_slice())
 }
 
 #[derive(Debug, Default)]
@@ -496,7 +544,7 @@ mod tests {
 
         assert_eq!(prepared.constraint_model().variable_count(), 0);
         assert_eq!(prepared.constraint_model().factor_count(), 0);
-        assert_eq!(prepared.bond_role_variable(BondId::new(0)), None);
+        assert_eq!(prepared.bond_decision_variable(BondId::new(0)), None);
     }
 
     #[test]
@@ -519,7 +567,7 @@ mod tests {
             .iter()
             .copied()
             .chain(std::iter::once(bridge))
-            .map(|bond| prepared.bond_role_variable(bond).unwrap())
+            .map(|bond| prepared.bond_decision_variable(bond).unwrap())
             .collect::<Vec<_>>();
         for variable in &role_variables {
             assert_eq!(
@@ -557,14 +605,14 @@ mod tests {
         let cloned = prepared.clone();
 
         assert_eq!(
-            prepared.bond_role_variable(bond),
-            cloned.bond_role_variable(bond)
+            prepared.bond_decision_variable(bond),
+            cloned.bond_decision_variable(bond)
         );
         assert!(Arc::ptr_eq(&prepared.graph, &cloned.graph));
         assert!(Arc::ptr_eq(&prepared.constraints, &cloned.constraints));
         assert!(Arc::ptr_eq(
-            &prepared.bond_role_variables,
-            &cloned.bond_role_variables
+            &prepared.bond_decision_variables,
+            &cloned.bond_decision_variables
         ));
     }
 }

@@ -1,5 +1,13 @@
 # South Star 2: clean Rust incremental constraint walker
 
+## Normative status
+
+This note is the governing architectural decision. It incorporates the
+successor-bearing choice revision recorded in note 115 and the liveness and
+failure-classification clarification recorded in note 116. Those later notes
+retain the rationale and implementation history; the contract below is
+normative.
+
 ## Decision
 
 South Star 2 is a new Rust implementation. It is not a refactor, extraction,
@@ -26,11 +34,11 @@ Its fundamental operation is:
 
 ```text
 current compact writer state
--> enumerate structurally possible semantic choices
--> apply one local traversal delta
--> apply one local constraint delta
+-> derive one ephemeral batch of source-local structural candidates
+-> tentatively apply each candidate's local traversal and constraint deltas
 -> propagate the affected constraint neighborhood
--> return a compact successor state or contradiction
+-> discard candidate contradiction and abort on backend failure
+-> publish only {text, already-valid compact successor} choices
 ```
 
 Producing the next choices must not require enumerating remaining strings,
@@ -69,14 +77,21 @@ Tests may arrive first for an empty graph, an atom, a path, a branch, a cycle,
 and then multiple components. That is test order, not a hierarchy of supported
 molecule classes.
 
-The semantic runtime should normally distinguish only:
+Internally, the semantic runtime distinguishes:
 
 ```text
 invalid input
 valid state
-contradiction
+candidate contradiction
+spelling or dialect failure
+constraint-backend failure
 internal defect
 ```
+
+Candidate contradiction is filtered during choice generation; it is not a
+caller-visible choice result. An ordinary empty choice list means acceptance.
+A nonaccepted state with no successful candidate is an explicit invariant or
+spelling failure, not silent terminality.
 
 ## Two cooperating kernels
 
@@ -132,8 +147,8 @@ VariableId
 Domain
 FactorId
 FactorDefinition
-ConstraintDelta
-ConstraintSnapshot
+EdgeRolePartition
+Consistency<S>
 ```
 
 A backend executes these typed definitions. The API does not expose arbitrary
@@ -166,56 +181,86 @@ pub struct PreparedMolecule {
 }
 ```
 
-The live state contains only evolving writer and solver facts:
+The live state contains only evolving writer and solver facts. The current
+non-stereo composition is conceptually:
 
 ```rust
-pub struct WalkerState<S> {
+pub struct WriterState<S> {
+    prepared: PreparedMolecule,
     traversal: TraversalState,
-    rings: RingState,
     constraints: S,
+}
+
+pub struct NonStereoWriterState<S> {
+    surface: PreparedNonStereo,
+    structural: WriterState<S>,
+    labels: RingLabels,
+    pending: Option<PendingEmission>,
 }
 ```
 
 The live solver is carried forward directly. It is not serialized to a semantic
 snapshot and reconstructed after every choice.
 
-Start with measured cloning of compact vectors and bitsets. Add copy-on-write,
-arenas, or persistent deltas only when profiling shows that cloning is the
-bottleneck.
+Live graph and solver stores use sparse persistent forks where transition
+measurements justify them. Candidate attempts are ephemeral transactions over
+the source state: rejected forks are dropped, while successful forks become
+published successors.
 
 ## Semantic choices
 
-A primitive choice is a semantic transition, not just emitted text:
+A structural frontier entry is a private candidate. It may contradict when its
+combined writer and CSP effects are attempted, and it is never published by
+itself.
+
+A visible choice is an emitted token paired with the successor that has already
+survived the complete immediate transition:
 
 ```rust
-pub struct Choice {
+pub struct Choice<S> {
     pub text: TokenText,
-    pub action: WriterAction,
+    pub successor: S,
 }
 ```
 
 Two choices may emit the same text and lead to different successor states. The
 kernel preserves both. Text grouping is a separate convenience view.
 
-Applying a choice:
+Generating choices:
 
-1. forks the compact live state;
-2. applies the structural delta;
-3. derives the typed constraint delta;
-4. restricts affected domains;
-5. activates or retires affected factors;
-6. propagates locally;
-7. returns the successor or contradiction.
+1. derives the source candidate frontier exactly once;
+2. forks the compact live state for one candidate;
+3. applies the candidate's structural and spelling commitments;
+4. restricts all immediately decided variables in one batch;
+5. propagates and, where required, exactly solves the affected factor
+   component;
+6. validates the combined immediate successor once;
+7. discards semantic contradiction, records spelling rejection, or aborts the
+   whole choice batch on backend failure;
+8. publishes only the successful `{text, successor}` values.
+
+Consuming a returned choice merely selects its contained successor. It does not
+rerun satisfiability and cannot reveal ordinary semantic contradiction. Equal
+text must not merge distinct successors.
+
+Immediate successor validity is not recursive suffix proof. If a published
+successor later has no semantic continuation, choice generation reports an
+invariant failure. The eventual stronger liveness property must come from
+compact walker or CSP feasibility facts, never recursive suffix probing inside
+ordinary choice generation.
 
 ## Constraint lifecycle and completeness
 
-Factors may be activated, narrowed, and retired as writer events occur. A
-factor is retired only when the semantic relationship it represents has been
-resolved; retirement must not widen domains.
+Prepared variables and factors are static by default. Writer events narrow
+their domains monotonically. Factor activation or retirement is an optional
+mechanism to introduce only when a concrete semantic relation cannot be
+represented correctly and locally by static prepared factors and restrictions.
+It is not part of ordinary choice application, and retirement must never be
+used merely as an optimization that widens represented assignments.
 
-Queue-based propagation is the normal path. A successor presented as legal
-must nevertheless have a satisfiable active CSP. Arc consistency alone is not
-complete for every cyclic factor graph, so the native solver must eventually:
+Queue-based propagation is the normal path. A successor is published only after
+the candidate attempt establishes a satisfiable current CSP. Arc consistency
+alone is not complete for every cyclic factor graph, so the native solver:
 
 1. propagate to a fixed point;
 2. identify the affected factor component;
@@ -224,8 +269,11 @@ complete for every cyclic factor graph, so the native solver must eventually:
 
 This is local CSP solving, not enumeration of SMILES suffixes.
 
-Until complete satisfiability handling exists, the native backend remains
-private. Its incompleteness is not a public molecule capability or error.
+Any future factor type must define whether it belongs to the exact semantic
+search core or provides its own exact extension projector. A backend remains
+private until it satisfies the solver-neutral exactness contract for every
+factor type it accepts. Backend incompleteness is not a public molecule
+capability or error.
 
 ## Terminality and state identity
 
@@ -235,15 +283,18 @@ Terminality is read directly from the compact state. It requires:
 - no pending branch or child entry;
 - no unresolved ring endpoint;
 - every structural obligation discharged;
-- every required semantic factor satisfied or retired.
+- every represented bond decision resolved as required by its completed event;
+- the current prepared constraint model remains consistent.
 
-The canonical state key contains:
+The transition kernel does not require a canonical serialized state identity.
+If a future memoized client needs one, its semantic key must contain the
+relevant compact facts, such as:
 
 ```text
 structural traversal state
-ring state
-active variable domains
-active factors
+ring labels and pending visible syntax
+current variable domains
+any concretely introduced factor-lifecycle state
 ```
 
 It excludes queues, trail history, watch order, learned clauses, allocation
@@ -261,8 +312,9 @@ The transition kernel does not construct:
 - continuation assets;
 - whole-support artifacts.
 
-An optional typed trace may record events, domain reductions, factor lifecycle,
-and contradictions. Tracing is diagnostic and does not define semantics.
+An optional typed trace may record events, domain reductions, any concretely
+introduced factor lifecycle, and contradictions. Tracing is diagnostic and
+does not define semantics.
 
 ## Enumeration and counting are clients
 

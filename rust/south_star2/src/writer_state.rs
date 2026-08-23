@@ -138,11 +138,7 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     fn bond_role_domain(&self, bond: BondId) -> Domain {
-        let variable = decision_variable(&self.prepared, bond);
-        let decision_domain = self
-            .constraints
-            .domain(variable)
-            .expect("prepared bond decision must belong to the writer constraint model");
+        let decision_domain = self.bond_decision_domain(bond);
         let partition = self
             .prepared
             .bond_role_partition(bond)
@@ -161,6 +157,12 @@ impl<S: ConstraintSolver> WriterState<S> {
             roles = roles.union(BondRole::Ring.singleton_domain());
         }
         roles
+    }
+
+    pub(crate) fn bond_decision_domain(&self, bond: BondId) -> Domain {
+        self.constraints
+            .domain(decision_variable(&self.prepared, bond))
+            .expect("prepared bond decision must belong to the writer constraint model")
     }
 
     pub(crate) fn structural_frontier(&self) -> StructuralFrontier {
@@ -332,17 +334,50 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         candidate: StructuralCandidate,
     ) -> Result<Consistency<Self>, S::Failure> {
+        self.attempt_candidate_with_refinement(candidate, None)
+    }
+
+    pub(crate) fn attempt_candidate_with_bond_refinement(
+        &self,
+        candidate: StructuralCandidate,
+        allowed_representations: Domain,
+    ) -> Result<Consistency<Self>, S::Failure> {
+        assert!(
+            !allowed_representations.is_empty(),
+            "a visible bond refinement must retain at least one representation"
+        );
+        assert!(
+            matches!(
+                candidate,
+                StructuralCandidate::RingOpen { .. } | StructuralCandidate::RingClose { .. }
+            ),
+            "only a ring endpoint candidate accepts a visible bond refinement"
+        );
+        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations))
+    }
+
+    fn attempt_candidate_with_refinement(
+        &self,
+        candidate: StructuralCandidate,
+        allowed_representations: Option<Domain>,
+    ) -> Result<Consistency<Self>, S::Failure> {
         let attempted = match candidate {
             StructuralCandidate::Root { atom } => {
+                assert_eq!(allowed_representations, None);
                 let mut successor = self.clone();
                 successor
                     .traversal
                     .begin_component(self.prepared.graph(), atom);
                 Ok(Consistency::Consistent(successor))
             }
-            StructuralCandidate::RingOpen { incident } => Ok(self
-                .restricted_role(incident.bond(), BondRole::Ring)?
-                .map(|constraints| {
+            StructuralCandidate::RingOpen { incident } => {
+                let constraints = match allowed_representations {
+                    Some(allowed) => {
+                        self.restricted_ring_representation(incident.bond(), allowed)?
+                    }
+                    None => self.restricted_role(incident.bond(), BondRole::Ring)?,
+                };
+                Ok(constraints.map(|constraints| {
                     let mut traversal = self.traversal.clone();
                     traversal.open_ring_endpoint(self.prepared.graph(), incident);
                     Self {
@@ -352,7 +387,8 @@ impl<S: ConstraintSolver> WriterState<S> {
                         #[cfg(test)]
                         candidate_batch_derivations: self.candidate_batch_derivations.clone(),
                     }
-                })),
+                }))
+            }
             StructuralCandidate::RingClose {
                 incident,
                 first_endpoint,
@@ -363,23 +399,39 @@ impl<S: ConstraintSolver> WriterState<S> {
                     Some(first_endpoint),
                     "a ring-closure candidate must retain its source-local first endpoint"
                 );
-                let mut successor = self.clone();
-                successor
-                    .traversal
-                    .close_ring_endpoint(self.prepared.graph(), incident);
-                Ok(Consistency::Consistent(successor))
+                let constraints = match allowed_representations {
+                    Some(allowed) => {
+                        self.restricted_ring_representation(incident.bond(), allowed)?
+                    }
+                    None => Consistency::Consistent(self.constraints.clone()),
+                };
+                Ok(constraints.map(|constraints| {
+                    let mut traversal = self.traversal.clone();
+                    traversal.close_ring_endpoint(self.prepared.graph(), incident);
+                    Self {
+                        prepared: self.prepared.clone(),
+                        traversal,
+                        constraints,
+                        #[cfg(test)]
+                        candidate_batch_derivations: self.candidate_batch_derivations.clone(),
+                    }
+                }))
             }
             StructuralCandidate::BranchChild { incident }
-            | StructuralCandidate::InlineChild { incident } => Ok(self
-                .restricted_role(incident.bond(), BondRole::Traversal)?
-                .map(|constraints| Self {
-                    prepared: self.prepared.clone(),
-                    traversal: self.traversal.clone(),
-                    constraints,
-                    #[cfg(test)]
-                    candidate_batch_derivations: self.candidate_batch_derivations.clone(),
-                })),
+            | StructuralCandidate::InlineChild { incident } => {
+                assert_eq!(allowed_representations, None);
+                Ok(self
+                    .restricted_role(incident.bond(), BondRole::Traversal)?
+                    .map(|constraints| Self {
+                        prepared: self.prepared.clone(),
+                        traversal: self.traversal.clone(),
+                        constraints,
+                        #[cfg(test)]
+                        candidate_batch_derivations: self.candidate_batch_derivations.clone(),
+                    }))
+            }
             StructuralCandidate::CloseBranch => {
+                assert_eq!(allowed_representations, None);
                 let mut successor = self.clone();
                 assert!(
                     successor
@@ -391,6 +443,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 Ok(Consistency::Consistent(successor))
             }
             StructuralCandidate::FinishComponent => {
+                assert_eq!(allowed_representations, None);
                 let mut successor = self.clone();
                 assert_eq!(
                     successor.traversal.complete_path(self.prepared.graph()),
@@ -413,6 +466,23 @@ impl<S: ConstraintSolver> WriterState<S> {
         {
             attempted
         }
+    }
+
+    fn restricted_ring_representation(
+        &self,
+        bond: BondId,
+        allowed: Domain,
+    ) -> Result<Consistency<S>, S::Failure> {
+        let partition = self
+            .prepared
+            .bond_role_partition(bond)
+            .expect("prepared bond must have a role partition");
+        assert!(
+            allowed.is_subset_of(partition.ring_values()),
+            "a ring endpoint refinement must imply the Ring role"
+        );
+        self.constraints
+            .restricted(&[(decision_variable(&self.prepared, bond), allowed)])
     }
 
     #[cfg(test)]
@@ -516,6 +586,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::model::EdgeRolePartition;
     use crate::native::NativeSolverState;
     use crate::prepared::PreparedGraphBuilder;
 
@@ -547,6 +618,7 @@ mod tests {
     struct DomainCountingSolver {
         native: NativeSolverState,
         domain_reads: Arc<AtomicUsize>,
+        restriction_calls: Arc<AtomicUsize>,
     }
 
     impl ConstraintSolver for DomainCountingSolver {
@@ -559,6 +631,7 @@ mod tests {
                 <NativeSolverState as ConstraintSolver>::initial(model)?.map(|native| Self {
                     native,
                     domain_reads: Arc::new(AtomicUsize::new(0)),
+                    restriction_calls: Arc::new(AtomicUsize::new(0)),
                 }),
             )
         }
@@ -567,11 +640,13 @@ mod tests {
             &self,
             restrictions: &[(VariableId, Domain)],
         ) -> Result<Consistency<Self>, Self::Failure> {
+            self.restriction_calls.fetch_add(1, Ordering::Relaxed);
             Ok(
                 <NativeSolverState as ConstraintSolver>::restricted(&self.native, restrictions)?
                     .map(|native| Self {
                         native,
                         domain_reads: Arc::clone(&self.domain_reads),
+                        restriction_calls: Arc::clone(&self.restriction_calls),
                     }),
             )
         }
@@ -650,6 +725,56 @@ mod tests {
             .unwrap_consistent();
 
         assert_eq!(state.constraints.domain_reads.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn ring_endpoint_refinement_is_one_atomic_solver_restriction() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        graph.add_bond(atoms[0], atoms[2]).unwrap();
+        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let binary = PreparedMolecule::new(graph.build());
+        let traversal = Domain::from_bits(1);
+        let ring = Domain::from_bits(0b1_1110);
+        let plan = traversal.union(ring);
+        let prepared = PreparedMolecule::with_bond_decisions(
+            &binary,
+            &[plan; 3],
+            &[EdgeRolePartition::new(traversal, ring); 3],
+        );
+        let initial = WriterState::<DomainCountingSolver>::initial(&prepared)
+            .unwrap()
+            .unwrap_consistent();
+        let rooted = initial
+            .attempt_candidate(StructuralCandidate::Root { atom: atoms[0] })
+            .unwrap()
+            .unwrap_consistent();
+        let incident = incident(&prepared, atoms[0], left);
+        rooted
+            .constraints
+            .restriction_calls
+            .store(0, Ordering::Relaxed);
+
+        let selected = Domain::from_bits(0b1_0100);
+        let opened = rooted
+            .attempt_candidate_with_bond_refinement(
+                StructuralCandidate::RingOpen { incident },
+                selected,
+            )
+            .unwrap()
+            .unwrap_consistent();
+
+        assert_eq!(
+            rooted.constraints.restriction_calls.load(Ordering::Relaxed),
+            1
+        );
+        assert_eq!(rooted.bond_decision_domain(left), plan);
+        assert_eq!(opened.bond_decision_domain(left), selected);
+        assert_eq!(
+            opened.bond_role_domain(left),
+            BondRole::Ring.singleton_domain()
+        );
     }
 
     #[test]

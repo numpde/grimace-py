@@ -449,10 +449,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let mut spelling_rejection_count = 0;
         let mut semantic_rejection_count = 0;
         for &candidate in batch.candidates() {
-            if candidate == StructuralCandidate::FinishComponent
-                && self.structural.graph_is_complete()
-            {
-                panic!("a complete writer state must already be normalized");
+            if candidate == StructuralCandidate::FinishComponent {
+                panic!("component completion must already be normalized");
             }
             match self.attempt_structural(candidate) {
                 CandidateAttempt::Accepted { text, successor } => {
@@ -813,39 +811,36 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 CandidateAttempt::Failed(failure) => Err(failure),
             };
         }
-        if !self.structural.graph_is_complete() {
+        loop {
+            if self.is_accepted() {
+                return Ok(Consistency::Consistent(self));
+            }
             let batch = self.structural.derive_candidates();
             if batch.is_contradiction() || batch.candidates().is_empty() {
                 return Ok(Consistency::Contradiction);
             }
-            return Ok(Consistency::Consistent(self));
-        }
-        assert!(
-            !self.labels.has_open_labels(),
-            "a complete structural graph must not retain open visible ring labels"
-        );
-        let batch = self.structural.derive_candidates();
-        assert_eq!(
-            batch.candidates(),
-            &[StructuralCandidate::FinishComponent],
-            "a complete graph must have one silent top-level completion"
-        );
-        let completed = match self
-            .structural
-            .attempt_candidate(StructuralCandidate::FinishComponent)?
-        {
-            Consistency::Consistent(completed) => completed,
-            Consistency::Contradiction => {
-                panic!("top-level structural completion cannot contradict the CSP")
+            if batch.candidates() != [StructuralCandidate::FinishComponent] {
+                return Ok(Consistency::Consistent(self));
             }
-        };
-        assert_eq!(
-            completed.active_atom(),
-            None,
-            "connected graph completion must not restore a branch parent"
-        );
-        self.structural = completed;
-        Ok(Consistency::Consistent(self))
+            assert!(
+                !self.labels.has_open_labels(),
+                "a component cannot finish with open visible ring labels"
+            );
+            self.structural = match self
+                .structural
+                .attempt_candidate(StructuralCandidate::FinishComponent)?
+            {
+                Consistency::Consistent(completed) => completed,
+                Consistency::Contradiction => {
+                    panic!("top-level structural completion cannot contradict the CSP")
+                }
+            };
+            assert_eq!(
+                self.structural.active_atom(),
+                None,
+                "component completion must not restore a branch parent"
+            );
+        }
     }
 }
 

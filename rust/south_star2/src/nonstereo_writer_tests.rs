@@ -360,6 +360,29 @@ fn surface_accepts_general_graphs_and_rejects_invalid_bindings() {
 }
 
 #[test]
+fn top_level_component_completion_is_silent_normalization() {
+    let (surface, atoms, _) = fixture(&["A", "B"], &[]);
+    let initial = initial(&surface);
+    let first = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "A")
+        .unwrap()
+        .into_successor();
+
+    assert_eq!(initial.active_atom(), None, "the source remains unchanged");
+    assert_eq!(first.active_atom(), None);
+    assert!(!first.graph_is_complete());
+    assert_eq!(first.pending, None);
+    assert!(first.labels.is_clean());
+    assert_eq!(
+        first.structural.derive_candidates().candidates(),
+        &[StructuralCandidate::Root { atom: atoms[1] }]
+    );
+}
+
+#[test]
 fn equal_text_choices_retain_distinct_successors() {
     let (surface, atoms, _) = fixture(&["C", "C"], &[(0, 1, NonStereoBondToken::Elided)]);
     let initial = initial(&surface);

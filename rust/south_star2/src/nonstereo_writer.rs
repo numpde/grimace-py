@@ -1,4 +1,4 @@
-//! Connected non-stereo visible-token state.
+//! Graph-general non-stereo visible-token state.
 //!
 //! Graph and constraint semantics live in `WriterState`. This module owns only
 //! concrete non-stereo spelling facts, live ring-label assignments, and the
@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::ids::{AtomId, BondId};
-use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
+use crate::prepared::{AdjacentBond, PreparedBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::writer_state::{StructuralCandidate, WriterState};
 
@@ -49,40 +49,34 @@ impl NonStereoBondToken {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct PreparedConnectedNonStereo {
+pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
     atom_text: Arc<[Box<str>]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
 }
 
-impl PreparedConnectedNonStereo {
+impl PreparedNonStereo {
     pub(crate) fn new(
         molecule: PreparedMolecule,
         atom_text: Vec<String>,
         bond_tokens: Vec<NonStereoBondToken>,
-    ) -> Result<Self, PreparedConnectedNonStereoError> {
+    ) -> Result<Self, PreparedNonStereoError> {
         let graph = molecule.graph();
-        if graph.atom_count() == 0 {
-            return Err(PreparedConnectedNonStereoError::EmptyMolecule);
-        }
-        if !graph_is_connected(graph) {
-            return Err(PreparedConnectedNonStereoError::DisconnectedMolecule);
-        }
         if atom_text.len() != graph.atom_count() {
-            return Err(PreparedConnectedNonStereoError::AtomTextCountMismatch {
+            return Err(PreparedNonStereoError::AtomTextCountMismatch {
                 expected: graph.atom_count(),
                 actual: atom_text.len(),
             });
         }
         if bond_tokens.len() != graph.bond_count() {
-            return Err(PreparedConnectedNonStereoError::BondTokenCountMismatch {
+            return Err(PreparedNonStereoError::BondTokenCountMismatch {
                 expected: graph.bond_count(),
                 actual: bond_tokens.len(),
             });
         }
         for (atom, text) in graph.atom_ids().zip(&atom_text) {
             if text.is_empty() {
-                return Err(PreparedConnectedNonStereoError::EmptyAtomText(atom));
+                return Err(PreparedNonStereoError::EmptyAtomText(atom));
             }
         }
 
@@ -125,23 +119,15 @@ impl PreparedConnectedNonStereo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PreparedConnectedNonStereoError {
-    EmptyMolecule,
-    DisconnectedMolecule,
+pub(crate) enum PreparedNonStereoError {
     AtomTextCountMismatch { expected: usize, actual: usize },
     BondTokenCountMismatch { expected: usize, actual: usize },
     EmptyAtomText(AtomId),
 }
 
-impl fmt::Display for PreparedConnectedNonStereoError {
+impl fmt::Display for PreparedNonStereoError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyMolecule => {
-                formatter.write_str("a connected non-stereo surface requires at least one atom")
-            }
-            Self::DisconnectedMolecule => {
-                formatter.write_str("a connected non-stereo surface requires one graph component")
-            }
             Self::AtomTextCountMismatch { expected, actual } => write!(
                 formatter,
                 "expected {expected} prepared atom texts, received {actual}"
@@ -158,7 +144,7 @@ impl fmt::Display for PreparedConnectedNonStereoError {
     }
 }
 
-impl std::error::Error for PreparedConnectedNonStereoError {}
+impl std::error::Error for PreparedNonStereoError {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct RingLabelSlot(usize);
@@ -385,17 +371,15 @@ impl<E: std::error::Error + 'static> std::error::Error for ChoiceFailure<E> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ConnectedNonStereoWriterState<S> {
-    surface: PreparedConnectedNonStereo,
+pub(crate) struct NonStereoWriterState<S> {
+    surface: PreparedNonStereo,
     structural: WriterState<S>,
     labels: RingLabels,
     pending: Option<PendingEmission>,
 }
 
-impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
-    pub(crate) fn initial(
-        surface: &PreparedConnectedNonStereo,
-    ) -> Result<Consistency<Self>, S::Failure> {
+impl<S: ConstraintSolver> NonStereoWriterState<S> {
+    pub(crate) fn initial(surface: &PreparedNonStereo) -> Result<Consistency<Self>, S::Failure> {
         Ok(
             WriterState::initial(surface.molecule())?.map(|structural| Self {
                 surface: surface.clone(),
@@ -468,7 +452,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             if candidate == StructuralCandidate::FinishComponent
                 && self.structural.graph_is_complete()
             {
-                panic!("a complete connected writer state must already be normalized");
+                panic!("a complete writer state must already be normalized");
             }
             match self.attempt_structural(candidate) {
                 CandidateAttempt::Accepted { text, successor } => {
@@ -844,7 +828,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         assert_eq!(
             batch.candidates(),
             &[StructuralCandidate::FinishComponent],
-            "a complete connected graph must have one silent top-level completion"
+            "a complete graph must have one silent top-level completion"
         );
         let completed = match self
             .structural
@@ -893,32 +877,6 @@ fn ring_label_number_text(label: usize) -> String {
     } else {
         format!("%{label}")
     }
-}
-
-fn graph_is_connected(graph: &PreparedGraph) -> bool {
-    if graph.atom_count() == 0 {
-        return false;
-    }
-    let root = AtomId::new(0);
-    let mut visited = vec![false; graph.atom_count()];
-    visited[root.index()] = true;
-    let mut pending = vec![root];
-    let mut visited_count = 0_usize;
-
-    while let Some(atom) = pending.pop() {
-        visited_count += 1;
-        for incident in graph
-            .neighbors(atom)
-            .expect("prepared atom must have an adjacency row")
-        {
-            let neighbour = incident.atom();
-            if !visited[neighbour.index()] {
-                visited[neighbour.index()] = true;
-                pending.push(neighbour);
-            }
-        }
-    }
-    visited_count == graph.atom_count()
 }
 
 #[cfg(test)]

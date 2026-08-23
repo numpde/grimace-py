@@ -7,7 +7,7 @@ use crate::native::NativeSolverState;
 use crate::native_solver::NativeSolverFailure;
 use crate::prepared::PreparedGraphBuilder;
 
-type State = ConnectedNonStereoWriterState<NativeSolverState>;
+type State = NonStereoWriterState<NativeSolverState>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum InjectedSolverFailure {
@@ -268,7 +268,7 @@ impl ConstraintSolver for PendingContradictionSolver {
 fn fixture(
     atom_text: &[&str],
     edges: &[(usize, usize, NonStereoBondToken)],
-) -> (PreparedConnectedNonStereo, Vec<AtomId>, Vec<BondId>) {
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = atom_text
         .iter()
@@ -280,7 +280,7 @@ fn fixture(
         bonds.push(graph.add_bond(atoms[a], atoms[b]).unwrap());
         bond_tokens.push(token);
     }
-    let surface = PreparedConnectedNonStereo::new(
+    let surface = PreparedNonStereo::new(
         PreparedMolecule::new(graph.build()),
         atom_text.iter().map(|text| (*text).to_owned()).collect(),
         bond_tokens,
@@ -289,7 +289,7 @@ fn fixture(
     (surface, atoms, bonds)
 }
 
-fn incident(surface: &PreparedConnectedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
+fn incident(surface: &PreparedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
     surface
         .molecule()
         .graph()
@@ -314,41 +314,38 @@ fn choice_at(state: &State, index: usize) -> (String, State) {
     (choice.text, choice.successor)
 }
 
-fn initial(surface: &PreparedConnectedNonStereo) -> State {
+fn initial(surface: &PreparedNonStereo) -> State {
     State::initial(surface).unwrap().unwrap_consistent()
 }
 
 #[test]
-fn surface_rejects_invalid_bindings() {
+fn surface_accepts_general_graphs_and_rejects_invalid_bindings() {
     let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
-    assert!(matches!(
-        PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
-        Err(PreparedConnectedNonStereoError::EmptyMolecule)
-    ));
+    let empty = PreparedNonStereo::new(empty, Vec::new(), Vec::new()).unwrap();
+    assert_eq!(empty.molecule().graph().atom_count(), 0);
 
     let mut graph = PreparedGraphBuilder::new();
     graph.add_atom().unwrap();
     graph.add_atom().unwrap();
     let disconnected = PreparedMolecule::new(graph.build());
-    assert!(matches!(
-        PreparedConnectedNonStereo::new(
-            disconnected,
-            vec!["C".to_owned(), "O".to_owned()],
-            Vec::new(),
-        ),
-        Err(PreparedConnectedNonStereoError::DisconnectedMolecule)
-    ));
+    let disconnected = PreparedNonStereo::new(
+        disconnected,
+        vec!["C".to_owned(), "O".to_owned()],
+        Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(disconnected.molecule().graph().atom_count(), 2);
 
     let mut graph = PreparedGraphBuilder::new();
     graph.add_atom().unwrap();
     let single = PreparedMolecule::new(graph.build());
     assert!(matches!(
-        PreparedConnectedNonStereo::new(single.clone(), Vec::new(), Vec::new()),
-        Err(PreparedConnectedNonStereoError::AtomTextCountMismatch { .. })
+        PreparedNonStereo::new(single.clone(), Vec::new(), Vec::new()),
+        Err(PreparedNonStereoError::AtomTextCountMismatch { .. })
     ));
     assert!(matches!(
-        PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
-        Err(PreparedConnectedNonStereoError::EmptyAtomText(atom))
+        PreparedNonStereo::new(single, vec![String::new()], Vec::new()),
+        Err(PreparedNonStereoError::EmptyAtomText(atom))
             if atom == AtomId::new(0)
     ));
 
@@ -357,8 +354,8 @@ fn surface_rejects_invalid_bindings() {
     graph.add_bond(atoms[0], atoms[1]).unwrap();
     let bonded = PreparedMolecule::new(graph.build());
     assert!(matches!(
-        PreparedConnectedNonStereo::new(bonded, vec!["C".to_owned(), "O".to_owned()], Vec::new(),),
-        Err(PreparedConnectedNonStereoError::BondTokenCountMismatch { .. })
+        PreparedNonStereo::new(bonded, vec!["C".to_owned(), "O".to_owned()], Vec::new(),),
+        Err(PreparedNonStereoError::BondTokenCountMismatch { .. })
     ));
 }
 
@@ -427,7 +424,7 @@ fn backend_failure_aborts_the_candidate_batch() {
         ],
     )
     .0;
-    let initial = ConnectedNonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let mut rooted = initial
@@ -456,7 +453,7 @@ fn late_backend_failure_discards_an_earlier_accepted_choice() {
         ],
     )
     .0;
-    let initial = ConnectedNonStereoWriterState::<FailSecondVariableSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<FailSecondVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let rooted = initial
@@ -487,7 +484,7 @@ fn contradictory_candidate_is_filtered_without_suppressing_its_sibling() {
         surface.molecule().bond_role_variable(bonds[0]),
         Some(crate::ids::VariableId::new(0))
     );
-    let initial = ConnectedNonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let rooted = initial
@@ -527,10 +524,9 @@ fn writer_policy_contradiction_is_candidate_local() {
             (2, 3, NonStereoBondToken::Elided),
         ],
     );
-    let initial =
-        ConnectedNonStereoWriterState::<WriterPolicyContradictionSolver>::initial(&surface)
-            .unwrap()
-            .unwrap_consistent();
+    let initial = NonStereoWriterState::<WriterPolicyContradictionSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
     let rooted = initial
         .choices()
         .unwrap()
@@ -571,7 +567,7 @@ fn all_candidate_contradiction_is_an_explicit_live_state_failure() {
             (2, 3, NonStereoBondToken::Elided),
         ],
     );
-    let initial = ConnectedNonStereoWriterState::<PendingContradictionSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<PendingContradictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let rooted = initial
@@ -632,7 +628,7 @@ fn viable_unspellable_candidate_outweighs_a_contradictory_sibling() {
             (1, 2, NonStereoBondToken::Elided),
         ],
     );
-    let initial = ConnectedNonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let mut rooted = initial
@@ -666,7 +662,7 @@ fn contradiction_precedes_spelling_for_each_candidate() {
             (1, 2, NonStereoBondToken::Elided),
         ],
     );
-    let initial = ConnectedNonStereoWriterState::<RejectEveryRestrictionSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<RejectEveryRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let mut rooted = initial
@@ -974,7 +970,7 @@ fn explicit_branch_commits_at_open_parenthesis() {
     assert!(accepted.is_accepted());
 }
 
-fn reachable_strings(surface: &PreparedConnectedNonStereo) -> BTreeSet<String> {
+fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
     let initial = initial(surface);
     let mut pending = vec![(initial, String::new())];
     let mut complete = BTreeSet::new();
@@ -1041,7 +1037,7 @@ fn permutations<T: Copy>(items: &[T]) -> Vec<Vec<T>> {
 }
 
 fn reference_tree_subtrees(
-    surface: &PreparedConnectedNonStereo,
+    surface: &PreparedNonStereo,
     atom: AtomId,
     parent: Option<AtomId>,
 ) -> BTreeSet<String> {
@@ -1079,7 +1075,7 @@ fn reference_tree_subtrees(
     support
 }
 
-fn reference_tree_strings(surface: &PreparedConnectedNonStereo) -> BTreeSet<String> {
+fn reference_tree_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
     surface
         .molecule()
         .graph()

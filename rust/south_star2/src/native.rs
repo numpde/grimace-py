@@ -13,9 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
-use crate::model::{
-    BinaryRelationFactor, BondRole, ConstraintModel, FactorDefinition, SpanningTreeFactor,
-};
+use crate::model::{BinaryRelationFactor, ConstraintModel, FactorDefinition, SpanningTreeFactor};
 use crate::persistent::PagedStore;
 
 #[derive(Clone, Debug)]
@@ -776,15 +774,13 @@ fn revise_spanning_tree(
     factor: &SpanningTreeFactor,
     domains: &mut PagedStore<Domain>,
 ) -> Result<Vec<VariableId>, NativeSolverError> {
-    let traversal = BondRole::Traversal;
-    let ring = BondRole::Ring;
     let mut components = DisjointSet::new(factor.atoms().len());
 
     // Forced traversal edges are the independent set that the remaining
     // graphic-matroid basis must extend. A cycle makes extension impossible.
     for edge in factor.edges() {
-        let role = domains[edge.role_variable().index()];
-        match role_membership(role) {
+        let domain = domains[edge.decision_variable().index()];
+        match role_membership(domain, edge.role_partition()) {
             (true, false) => {
                 let a = factor_atom_index(factor, edge.a());
                 let b = factor_atom_index(factor, edge.b());
@@ -810,9 +806,9 @@ fn revise_spanning_tree(
     let mut quotient_edges = Vec::new();
 
     for edge in factor.edges() {
-        let variable = edge.role_variable();
-        let role = domains[variable.index()];
-        let membership = role_membership(role);
+        let variable = edge.decision_variable();
+        let domain = domains[variable.index()];
+        let membership = role_membership(domain, edge.role_partition());
         if membership == (true, false) || membership == (false, true) {
             continue;
         }
@@ -823,13 +819,17 @@ fn revise_spanning_tree(
         let a_root = components.find(factor_atom_index(factor, edge.a()));
         let b_root = components.find(factor_atom_index(factor, edge.b()));
         if a_root == b_root {
-            domains[variable.index()] = ring.singleton_domain();
-            reductions.push(variable);
+            let restricted = domain.intersect(edge.role_partition().ring_values());
+            if restricted != domain {
+                domains[variable.index()] = restricted;
+                reductions.push(variable);
+            }
             continue;
         }
 
         quotient_edges.push(QuotientEdge {
-            role_variable: variable,
+            variable,
+            traversal_values: edge.role_partition().traversal_values(),
             a: quotient_by_root[&a_root],
             b: quotient_by_root[&b_root],
         });
@@ -839,18 +839,22 @@ fn revise_spanning_tree(
     let bridges = quotient_bridges(quotient_node_count, &quotient_edges)?;
     for (edge, is_bridge) in quotient_edges.iter().zip(bridges) {
         if is_bridge {
-            domains[edge.role_variable.index()] = traversal.singleton_domain();
-            reductions.push(edge.role_variable);
+            let domain = domains[edge.variable.index()];
+            let restricted = domain.intersect(edge.traversal_values);
+            if restricted != domain {
+                domains[edge.variable.index()] = restricted;
+                reductions.push(edge.variable);
+            }
         }
     }
 
     Ok(reductions)
 }
 
-fn role_membership(domain: Domain) -> (bool, bool) {
+fn role_membership(domain: Domain, partition: crate::model::EdgeRolePartition) -> (bool, bool) {
     (
-        domain.contains(BondRole::Traversal.value_index()),
-        domain.contains(BondRole::Ring.value_index()),
+        !domain.intersect(partition.traversal_values()).is_empty(),
+        !domain.intersect(partition.ring_values()).is_empty(),
     )
 }
 
@@ -863,7 +867,8 @@ fn factor_atom_index(factor: &SpanningTreeFactor, atom: crate::AtomId) -> usize 
 
 #[derive(Copy, Clone, Debug)]
 struct QuotientEdge {
-    role_variable: VariableId,
+    variable: VariableId,
+    traversal_values: Domain,
     a: usize,
     b: usize,
 }
@@ -1035,7 +1040,7 @@ fn variable_id_from_index(index: usize) -> VariableId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ConstraintModelBuilder, SpanningTreeEdge};
+    use crate::model::{BondRole, ConstraintModelBuilder, SpanningTreeEdge};
 
     fn two_values() -> Domain {
         Domain::from_indices([0, 1]).unwrap()

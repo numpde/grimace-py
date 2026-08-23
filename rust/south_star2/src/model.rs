@@ -29,6 +29,36 @@ impl BondRole {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EdgeRolePartition {
+    traversal_values: Domain,
+    ring_values: Domain,
+}
+
+impl EdgeRolePartition {
+    pub const fn new(traversal_values: Domain, ring_values: Domain) -> Self {
+        Self {
+            traversal_values,
+            ring_values,
+        }
+    }
+
+    pub const fn traversal_values(self) -> Domain {
+        self.traversal_values
+    }
+
+    pub const fn ring_values(self) -> Domain {
+        self.ring_values
+    }
+
+    pub const fn bond_role() -> Self {
+        Self::new(
+            BondRole::Traversal.singleton_domain(),
+            BondRole::Ring.singleton_domain(),
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VariableDefinition {
     initial_domain: Domain,
@@ -81,22 +111,37 @@ impl BinaryRelationFactor {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SpanningTreeEdge {
-    role_variable: VariableId,
+    decision_variable: VariableId,
+    role_partition: EdgeRolePartition,
     a: AtomId,
     b: AtomId,
 }
 
 impl SpanningTreeEdge {
-    pub const fn new(role_variable: VariableId, a: AtomId, b: AtomId) -> Self {
+    pub const fn new(decision_variable: VariableId, a: AtomId, b: AtomId) -> Self {
+        Self::with_role_partition(decision_variable, a, b, EdgeRolePartition::bond_role())
+    }
+
+    pub const fn with_role_partition(
+        decision_variable: VariableId,
+        a: AtomId,
+        b: AtomId,
+        role_partition: EdgeRolePartition,
+    ) -> Self {
         Self {
-            role_variable,
+            decision_variable,
+            role_partition,
             a,
             b,
         }
     }
 
-    pub const fn role_variable(self) -> VariableId {
-        self.role_variable
+    pub const fn decision_variable(self) -> VariableId {
+        self.decision_variable
+    }
+
+    pub const fn role_partition(self) -> EdgeRolePartition {
+        self.role_partition
     }
 
     pub const fn a(self) -> AtomId {
@@ -303,14 +348,18 @@ impl ConstraintModelBuilder {
                 }
             }
 
-            let variable = edge.role_variable;
+            let variable = edge.decision_variable;
             let initial_domain = self
                 .variables
                 .get(variable.index())
                 .ok_or(ConstraintModelError::UnknownVariable(variable))?
                 .initial_domain;
-            if !initial_domain.is_subset_of(BondRole::role_domain()) {
-                return Err(ConstraintModelError::InvalidBondRoleDomain(variable));
+            let traversal_values = initial_domain.intersect(edge.role_partition.traversal_values());
+            let ring_values = initial_domain.intersect(edge.role_partition.ring_values());
+            if !traversal_values.intersect(ring_values).is_empty()
+                || traversal_values.union(ring_values) != initial_domain
+            {
+                return Err(ConstraintModelError::InvalidEdgeRolePartition(variable));
             }
             if !seen_variables.insert(variable) {
                 return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
@@ -383,7 +432,7 @@ pub enum ConstraintModelError {
     RepeatedAtomInSpanningTree,
     SpanningTreeSelfEdge(AtomId),
     SpanningTreeEdgeOutsideAtomSet(AtomId),
-    InvalidBondRoleDomain(VariableId),
+    InvalidEdgeRolePartition(VariableId),
     OverlappingSpanningTreeVariable(VariableId),
 }
 
@@ -438,10 +487,10 @@ impl fmt::Display for ConstraintModelError {
                     "spanning-tree edge endpoint {atom:?} is outside the factor atom set"
                 )
             }
-            Self::InvalidBondRoleDomain(variable) => {
+            Self::InvalidEdgeRolePartition(variable) => {
                 write!(
                     formatter,
-                    "spanning-tree variable {variable:?} contains a value outside the bond-role domain"
+                    "spanning-tree variable {variable:?} is not partitioned into disjoint Traversal and Ring values"
                 )
             }
             Self::OverlappingSpanningTreeVariable(variable) => {
@@ -700,7 +749,7 @@ mod tests {
                     AtomId::new(1),
                 )],
             ),
-            Err(ConstraintModelError::InvalidBondRoleDomain(invalid_role))
+            Err(ConstraintModelError::InvalidEdgeRolePartition(invalid_role))
         );
         assert_eq!(
             builder.add_spanning_tree(

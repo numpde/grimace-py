@@ -7,8 +7,8 @@ use std::sync::Arc;
 use crate::domain::Domain;
 use crate::ids::{AtomId, FactorId, VariableId};
 use crate::model::{
-    BondRole, ConstraintModel, ConstraintModelBuilder, FactorDefinition, SpanningTreeEdge,
-    SpanningTreeFactor,
+    BondRole, ConstraintModel, ConstraintModelBuilder, EdgeRolePartition, FactorDefinition,
+    SpanningTreeEdge, SpanningTreeFactor,
 };
 use crate::native::NativeSolverState;
 use crate::solver::{Consistency, ConstraintSolver};
@@ -152,15 +152,15 @@ fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
 }
 
 fn assignment_satisfies_spanning_tree(factor: &SpanningTreeFactor, assignment: &[u8]) -> bool {
-    let traversal_value = BondRole::Traversal.value_index();
-    let ring_value = BondRole::Ring.value_index();
     let mut traversal_edge_count = 0;
 
     for edge in factor.edges() {
-        match assignment[edge.role_variable().index()] {
-            value if value == traversal_value => traversal_edge_count += 1,
-            value if value == ring_value => {}
-            _ => return false,
+        let value = assignment[edge.decision_variable().index()];
+        let partition = edge.role_partition();
+        if partition.traversal_values().contains(value) {
+            traversal_edge_count += 1;
+        } else if !partition.ring_values().contains(value) {
+            return false;
         }
     }
 
@@ -176,7 +176,8 @@ fn assignment_satisfies_spanning_tree(factor: &SpanningTreeFactor, assignment: &
 
     while let Some(atom) = pending.pop_front() {
         for edge in factor.edges() {
-            if assignment[edge.role_variable().index()] != traversal_value {
+            let value = assignment[edge.decision_variable().index()];
+            if !edge.role_partition().traversal_values().contains(value) {
                 continue;
             }
             let other = if edge.a() == atom {
@@ -449,6 +450,85 @@ fn partial_role_restrictions(variables: &[VariableId]) -> Vec<Vec<(VariableId, D
     cases
 }
 
+fn multivalue_spanning_model(
+    atom_count: usize,
+    endpoints: &[(usize, usize)],
+) -> (Arc<ConstraintModel>, Vec<VariableId>) {
+    let mut builder = ConstraintModelBuilder::new();
+    let plan_domain = Domain::from_bits(0b1_1111);
+    let partition = EdgeRolePartition::new(Domain::from_bits(0b1), Domain::from_bits(0b1_1110));
+    let variables = endpoints
+        .iter()
+        .map(|_| builder.add_variable(plan_domain).unwrap())
+        .collect::<Vec<_>>();
+    let atoms = (0..atom_count)
+        .map(|index| AtomId::new(u32::try_from(index).unwrap()))
+        .collect::<Vec<_>>();
+    builder
+        .add_spanning_tree(
+            atoms.iter().copied(),
+            endpoints
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(index, (a, b))| {
+                    SpanningTreeEdge::with_role_partition(
+                        variables[index],
+                        atoms[a],
+                        atoms[b],
+                        partition,
+                    )
+                }),
+        )
+        .unwrap();
+    (Arc::new(builder.build()), variables)
+}
+
+fn multivalue_spanning_restrictions(variables: &[VariableId]) -> Vec<Vec<(VariableId, Domain)>> {
+    let mut cases = vec![Vec::new()];
+    for &variable in variables {
+        for bits in 1_u64..0b10_0000 {
+            cases.push(vec![(variable, Domain::from_bits(bits))]);
+        }
+    }
+    for left in 0..variables.len() {
+        for right in (left + 1)..variables.len() {
+            for left_value in 0_u8..5 {
+                for right_value in 0_u8..5 {
+                    cases.push(vec![
+                        (variables[left], Domain::from_bits(1_u64 << left_value)),
+                        (variables[right], Domain::from_bits(1_u64 << right_value)),
+                    ]);
+                }
+            }
+        }
+    }
+    cases
+}
+
+fn restricted_domains<S: ConstraintSolver>(
+    state: &S,
+    variables: &[VariableId],
+    restrictions: &[(VariableId, Domain)],
+) -> Option<Vec<Domain>> {
+    let Consistency::Consistent(restricted) = state
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+    else {
+        return None;
+    };
+    Some(
+        variables
+            .iter()
+            .map(|variable| {
+                restricted
+                    .domain(*variable)
+                    .expect("spanning-tree variable must exist")
+            })
+            .collect(),
+    )
+}
+
 fn assert_spanning_fixture(name: &str, components: &[SpanningFixture<'_>]) {
     let (model, variables) = spanning_model(components);
 
@@ -672,6 +752,41 @@ fn spanning_tree_factor_matches_independent_exhaustive_projection() {
 
     for (name, components) in fixtures {
         assert_spanning_fixture(name, &components);
+    }
+}
+
+#[test]
+fn multivalue_spanning_tree_partitions_match_exhaustive_projection() {
+    let fixtures: [(&str, usize, &[(usize, usize)]); 4] = [
+        ("triangle", 3, &[(0, 1), (1, 2), (2, 0)]),
+        ("square", 4, &[(0, 1), (1, 2), (2, 3), (3, 0)]),
+        (
+            "square with diagonal",
+            4,
+            &[(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)],
+        ),
+        (
+            "fused triangles",
+            4,
+            &[(0, 1), (1, 2), (2, 0), (1, 3), (2, 3)],
+        ),
+    ];
+
+    for (name, atom_count, endpoints) in fixtures {
+        let (model, variables) = multivalue_spanning_model(atom_count, endpoints);
+        let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+            .unwrap()
+            .unwrap_consistent();
+        let exhaustive = ExhaustiveSolverState::initial(model)
+            .unwrap()
+            .unwrap_consistent();
+        for restrictions in multivalue_spanning_restrictions(&variables) {
+            assert_eq!(
+                restricted_domains(&native, &variables, &restrictions),
+                restricted_domains(&exhaustive, &variables, &restrictions),
+                "{name} with placement restrictions {restrictions:?}"
+            );
+        }
     }
 }
 

@@ -132,6 +132,11 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.has_visited_atoms()
     }
 
+    #[cfg(test)]
+    pub(crate) fn atom_is_visited(&self, atom: AtomId) -> bool {
+        self.traversal.atom_is_visited(atom)
+    }
+
     fn bond_role_domain(&self, bond: BondId) -> Domain {
         let variable = role_variable(&self.prepared, bond);
         self.constraints

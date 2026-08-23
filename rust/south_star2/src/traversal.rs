@@ -575,6 +575,11 @@ impl TraversalState {
         self.progress.has_visited_atoms()
     }
 
+    #[cfg(test)]
+    pub(crate) fn atom_is_visited(&self, atom: AtomId) -> bool {
+        self.progress.atom_is_visited(atom)
+    }
+
     pub(crate) fn path_completion(&self) -> Option<PathCompletion> {
         self.active.as_ref()?;
         if self.branch_returns.is_some() {

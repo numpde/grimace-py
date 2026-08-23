@@ -398,12 +398,21 @@ fn equal_dot_choices_commit_distinct_pending_component_roots() {
     assert_eq!(choices.len(), 2);
     assert!(choices.iter().all(|choice| choice.text() == "."));
     assert_eq!(
+        after_first.structural.derive_candidates().candidates(),
+        &[
+            StructuralCandidate::Root { atom: atoms[1] },
+            StructuralCandidate::Root { atom: atoms[2] },
+        ]
+    );
+    assert_eq!(
         after_first.active_atom(),
         None,
         "the source remains unchanged"
     );
     for (choice, root) in choices.iter().zip(&atoms[1..]) {
         assert_eq!(choice.successor().active_atom(), Some(*root));
+        assert!(choice.successor().structural.atom_is_visited(atoms[0]));
+        assert!(choice.successor().structural.atom_is_visited(*root));
         assert_eq!(
             choice.successor().pending,
             Some(PendingEmission::ComponentRootAtom(*root))
@@ -1025,10 +1034,10 @@ fn explicit_branch_commits_at_open_parenthesis() {
     assert!(accepted.is_accepted());
 }
 
-fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
+fn reachable_terminal_paths(surface: &PreparedNonStereo) -> Vec<String> {
     let initial = initial(surface);
     let mut pending = vec![(initial, String::new())];
-    let mut complete = BTreeSet::new();
+    let mut complete = Vec::new();
     let mut explored = 0_usize;
 
     while let Some((state, prefix)) = pending.pop() {
@@ -1038,7 +1047,7 @@ fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
             "writer test exceeded its exploration bound"
         );
         if state.is_accepted() {
-            complete.insert(prefix);
+            complete.push(prefix);
             continue;
         }
 
@@ -1053,6 +1062,10 @@ fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
         }
     }
     complete
+}
+
+fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
+    reachable_terminal_paths(surface).into_iter().collect()
 }
 
 fn permutations<T: Copy>(items: &[T]) -> Vec<Vec<T>> {
@@ -1137,6 +1150,218 @@ fn reference_tree_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
         .atom_ids()
         .flat_map(|root| reference_tree_subtrees(surface, root, None))
         .collect()
+}
+
+fn reference_component_strings(
+    surface: &PreparedNonStereo,
+    component_atoms: &[AtomId],
+) -> BTreeSet<String> {
+    component_atoms
+        .iter()
+        .copied()
+        .flat_map(|root| reference_tree_subtrees(surface, root, None))
+        .collect()
+}
+
+fn reference_component_composition(
+    surface: &PreparedNonStereo,
+    components: &[Vec<AtomId>],
+) -> BTreeSet<String> {
+    let component_support = components
+        .iter()
+        .map(|atoms| reference_component_strings(surface, atoms))
+        .collect::<Vec<_>>();
+    let component_ids = (0..components.len()).collect::<Vec<_>>();
+    let mut support = BTreeSet::new();
+
+    for order in permutations(&component_ids) {
+        let mut partial = BTreeSet::from([String::new()]);
+        for component in order {
+            let mut next = BTreeSet::new();
+            for prefix in &partial {
+                for component_text in &component_support[component] {
+                    let separator = if prefix.is_empty() { "" } else { "." };
+                    next.insert(format!("{prefix}{separator}{component_text}"));
+                }
+            }
+            partial = next;
+        }
+        support.extend(partial);
+    }
+    support
+}
+
+#[test]
+fn empty_and_isolated_component_semantics_are_exact() {
+    let empty = fixture(&[], &[]).0;
+    let empty_initial = initial(&empty);
+    assert!(empty_initial.is_accepted());
+    assert!(empty_initial.choices().unwrap().is_empty());
+    assert_eq!(reachable_strings(&empty), BTreeSet::from([String::new()]));
+
+    let two = fixture(&["A", "B"], &[]).0;
+    assert_eq!(
+        reachable_strings(&two),
+        BTreeSet::from(["A.B".to_owned(), "B.A".to_owned()])
+    );
+
+    let distinct = fixture(&["A", "B", "C"], &[]).0;
+    let distinct_paths = reachable_terminal_paths(&distinct);
+    assert_eq!(distinct_paths.len(), 6);
+    assert_eq!(distinct_paths.iter().collect::<BTreeSet<_>>().len(), 6);
+
+    let identical = fixture(&["C", "C", "C"], &[]).0;
+    let identical_paths = reachable_terminal_paths(&identical);
+    assert_eq!(identical_paths.len(), 6);
+    assert_eq!(
+        identical_paths.into_iter().collect::<BTreeSet<_>>(),
+        BTreeSet::from(["C.C.C".to_owned()])
+    );
+}
+
+#[test]
+fn branch_closure_and_component_separator_have_distinct_tokens() {
+    let (surface, atoms, bonds) = fixture(
+        &["A", "B", "C", "D"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let branch_incident = incident(&surface, atoms[0], bonds[0]);
+    let (root, rooted) = choice_at(&initial, atoms[0].index());
+    let branch_choice = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.successor().pending == Some(PendingEmission::BranchBondOrAtom(branch_incident))
+        })
+        .unwrap();
+    let open = branch_choice.text;
+    let (branch_atom, branch) = only_choice(&branch_choice.successor, "B");
+    let (close, restored) = only_choice(&branch, ")");
+    let (inline_atom, boundary) = only_choice(&restored, "C");
+
+    assert_eq!(boundary.active_atom(), None);
+    assert!(boundary.labels.is_clean());
+    let (separator, pending_root) = only_choice(&boundary, ".");
+    assert_eq!(
+        pending_root.pending,
+        Some(PendingEmission::ComponentRootAtom(atoms[3]))
+    );
+    let (last_atom, accepted) = only_choice(&pending_root, "D");
+
+    assert_eq!(
+        [
+            root,
+            open,
+            branch_atom,
+            close,
+            inline_atom,
+            separator,
+            last_atom,
+        ]
+        .concat(),
+        "A(B)C.D"
+    );
+    assert!(accepted.is_accepted());
+}
+
+#[test]
+fn disconnected_tree_support_matches_component_product() {
+    let (surface, atoms, _) = fixture(
+        &["A", "B", "C", "D", "E", "F"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (2, 3, NonStereoBondToken::Elided),
+            (2, 4, NonStereoBondToken::Double),
+        ],
+    );
+    let components = vec![
+        vec![atoms[0], atoms[1]],
+        vec![atoms[2], atoms[3], atoms[4]],
+        vec![atoms[5]],
+    ];
+
+    assert_eq!(
+        reachable_strings(&surface),
+        reference_component_composition(&surface, &components)
+    );
+}
+
+#[test]
+fn cyclic_components_close_and_reuse_ring_label_one() {
+    let (surface, atoms, bonds) = fixture(
+        &["C", "C", "C", "C", "C", "C"],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (0, 2, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+            (3, 4, NonStereoBondToken::Elided),
+            (3, 5, NonStereoBondToken::Elided),
+            (4, 5, NonStereoBondToken::Elided),
+        ],
+    );
+    let initial = initial(&surface);
+    let (first_root, rooted) = choice_at(&initial, atoms[0].index());
+    let first_opening = rooted.choices().unwrap().into_iter().next().unwrap();
+    assert_eq!(first_opening.text(), "1");
+    let first_open = first_opening.text;
+    let (_, walked) = only_choice(&first_opening.successor, "C");
+    let (_, walked) = only_choice(&walked, "C");
+    let (first_close, boundary) = only_choice(&walked, "1");
+
+    assert_eq!(boundary.active_atom(), None);
+    assert!(boundary.labels.is_clean());
+    assert!(!boundary.graph_is_complete());
+    let dot_choice = boundary
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[3]))
+        .unwrap();
+    assert_eq!(dot_choice.text(), ".");
+    assert_eq!(
+        dot_choice.successor().pending,
+        Some(PendingEmission::ComponentRootAtom(atoms[3]))
+    );
+    let separator = dot_choice.text;
+    let (second_root, rooted) = only_choice(&dot_choice.successor, "C");
+    assert!(rooted.labels.is_clean());
+    let second_opening = rooted.choices().unwrap().into_iter().next().unwrap();
+    assert_eq!(second_opening.text(), "1");
+    let second_open = second_opening.text;
+    let (_, walked) = only_choice(&second_opening.successor, "C");
+    let (_, walked) = only_choice(&walked, "C");
+    let (second_close, accepted) = only_choice(&walked, "1");
+
+    assert_eq!(bonds.len(), 6);
+    assert_eq!(
+        [
+            first_root,
+            first_open,
+            "CC".to_owned(),
+            first_close,
+            separator,
+            second_root,
+            second_open,
+            "CC".to_owned(),
+            second_close,
+        ]
+        .concat(),
+        "C1CC1.C1CC1"
+    );
+    assert!(accepted.labels.is_clean());
+    assert!(accepted.is_accepted());
+
+    let terminal_paths = reachable_terminal_paths(&surface);
+    assert_eq!(terminal_paths.len(), 72);
+    assert_eq!(
+        terminal_paths.into_iter().collect::<BTreeSet<_>>(),
+        BTreeSet::from(["C1CC1.C1CC1".to_owned()])
+    );
 }
 
 #[test]

@@ -9,6 +9,8 @@ use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::BondRole;
 use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
+#[cfg(test)]
+use crate::traversal::ObservedTraversalState;
 use crate::traversal::{IncidentBondState, PathCompletion, TraversalState};
 
 #[cfg(test)]
@@ -102,6 +104,13 @@ pub(crate) struct WriterState<S> {
     constraints: S,
     #[cfg(test)]
     candidate_batch_derivations: Arc<AtomicUsize>,
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ObservedWriterState {
+    pub(crate) traversal: ObservedTraversalState,
+    pub(crate) bond_plan_domains: Vec<Domain>,
 }
 
 impl<S: ConstraintSolver> WriterState<S> {
@@ -488,6 +497,24 @@ impl<S: ConstraintSolver> WriterState<S> {
     #[cfg(test)]
     pub(crate) fn candidate_batch_derivation_count(&self) -> usize {
         self.candidate_batch_derivations.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn observe_raw(&self) -> ObservedWriterState {
+        let bond_plan_domains = self
+            .prepared
+            .graph()
+            .bond_ids()
+            .map(|bond| {
+                self.constraints
+                    .domain(decision_variable(&self.prepared, bond))
+                    .expect("observed bond decision must belong to the prepared solver state")
+            })
+            .collect();
+        ObservedWriterState {
+            traversal: self.traversal.observe_raw(),
+            bond_plan_domains,
+        }
     }
 
     pub(crate) fn enter_committed_inline_child(&self, incident: AdjacentBond) -> Self {

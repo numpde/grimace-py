@@ -13,6 +13,8 @@ use crate::ids::{AtomId, BondId};
 use crate::model::EdgeRolePartition;
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
+#[cfg(test)]
+use crate::writer_state::ObservedWriterState;
 use crate::writer_state::{StructuralCandidate, WriterState};
 
 #[repr(u8)]
@@ -369,6 +371,48 @@ enum PendingEmission {
     },
 }
 
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ObservedPending {
+    ComponentAtom {
+        root: AtomId,
+    },
+    BranchBondOrAtom {
+        parent: AtomId,
+        child: AtomId,
+        bond: BondId,
+    },
+    BranchAtom {
+        parent: AtomId,
+        child: AtomId,
+        bond: BondId,
+    },
+    InlineAtom {
+        parent: AtomId,
+        child: AtomId,
+        bond: BondId,
+    },
+    RingOpeningLabel {
+        bond: BondId,
+        endpoint: AtomId,
+        label: usize,
+    },
+    RingClosureLabel {
+        bond: BondId,
+        endpoint: AtomId,
+        label: usize,
+    },
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ObservedNonStereoState {
+    pub(crate) structural: ObservedWriterState,
+    pub(crate) labels_by_bond: Vec<(BondId, usize)>,
+    pub(crate) pending: Option<ObservedPending>,
+    pub(crate) maximum_spelling_label: usize,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Choice<S> {
     text: String,
@@ -526,6 +570,63 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             && self.labels.is_clean()
             && self.structural.active_atom().is_none()
             && self.structural.graph_is_complete()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn observe_raw(&self) -> ObservedNonStereoState {
+        let structural = self.structural.observe_raw();
+        let active = structural
+            .traversal
+            .active_frame
+            .as_ref()
+            .map(|frame| frame.atom);
+        let active_endpoint = || active.expect("observed pending syntax requires an active atom");
+        let pending = self.pending.map(|pending| match pending {
+            PendingEmission::ComponentRootAtom(root) => ObservedPending::ComponentAtom { root },
+            PendingEmission::InlineAtom(incident) => ObservedPending::InlineAtom {
+                parent: active_endpoint(),
+                child: incident.atom(),
+                bond: incident.bond(),
+            },
+            PendingEmission::BranchBondOrAtom(incident) => ObservedPending::BranchBondOrAtom {
+                parent: active_endpoint(),
+                child: incident.atom(),
+                bond: incident.bond(),
+            },
+            PendingEmission::BranchAtom(incident) => ObservedPending::BranchAtom {
+                parent: active_endpoint(),
+                child: incident.atom(),
+                bond: incident.bond(),
+            },
+            PendingEmission::RingOpeningLabel {
+                incident,
+                label_slot,
+            } => ObservedPending::RingOpeningLabel {
+                bond: incident.bond(),
+                endpoint: active_endpoint(),
+                label: label_slot.index(),
+            },
+            PendingEmission::RingClosureLabel {
+                incident,
+                label_slot,
+            } => ObservedPending::RingClosureLabel {
+                bond: incident.bond(),
+                endpoint: active_endpoint(),
+                label: label_slot.index(),
+            },
+        });
+        let labels_by_bond = self
+            .labels
+            .bonds_by_slot
+            .iter()
+            .map(|(slot, bond)| (*bond, slot.index()))
+            .collect();
+        ObservedNonStereoState {
+            structural,
+            labels_by_bond,
+            pending,
+            maximum_spelling_label: self.labels.maximum_spelling_label(),
+        }
     }
 
     pub(crate) fn choices(&self) -> Result<Vec<Choice<Self>>, ChoiceFailure<S::Failure>> {

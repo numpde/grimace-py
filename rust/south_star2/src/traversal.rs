@@ -74,6 +74,39 @@ enum BondProgress {
     },
 }
 
+#[cfg(test)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ObservedBondProgress {
+    Unrepresented,
+    Traversed {
+        from: AtomId,
+        to: AtomId,
+    },
+    RingOpen {
+        first_endpoint: AtomId,
+    },
+    RingClosed {
+        first_endpoint: AtomId,
+        second_endpoint: AtomId,
+    },
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ObservedFrame {
+    pub(crate) atom: AtomId,
+    pub(crate) attachment_groups: Vec<Vec<AdjacentBond>>,
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ObservedTraversalState {
+    pub(crate) visited_atoms: Vec<AtomId>,
+    pub(crate) bond_progress: Vec<ObservedBondProgress>,
+    pub(crate) active_frame: Option<ObservedFrame>,
+    pub(crate) branch_returns: Vec<ObservedFrame>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct GraphProgress {
     visited_atoms: DenseSet,
@@ -578,6 +611,53 @@ impl TraversalState {
     #[cfg(test)]
     pub(crate) fn atom_is_visited(&self, atom: AtomId) -> bool {
         self.progress.atom_is_visited(atom)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn observe_raw(&self) -> ObservedTraversalState {
+        let visited_atoms = (0..self.progress.visited_atoms.universe_len)
+            .filter(|index| self.progress.visited_atoms.contains(*index))
+            .map(|index| AtomId::new(u32::try_from(index).unwrap()))
+            .collect();
+        let bond_progress = (0..self.progress.bonds.len())
+            .map(|index| match self.progress.bonds[index] {
+                BondProgress::Unrepresented => ObservedBondProgress::Unrepresented,
+                BondProgress::Traversed { from, to } => {
+                    ObservedBondProgress::Traversed { from, to }
+                }
+                BondProgress::RingOpen { first_endpoint } => {
+                    ObservedBondProgress::RingOpen { first_endpoint }
+                }
+                BondProgress::RingClosed {
+                    first_endpoint,
+                    second_endpoint,
+                } => ObservedBondProgress::RingClosed {
+                    first_endpoint,
+                    second_endpoint,
+                },
+            })
+            .collect();
+        let observe_frame = |frame: &WriterFrame| ObservedFrame {
+            atom: frame.atom,
+            attachment_groups: frame
+                .attachments
+                .iter()
+                .map(|attachment| attachment.incidences.clone())
+                .collect(),
+        };
+        let active_frame = self.active.as_deref().map(&observe_frame);
+        let mut branch_returns = Vec::new();
+        let mut cursor = self.branch_returns.as_deref();
+        while let Some(node) = cursor {
+            branch_returns.push(observe_frame(node.frame.as_ref()));
+            cursor = node.parent.as_deref();
+        }
+        ObservedTraversalState {
+            visited_atoms,
+            bond_progress,
+            active_frame,
+            branch_returns,
+        }
     }
 
     pub(crate) fn path_completion(&self) -> Option<PathCompletion> {

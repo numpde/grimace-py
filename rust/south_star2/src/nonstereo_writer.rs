@@ -1252,3 +1252,7 @@ fn ring_label_number_text(label: usize) -> String {
 #[cfg(test)]
 #[path = "nonstereo_writer_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "nonstereo_transition_oracle.rs"]
+mod transition_oracle;

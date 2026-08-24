@@ -3,8 +3,11 @@
 ## Objective
 
 Before tetrahedral semantics changes the writer relation, qualify the complete
-prepared non-stereo kernel against a test-only transition model that is
-algorithmically and representationally independent of production.
+prepared non-stereo kernel against a test-only transition model with independent
+preparation, state representation, graph algorithms, and exact projection.
+The transition policy itself is necessarily the normative law stated in this
+note; the oracle restates that law directly instead of importing production
+frontiers or transition helpers.
 
 For every bounded reachable state, compare production and oracle choices as:
 
@@ -62,6 +65,11 @@ to every current domain. This scope is specific to the present prepared
 non-stereo model, which has no cross-component semantic factor.
 
 ## Transition law
+
+The oracle first enumerates a finite local action universe containing every
+root, endpoint spelling, child mode, and branch close. A declarative
+admissibility predicate filters that universe from raw oracle facts. It does
+not construct a production-shaped frontier.
 
 The unrooted initial state exposes every atom as a distinct root. The first root
 emits its atom. A later `.` choice has already selected, visited, and activated
@@ -132,8 +140,10 @@ groups and recomputes acceptance itself. Persistent identity, residual
 component IDs, queues, counters, and allocation layout are excluded.
 
 If two production states share the declared semantic snapshot, their projected
-choice sets must also agree. A disagreement means either the snapshot omitted a
-semantic fact or production depends on nonsemantic state.
+choice sets must also agree. Both production instances continue through the
+bounded transition DAG, so a later hidden-state divergence is not pruned. A
+disagreement means either the snapshot omitted a semantic fact or production
+depends on nonsemantic state.
 
 For each stack position, the production frame's stored attachments are compared
 with attachments independently recomputed for the oracle's corresponding

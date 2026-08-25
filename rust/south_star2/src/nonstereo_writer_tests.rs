@@ -445,6 +445,130 @@ fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
 }
 
 #[test]
+fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 5] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds: [BondId; 4] =
+        std::array::from_fn(|index| graph.add_bond(atoms[0], atoms[index + 1]).unwrap());
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: bonds.map(TetrahedralLigand::Bond),
+                text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    )
+    .unwrap();
+    let model = surface.molecule().constraint_model();
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+
+    assert_eq!(model.variable_count(), bonds.len() + 1);
+    assert_eq!(model.factor_count(), 1);
+    assert_eq!(
+        model
+            .variable(center.order_variable)
+            .unwrap()
+            .initial_domain(),
+        full_order_domain()
+    );
+}
+
+#[test]
+fn surface_rejects_invalid_tetrahedral_bindings() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds: [BondId; 3] =
+        std::array::from_fn(|index| graph.add_bond(atoms[0], atoms[index + 1]).unwrap());
+    let molecule = PreparedMolecule::new(graph.build());
+    let fixed = || {
+        vec![
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("C".to_owned()),
+        ]
+    };
+    let prepare = |reference_order, text_by_parity| {
+        let mut atoms = vec![PreparedAtomToken::Tetrahedral {
+            reference_order,
+            text_by_parity,
+        }];
+        atoms.extend(fixed());
+        PreparedNonStereo::with_atom_tokens(
+            molecule.clone(),
+            atoms,
+            vec![NonStereoBondToken::Elided; bonds.len()],
+        )
+    };
+
+    assert!(matches!(
+        prepare(
+            [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::Bond(bonds[2]),
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            [String::new(), "[C@@H]".to_owned()],
+        ),
+        Err(PreparedNonStereoError::EmptyTetrahedralAtomText(atom)) if atom == atoms[0]
+    ));
+    assert!(matches!(
+        prepare(
+            [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::Bond(bonds[2]),
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            ["[C@H]".to_owned(), "[C@H]".to_owned()],
+        ),
+        Err(PreparedNonStereoError::RepeatedTetrahedralAtomText(atom)) if atom == atoms[0]
+    ));
+    assert!(matches!(
+        prepare(
+            [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::VirtualHydrogen,
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+        ),
+        Err(PreparedNonStereoError::MultipleVirtualHydrogens(atom)) if atom == atoms[0]
+    ));
+    assert!(matches!(
+        prepare(
+            [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+        ),
+        Err(PreparedNonStereoError::RepeatedTetrahedralLigand(atom)) if atom == atoms[0]
+    ));
+    assert!(matches!(
+        prepare(
+            [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::Bond(bonds[1]),
+                TetrahedralLigand::Bond(BondId::new(99)),
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+        ),
+        Err(PreparedNonStereoError::TetrahedralLigandsDoNotMatchGraph(atom)) if atom == atoms[0]
+    ));
+}
+
+#[test]
 fn top_level_component_completion_is_silent_normalization() {
     let (surface, atoms, _) = fixture(&["A", "B"], &[]);
     let initial = initial(&surface);

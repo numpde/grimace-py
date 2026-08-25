@@ -4,15 +4,19 @@
 //! concrete non-stereo spelling facts, live ring-label assignments, and the
 //! small lexical commitments forced by multi-token SMILES constructs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
-use crate::ids::{AtomId, BondId};
+use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::EdgeRolePartition;
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
+use crate::tetrahedral::{
+    full_order_domain, parity_domain, prefix_domain, singleton_order, TetrahedralLigand,
+    TetrahedralParity,
+};
 #[cfg(test)]
 use crate::writer_state::ObservedWriterState;
 use crate::writer_state::{StructuralCandidate, WriterState};
@@ -145,8 +149,71 @@ impl NonStereoBondToken {
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
-    atom_text: Arc<[Box<str>]>,
+    atoms: Arc<[PreparedAtom]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum PreparedAtomToken {
+    Fixed(String),
+    Tetrahedral {
+        reference_order: [TetrahedralLigand; 4],
+        text_by_parity: [String; 2],
+    },
+}
+
+#[derive(Clone, Debug)]
+enum PreparedAtom {
+    Fixed(Box<str>),
+    Tetrahedral(PreparedTetrahedralCenter),
+}
+
+#[derive(Clone, Debug)]
+struct PreparedTetrahedralCenter {
+    reference_order: [TetrahedralLigand; 4],
+    text_by_parity: [Box<str>; 2],
+    order_variable: VariableId,
+}
+
+impl PreparedTetrahedralCenter {
+    fn context_prefix(&self, entry_bond: Option<BondId>) -> Vec<TetrahedralLigand> {
+        let mut prefix = Vec::with_capacity(2);
+        if let Some(bond) = entry_bond {
+            prefix.push(TetrahedralLigand::Bond(bond));
+        }
+        if self
+            .reference_order
+            .contains(&TetrahedralLigand::VirtualHydrogen)
+        {
+            prefix.push(TetrahedralLigand::VirtualHydrogen);
+        }
+        prefix
+    }
+
+    fn token_domain(&self, entry_bond: Option<BondId>, parity: TetrahedralParity) -> Domain {
+        prefix_domain(&self.reference_order, &self.context_prefix(entry_bond))
+            .intersect(parity_domain(parity))
+    }
+
+    fn prefix_domain_with_bond_order(
+        &self,
+        entry_bond: Option<BondId>,
+        committed_bonds: &[BondId],
+    ) -> Domain {
+        let mut prefix = self.context_prefix(entry_bond);
+        prefix.extend(committed_bonds.iter().copied().map(TetrahedralLigand::Bond));
+        prefix_domain(&self.reference_order, &prefix)
+    }
+
+    fn completed_order_domain(
+        &self,
+        entry_bond: Option<BondId>,
+        committed_bonds: &[BondId],
+    ) -> Domain {
+        let mut order = self.context_prefix(entry_bond);
+        order.extend(committed_bonds.iter().copied().map(TetrahedralLigand::Bond));
+        singleton_order(&self.reference_order, &order)
+    }
 }
 
 impl PreparedNonStereo {
@@ -155,11 +222,26 @@ impl PreparedNonStereo {
         atom_text: Vec<String>,
         bond_tokens: Vec<NonStereoBondToken>,
     ) -> Result<Self, PreparedNonStereoError> {
+        Self::with_atom_tokens(
+            molecule,
+            atom_text
+                .into_iter()
+                .map(PreparedAtomToken::Fixed)
+                .collect(),
+            bond_tokens,
+        )
+    }
+
+    pub(crate) fn with_atom_tokens(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+    ) -> Result<Self, PreparedNonStereoError> {
         let graph = molecule.graph();
-        if atom_text.len() != graph.atom_count() {
+        if atoms.len() != graph.atom_count() {
             return Err(PreparedNonStereoError::AtomTextCountMismatch {
                 expected: graph.atom_count(),
-                actual: atom_text.len(),
+                actual: atoms.len(),
             });
         }
         if bond_tokens.len() != graph.bond_count() {
@@ -168,10 +250,8 @@ impl PreparedNonStereo {
                 actual: bond_tokens.len(),
             });
         }
-        for (atom, text) in graph.atom_ids().zip(&atom_text) {
-            if text.is_empty() {
-                return Err(PreparedNonStereoError::EmptyAtomText(atom));
-            }
+        for (atom, prepared) in graph.atom_ids().zip(&atoms) {
+            validate_prepared_atom(graph, atom, prepared)?;
         }
         let decision_domains = bond_tokens
             .iter()
@@ -179,18 +259,27 @@ impl PreparedNonStereo {
             .map(NonStereoBondToken::representation_domain)
             .collect::<Vec<_>>();
         let role_partitions = vec![BondRepresentation::role_partition(); graph.bond_count()];
-        let molecule =
-            PreparedMolecule::with_bond_decisions(&molecule, &decision_domains, &role_partitions);
+        let mut assembly =
+            PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
+        let atoms = atoms
+            .into_iter()
+            .map(|prepared| match prepared {
+                PreparedAtomToken::Fixed(text) => PreparedAtom::Fixed(text.into_boxed_str()),
+                PreparedAtomToken::Tetrahedral {
+                    reference_order,
+                    text_by_parity,
+                } => PreparedAtom::Tetrahedral(PreparedTetrahedralCenter {
+                    reference_order,
+                    text_by_parity: text_by_parity.map(String::into_boxed_str),
+                    order_variable: assembly.add_isolated_variable(full_order_domain()),
+                }),
+            })
+            .collect::<Vec<_>>();
+        let molecule = assembly.finish();
 
         Ok(Self {
             molecule,
-            atom_text: Arc::from(
-                atom_text
-                    .into_iter()
-                    .map(String::into_boxed_str)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
+            atoms: Arc::from(atoms.into_boxed_slice()),
             bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
         })
     }
@@ -200,10 +289,23 @@ impl PreparedNonStereo {
     }
 
     fn atom_text(&self, atom: AtomId) -> &str {
-        self.atom_text
+        let prepared = self
+            .atoms
             .get(atom.index())
-            .map(AsRef::as_ref)
-            .expect("prepared atom text must match the bound molecule")
+            .expect("prepared atom text must match the bound molecule");
+        match prepared {
+            PreparedAtom::Fixed(text) => text,
+            PreparedAtom::Tetrahedral(_) => {
+                panic!("tetrahedral atom text requires a parity choice")
+            }
+        }
+    }
+
+    fn tetrahedral_center(&self, atom: AtomId) -> Option<&PreparedTetrahedralCenter> {
+        match self.atoms.get(atom.index())? {
+            PreparedAtom::Fixed(_) => None,
+            PreparedAtom::Tetrahedral(center) => Some(center),
+        }
     }
 
     fn bond_text(&self, bond: BondId, from: AtomId) -> &'static str {
@@ -244,11 +346,71 @@ impl PreparedNonStereo {
     }
 }
 
+fn validate_prepared_atom(
+    graph: &crate::prepared::PreparedGraph,
+    atom: AtomId,
+    prepared: &PreparedAtomToken,
+) -> Result<(), PreparedNonStereoError> {
+    match prepared {
+        PreparedAtomToken::Fixed(text) => {
+            if text.is_empty() {
+                return Err(PreparedNonStereoError::EmptyAtomText(atom));
+            }
+        }
+        PreparedAtomToken::Tetrahedral {
+            reference_order,
+            text_by_parity,
+        } => {
+            if text_by_parity.iter().any(String::is_empty) {
+                return Err(PreparedNonStereoError::EmptyTetrahedralAtomText(atom));
+            }
+            if text_by_parity[0] == text_by_parity[1] {
+                return Err(PreparedNonStereoError::RepeatedTetrahedralAtomText(atom));
+            }
+            let hydrogen_count = reference_order
+                .iter()
+                .filter(|ligand| **ligand == TetrahedralLigand::VirtualHydrogen)
+                .count();
+            if hydrogen_count > 1 {
+                return Err(PreparedNonStereoError::MultipleVirtualHydrogens(atom));
+            }
+            let ligand_set = reference_order.iter().copied().collect::<BTreeSet<_>>();
+            if ligand_set.len() != reference_order.len() {
+                return Err(PreparedNonStereoError::RepeatedTetrahedralLigand(atom));
+            }
+            let prepared_bonds = reference_order
+                .iter()
+                .filter_map(|ligand| match ligand {
+                    TetrahedralLigand::Bond(bond) => Some(*bond),
+                    TetrahedralLigand::VirtualHydrogen => None,
+                })
+                .collect::<BTreeSet<_>>();
+            let incident_bonds = graph
+                .neighbors(atom)
+                .expect("prepared atom must belong to its graph")
+                .iter()
+                .map(|incident| incident.bond())
+                .collect::<BTreeSet<_>>();
+            if prepared_bonds != incident_bonds {
+                return Err(PreparedNonStereoError::TetrahedralLigandsDoNotMatchGraph(
+                    atom,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PreparedNonStereoError {
     AtomTextCountMismatch { expected: usize, actual: usize },
     BondTokenCountMismatch { expected: usize, actual: usize },
     EmptyAtomText(AtomId),
+    EmptyTetrahedralAtomText(AtomId),
+    RepeatedTetrahedralAtomText(AtomId),
+    RepeatedTetrahedralLigand(AtomId),
+    MultipleVirtualHydrogens(AtomId),
+    TetrahedralLigandsDoNotMatchGraph(AtomId),
 }
 
 impl fmt::Display for PreparedNonStereoError {
@@ -265,6 +427,28 @@ impl fmt::Display for PreparedNonStereoError {
             Self::EmptyAtomText(atom) => write!(
                 formatter,
                 "prepared atom text for {atom:?} must not be empty"
+            ),
+            Self::EmptyTetrahedralAtomText(atom) => write!(
+                formatter,
+                "prepared tetrahedral atom texts for {atom:?} must not be empty"
+            ),
+            Self::RepeatedTetrahedralAtomText(atom) => write!(
+                formatter,
+                "prepared tetrahedral atom texts for {atom:?} must be distinct"
+            ),
+            Self::RepeatedTetrahedralLigand(atom) => {
+                write!(
+                    formatter,
+                    "prepared tetrahedral ligands for {atom:?} repeat"
+                )
+            }
+            Self::MultipleVirtualHydrogens(atom) => write!(
+                formatter,
+                "prepared tetrahedral center {atom:?} has multiple virtual hydrogens"
+            ),
+            Self::TetrahedralLigandsDoNotMatchGraph(atom) => write!(
+                formatter,
+                "prepared tetrahedral ligands for {atom:?} do not match its graph incidences"
             ),
         }
     }

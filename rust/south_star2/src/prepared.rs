@@ -149,19 +149,20 @@ impl PreparedMolecule {
         Self::from_decisions(Arc::clone(&source.graph), initial_domains, role_partitions)
     }
 
+    pub(crate) fn constraint_assembly(
+        source: &Self,
+        initial_domains: &[Domain],
+        role_partitions: &[EdgeRolePartition],
+    ) -> PreparedConstraintAssembly {
+        PreparedConstraintAssembly::new(Arc::clone(&source.graph), initial_domains, role_partitions)
+    }
+
     fn from_decisions(
         graph: Arc<PreparedGraph>,
         initial_domains: &[Domain],
         role_partitions: &[EdgeRolePartition],
     ) -> Self {
-        let (constraints, bond_decision_variables) =
-            compile_graph_constraints(&graph, initial_domains, role_partitions);
-        Self {
-            graph,
-            constraints: Arc::new(constraints),
-            bond_decision_variables: Arc::from(bond_decision_variables),
-            bond_role_partitions: Arc::from(role_partitions),
-        }
+        PreparedConstraintAssembly::new(graph, initial_domains, role_partitions).finish()
     }
 
     pub fn graph(&self) -> &PreparedGraph {
@@ -185,40 +186,70 @@ impl PreparedMolecule {
     }
 }
 
-fn compile_graph_constraints(
-    graph: &PreparedGraph,
-    initial_domains: &[Domain],
-    role_partitions: &[EdgeRolePartition],
-) -> (ConstraintModel, Box<[VariableId]>) {
-    let mut builder = ConstraintModelBuilder::new();
-    let mut bond_decision_variables = Vec::with_capacity(graph.bond_count());
+pub(crate) struct PreparedConstraintAssembly {
+    graph: Arc<PreparedGraph>,
+    builder: ConstraintModelBuilder,
+    bond_decision_variables: Vec<VariableId>,
+    bond_role_partitions: Box<[EdgeRolePartition]>,
+}
 
-    for bond in graph.bond_ids() {
-        bond_decision_variables.push(
-            builder
-                .add_variable(initial_domains[bond.index()])
-                .expect("prepared bond decisions must fit the constraint identifier space"),
-        );
+impl PreparedConstraintAssembly {
+    fn new(
+        graph: Arc<PreparedGraph>,
+        initial_domains: &[Domain],
+        role_partitions: &[EdgeRolePartition],
+    ) -> Self {
+        assert_eq!(initial_domains.len(), graph.bond_count());
+        assert_eq!(role_partitions.len(), graph.bond_count());
+        let mut builder = ConstraintModelBuilder::new();
+        let mut bond_decision_variables = Vec::with_capacity(graph.bond_count());
+
+        for bond in graph.bond_ids() {
+            bond_decision_variables.push(
+                builder
+                    .add_variable(initial_domains[bond.index()])
+                    .expect("prepared bond decisions must fit the constraint identifier space"),
+            );
+        }
+        Self {
+            graph,
+            builder,
+            bond_decision_variables,
+            bond_role_partitions: role_partitions.into(),
+        }
     }
 
-    for component in graph.components() {
-        let edges = component.bonds().iter().map(|bond_id| {
-            let bond = graph
-                .bond(*bond_id)
-                .expect("component bond must belong to the prepared graph");
-            SpanningTreeEdge::with_role_partition(
-                bond_decision_variables[bond_id.index()],
-                bond.a(),
-                bond.b(),
-                role_partitions[bond_id.index()],
-            )
-        });
-        builder
-            .add_spanning_tree(component.atoms().iter().copied(), edges)
-            .expect("prepared components must define valid spanning-tree factors");
+    pub(crate) fn add_isolated_variable(&mut self, initial_domain: Domain) -> VariableId {
+        self.builder
+            .add_variable(initial_domain)
+            .expect("prepared semantic variables must fit the constraint identifier space")
     }
 
-    (builder.build(), bond_decision_variables.into_boxed_slice())
+    pub(crate) fn finish(mut self) -> PreparedMolecule {
+        for component in self.graph.components() {
+            let edges = component.bonds().iter().map(|bond_id| {
+                let bond = self
+                    .graph
+                    .bond(*bond_id)
+                    .expect("component bond must belong to the prepared graph");
+                SpanningTreeEdge::with_role_partition(
+                    self.bond_decision_variables[bond_id.index()],
+                    bond.a(),
+                    bond.b(),
+                    self.bond_role_partitions[bond_id.index()],
+                )
+            });
+            self.builder
+                .add_spanning_tree(component.atoms().iter().copied(), edges)
+                .expect("prepared components must define valid spanning-tree factors");
+        }
+        PreparedMolecule {
+            graph: self.graph,
+            constraints: Arc::new(self.builder.build()),
+            bond_decision_variables: Arc::from(self.bond_decision_variables),
+            bond_role_partitions: Arc::from(self.bond_role_partitions),
+        }
+    }
 }
 
 #[derive(Debug, Default)]

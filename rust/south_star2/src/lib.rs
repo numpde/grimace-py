@@ -17,6 +17,7 @@ mod nonstereo_writer;
 mod persistent;
 mod prepared;
 mod solver;
+mod tetrahedral;
 mod traversal;
 mod writer_state;
 

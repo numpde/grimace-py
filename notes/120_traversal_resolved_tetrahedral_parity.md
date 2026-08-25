@@ -152,8 +152,9 @@ order/role relation.
 
 ## Completion
 
-Before `CloseBranch` discards an active tetrahedral frame, or silent
-`FinishComponent` discards a top-level frame:
+Before `CloseBranch` discards an active tetrahedral frame, silent
+`FinishComponent` discards a top-level frame, or inline child entry replaces
+its completed parent frame:
 
 ```text
 entry bond, optional H, and committed bonds contain all four ligands

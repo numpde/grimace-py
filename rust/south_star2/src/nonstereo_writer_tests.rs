@@ -201,10 +201,12 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
     }
 }
 
+// These deliberate contract violations exercise writer failure classification,
+// not solver-backend conformance.
 #[derive(Clone, Debug)]
-struct RejectTetrahedralParitySolver(NativeSolverState);
+struct NonconformingRejectTetrahedralParitySolver(NativeSolverState);
 
-impl ConstraintSolver for RejectTetrahedralParitySolver {
+impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
     type Failure = InjectedSolverFailure;
 
     fn initial(
@@ -238,9 +240,9 @@ impl ConstraintSolver for RejectTetrahedralParitySolver {
 }
 
 #[derive(Clone, Debug)]
-struct RejectEvenTetrahedralParitySolver(NativeSolverState);
+struct NonconformingRejectEvenTetrahedralParitySolver(NativeSolverState);
 
-impl ConstraintSolver for RejectEvenTetrahedralParitySolver {
+impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
     type Failure = InjectedSolverFailure;
 
     fn initial(
@@ -344,9 +346,9 @@ impl ConstraintSolver for CountTetrahedralRestrictionsSolver {
 }
 
 #[derive(Clone, Debug)]
-struct NonProjectingTetrahedralTestSolver(NativeSolverState);
+struct NonconformingNonProjectingTetrahedralSolver(NativeSolverState);
 
-impl ConstraintSolver for NonProjectingTetrahedralTestSolver {
+impl ConstraintSolver for NonconformingNonProjectingTetrahedralSolver {
     type Failure = NativeSolverFailure;
 
     fn initial(
@@ -1303,9 +1305,10 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
 #[test]
 fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
     let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
-    let initial = NonStereoWriterState::<NonProjectingTetrahedralTestSolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
+    let initial =
+        NonStereoWriterState::<NonconformingNonProjectingTetrahedralSolver>::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
     let mut parent = initial
         .choices()
         .unwrap()
@@ -1459,14 +1462,15 @@ fn ring_capable_tetrahedral_center_trips_only_at_its_atom_event() {
         vec![NonStereoBondToken::Elided; bonds.len()],
     )
     .unwrap();
-    let state = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
+    let state =
+        NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
 
     assert!(matches!(
         state.choices(),
-        Err(ChoiceFailure::Invariant(
-            WriterInvariantFailure::TetrahedralRingCouplingUnimplemented { atom }
+        Err(ChoiceFailure::Incomplete(
+            WriterIncompleteness::TetrahedralRingCoupling { atom }
         )) if atom == atoms[0]
     ));
 }
@@ -1474,9 +1478,10 @@ fn ring_capable_tetrahedral_center_trips_only_at_its_atom_event() {
 #[test]
 fn contradictory_tetrahedral_token_is_filtered_without_suppressing_its_sibling() {
     let (surface, atoms, _) = tetrahedral_star_fixture(4);
-    let state = NonStereoWriterState::<RejectEvenTetrahedralParitySolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
+    let state =
+        NonStereoWriterState::<NonconformingRejectEvenTetrahedralParitySolver>::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
     let source = state.observe_raw();
     let center_choices = state
         .choices()
@@ -1507,9 +1512,10 @@ fn backend_failure_aborts_the_tetrahedral_atom_token_batch() {
 #[test]
 fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
     let (surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
-    let initial = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
+    let initial =
+        NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
     let parent = initial
         .choices()
         .unwrap()
@@ -1529,9 +1535,10 @@ fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
 #[test]
 fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
     let (surface, atoms, bonds) = entered_tetrahedral_fixture(NonStereoBondToken::Elided, true);
-    let initial = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
+    let initial =
+        NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
     let parent = initial
         .choices()
         .unwrap()

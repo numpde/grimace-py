@@ -143,7 +143,8 @@ not select parity or inspect future graph choices.
 
 Before generating tetrahedral atom-token alternatives, every incident bond's
 projected role must be exactly `Traversal`. If any incident bond still supports
-`Ring`, choice generation reports a typed internal incompleteness for that
+`Ring`, choice generation reports `ChoiceFailure::Incomplete` with a typed
+`WriterIncompleteness::TetrahedralRingCoupling` reason for that
 local atom event.
 
 Preparation does not reject such centers or classify supported topology. The
@@ -199,7 +200,7 @@ and public model mutation have no consumer here.
   corrupt local order.
 - Completion checks must inspect the frame being discarded, not the parent
   restored afterward.
-- The traversal-only tripwire must abort incomplete choice generation rather
+- The traversal-only tripwire must abort with implementation incompleteness rather
   than silently filter a candidate.
 - Adding isolated variables must not create an exact-search descriptor or scan
   unrelated bond domains.

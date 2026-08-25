@@ -637,14 +637,16 @@ enum CandidateRejection {
 enum CandidateAttempt<S, E> {
     Accepted { text: String, successor: S },
     Rejected { reason: CandidateRejection },
-    Incomplete(WriterInvariantFailure),
+    Incomplete(WriterIncompleteness),
+    Invariant(WriterInvariantFailure),
     Failed(E),
 }
 
 enum SuccessorAttempt<S, E> {
     Accepted(S),
     Rejected(CandidateRejection),
-    Incomplete(WriterInvariantFailure),
+    Incomplete(WriterIncompleteness),
+    Invariant(WriterInvariantFailure),
     Failed(E),
 }
 
@@ -655,7 +657,9 @@ fn collect_attempts_fail_fast<S, E>(
     for attempt in attempts {
         let stop = matches!(
             attempt,
-            CandidateAttempt::Incomplete(_) | CandidateAttempt::Failed(_)
+            CandidateAttempt::Incomplete(_)
+                | CandidateAttempt::Invariant(_)
+                | CandidateAttempt::Failed(_)
         );
         collected.push(attempt);
         if stop {
@@ -692,12 +696,29 @@ impl fmt::Display for SpellingFailure {
 impl std::error::Error for SpellingFailure {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WriterIncompleteness {
+    TetrahedralRingCoupling { atom: AtomId },
+}
+
+impl fmt::Display for WriterIncompleteness {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TetrahedralRingCoupling { atom } => write!(
+                formatter,
+                "tetrahedral atom {atom:?} still has a ring-capable incident bond"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WriterIncompleteness {}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WriterInvariantFailure {
     StructuralContradiction,
     NoStructuralCandidates,
     PendingEmissionRejected,
     AllCandidatesSemanticallyRejected { candidate_count: usize },
-    TetrahedralRingCouplingUnimplemented { atom: AtomId },
     UnresolvedTetrahedralFrame { atom: AtomId },
 }
 
@@ -717,10 +738,6 @@ impl fmt::Display for WriterInvariantFailure {
                 formatter,
                 "all {candidate_count} structural candidate(s) contradicted immediate writer consistency"
             ),
-            Self::TetrahedralRingCouplingUnimplemented { atom } => write!(
-                formatter,
-                "tetrahedral atom {atom:?} still has a ring-capable incident bond"
-            ),
             Self::UnresolvedTetrahedralFrame { atom } => write!(
                 formatter,
                 "tetrahedral atom {atom:?} completed without one exact procedural ligand order"
@@ -735,6 +752,7 @@ impl std::error::Error for WriterInvariantFailure {}
 pub(crate) enum ChoiceFailure<E> {
     Backend(E),
     Spelling(SpellingFailure),
+    Incomplete(WriterIncompleteness),
     Invariant(WriterInvariantFailure),
 }
 
@@ -743,6 +761,9 @@ impl<E: fmt::Display> fmt::Display for ChoiceFailure<E> {
         match self {
             Self::Backend(failure) => write!(formatter, "constraint backend failure: {failure}"),
             Self::Spelling(failure) => failure.fmt(formatter),
+            Self::Incomplete(failure) => {
+                write!(formatter, "writer implementation incomplete: {failure}")
+            }
             Self::Invariant(failure) => write!(formatter, "writer invariant failure: {failure}"),
         }
     }
@@ -753,6 +774,7 @@ impl<E: std::error::Error + 'static> std::error::Error for ChoiceFailure<E> {
         match self {
             Self::Backend(failure) => Some(failure),
             Self::Spelling(failure) => Some(failure),
+            Self::Incomplete(failure) => Some(failure),
             Self::Invariant(failure) => Some(failure),
         }
     }
@@ -887,6 +909,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         }
                     },
                     CandidateAttempt::Incomplete(failure) => {
+                        return Err(ChoiceFailure::Incomplete(failure));
+                    }
+                    CandidateAttempt::Invariant(failure) => {
                         return Err(ChoiceFailure::Invariant(failure));
                     }
                     CandidateAttempt::Failed(failure) => {
@@ -959,6 +984,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         }
                     },
                     CandidateAttempt::Incomplete(failure) => {
+                        return Err(ChoiceFailure::Incomplete(failure));
+                    }
+                    CandidateAttempt::Invariant(failure) => {
                         return Err(ChoiceFailure::Invariant(failure));
                     }
                     CandidateAttempt::Failed(failure) => {
@@ -1060,6 +1088,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                     SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
                     SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
+                    SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
                     SuccessorAttempt::Failed(failure) => return Err(failure),
                 },
                 RingEndpointSpelling::Emit => {
@@ -1073,7 +1102,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             };
             match attempt {
                 CandidateAttempt::Failed(failure) => return Err(failure),
-                CandidateAttempt::Incomplete(_) => {
+                CandidateAttempt::Incomplete(_) | CandidateAttempt::Invariant(_) => {
                     attempts.push(attempt);
                     break;
                 }
@@ -1152,6 +1181,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         SuccessorAttempt::Incomplete(failure) => {
                             CandidateAttempt::Incomplete(failure)
                         }
+                        SuccessorAttempt::Invariant(failure) => {
+                            CandidateAttempt::Invariant(failure)
+                        }
                         SuccessorAttempt::Failed(failure) => {
                             return Err(failure);
                         }
@@ -1179,7 +1211,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             };
             match attempt {
                 CandidateAttempt::Failed(failure) => return Err(failure),
-                CandidateAttempt::Incomplete(_) => {
+                CandidateAttempt::Incomplete(_) | CandidateAttempt::Invariant(_) => {
                     attempts.push(attempt);
                     break;
                 }
@@ -1252,7 +1284,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         &self,
         structural: &WriterState<S>,
         atom: AtomId,
-    ) -> Result<(), WriterInvariantFailure> {
+    ) -> Result<(), WriterIncompleteness> {
         if self.surface.tetrahedral_center(atom).is_none() {
             return Ok(());
         }
@@ -1270,7 +1302,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 .expect("prepared tetrahedral incidence must have a role partition");
             let current = structural.bond_decision_domain(incident.bond());
             if !current.is_subset_of(partition.traversal_values()) {
-                return Err(WriterInvariantFailure::TetrahedralRingCouplingUnimplemented { atom });
+                return Err(WriterIncompleteness::TetrahedralRingCoupling { atom });
             }
         }
         Ok(())
@@ -1417,7 +1449,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 if let Err(failure) =
                                     self.validate_active_tetrahedral_completion(&structural)
                                 {
-                                    return CandidateAttempt::Incomplete(failure);
+                                    return CandidateAttempt::Invariant(failure);
                                 }
                                 self.finish_attempt(
                                     text,
@@ -1445,7 +1477,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                     };
                     if let Err(failure) = self.validate_active_tetrahedral_completion(&structural) {
-                        return vec![CandidateAttempt::Incomplete(failure)];
+                        return vec![CandidateAttempt::Invariant(failure)];
                     }
                     vec![self.finish_attempt(
                         bond_text.to_owned(),
@@ -1461,7 +1493,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             StructuralCandidate::CloseBranch => {
                 if let Err(failure) = self.validate_active_tetrahedral_completion(&self.structural)
                 {
-                    return vec![CandidateAttempt::Incomplete(failure)];
+                    return vec![CandidateAttempt::Invariant(failure)];
                 }
                 let structural = match self.structural.attempt_candidate(candidate) {
                     Ok(Consistency::Consistent(structural)) => structural,
@@ -1634,6 +1666,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             }
             SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
             SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
+            SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
             SuccessorAttempt::Failed(failure) => CandidateAttempt::Failed(failure),
         }
     }
@@ -1643,6 +1676,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             SuccessorAttempt::Accepted(successor) => CandidateAttempt::Accepted { text, successor },
             SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
             SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
+            SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
             SuccessorAttempt::Failed(failure) => CandidateAttempt::Failed(failure),
         }
     }
@@ -1667,6 +1701,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     },
                     CandidateAttempt::Incomplete(failure) => {
                         return SuccessorAttempt::Incomplete(failure);
+                    }
+                    CandidateAttempt::Invariant(failure) => {
+                        return SuccessorAttempt::Invariant(failure);
                     }
                     CandidateAttempt::Failed(failure) => {
                         return SuccessorAttempt::Failed(failure);
@@ -1703,7 +1740,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 "a component cannot finish with open visible ring labels"
             );
             if let Err(failure) = self.validate_active_tetrahedral_completion(&self.structural) {
-                return SuccessorAttempt::Incomplete(failure);
+                return SuccessorAttempt::Invariant(failure);
             }
             self.structural = match self
                 .structural

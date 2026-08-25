@@ -93,7 +93,7 @@ impl NativeSolverState {
     }
 
     #[cfg(test)]
-    fn exact_run_counts(&self) -> (usize, usize) {
+    pub(crate) fn exact_run_counts(&self) -> (usize, usize) {
         (
             self.binary_exact_runs.load(Ordering::Relaxed),
             self.mixed_exact_runs.load(Ordering::Relaxed),

@@ -553,6 +553,11 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     #[cfg(test)]
+    pub(crate) fn constraints_for_test(&self) -> &S {
+        &self.constraints
+    }
+
+    #[cfg(test)]
     pub(crate) fn observe_raw(&self) -> ObservedWriterState {
         let bond_plan_domains = self
             .prepared

@@ -1,5 +1,6 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use super::*;
@@ -201,6 +202,172 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
 }
 
 #[derive(Clone, Debug)]
+struct RejectTetrahedralParitySolver(NativeSolverState);
+
+impl ConstraintSolver for RejectTetrahedralParitySolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+        {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RejectEvenTetrahedralParitySolver(NativeSolverState);
+
+impl ConstraintSolver for RejectEvenTetrahedralParitySolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions.iter().any(|(variable, domain)| {
+            self.0.domain(*variable) == Some(full_order_domain())
+                && domain.is_subset_of(parity_domain(TetrahedralParity::Even))
+        }) {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct FailTetrahedralRestrictionSolver(NativeSolverState);
+
+static TETRAHEDRAL_BACKEND_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+
+impl ConstraintSolver for FailTetrahedralRestrictionSolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+        {
+            assert_eq!(
+                TETRAHEDRAL_BACKEND_ATTEMPTS.fetch_add(1, Ordering::Relaxed),
+                0,
+                "atom-token generation must stop at the first backend failure"
+            );
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+static TETRAHEDRAL_RESTRICTION_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Clone, Debug)]
+struct CountTetrahedralRestrictionsSolver(NativeSolverState);
+
+impl ConstraintSolver for CountTetrahedralRestrictionsSolver {
+    type Failure = NativeSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)?.map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        TETRAHEDRAL_RESTRICTION_CALLS.fetch_add(1, Ordering::Relaxed);
+        Ok(<NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)?.map(Self))
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct NonProjectingTetrahedralTestSolver(NativeSolverState);
+
+impl ConstraintSolver for NonProjectingTetrahedralTestSolver {
+    type Failure = NativeSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)?.map(Self))
+    }
+
+    fn restricted(
+        &self,
+        _restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(Consistency::Consistent(self.clone()))
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+}
+
+#[derive(Clone, Debug)]
 struct WriterPolicyContradictionSolver(NativeSolverState);
 
 impl ConstraintSolver for WriterPolicyContradictionSolver {
@@ -339,6 +506,88 @@ fn fixture(
     (surface, atoms, bonds)
 }
 
+fn tetrahedral_star_fixture(leaf_count: usize) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    tetrahedral_star_fixture_with_tokens(leaf_count, vec![NonStereoBondToken::Elided; leaf_count])
+}
+
+fn tetrahedral_star_fixture_with_tokens(
+    leaf_count: usize,
+    bond_tokens: Vec<NonStereoBondToken>,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    assert!(matches!(leaf_count, 3 | 4));
+    assert_eq!(bond_tokens.len(), leaf_count);
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..=leaf_count)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = (0..leaf_count)
+        .map(|index| graph.add_bond(atoms[0], atoms[index + 1]).unwrap())
+        .collect::<Vec<_>>();
+    let mut reference_order = bonds
+        .iter()
+        .copied()
+        .map(TetrahedralLigand::Bond)
+        .collect::<Vec<_>>();
+    if leaf_count == 3 {
+        reference_order.push(TetrahedralLigand::VirtualHydrogen);
+    }
+    let mut atom_tokens = vec![PreparedAtomToken::Tetrahedral {
+        reference_order: reference_order.try_into().unwrap(),
+        text_by_parity: if leaf_count == 3 {
+            ["[C@H]".to_owned(), "[C@@H]".to_owned()]
+        } else {
+            ["[C@]".to_owned(), "[C@@]".to_owned()]
+        },
+    }];
+    atom_tokens.extend(
+        (0..leaf_count)
+            .map(|index| PreparedAtomToken::Fixed(char::from(b'A' + index as u8).to_string())),
+    );
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        atom_tokens,
+        bond_tokens,
+    )
+    .unwrap();
+    (surface, atoms, bonds)
+}
+
+fn entered_tetrahedral_fixture(
+    entry_token: NonStereoBondToken,
+    parent_has_second_child: bool,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atom_count = if parent_has_second_child { 6 } else { 5 };
+    let atoms = (0..atom_count)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let mut bonds = vec![graph.add_bond(atoms[0], atoms[1]).unwrap()];
+    bonds.extend((2..5).map(|child| graph.add_bond(atoms[1], atoms[child]).unwrap()));
+    if parent_has_second_child {
+        bonds.push(graph.add_bond(atoms[0], atoms[5]).unwrap());
+    }
+    let mut atom_tokens = vec![
+        PreparedAtomToken::Fixed("P".to_owned()),
+        PreparedAtomToken::Tetrahedral {
+            reference_order: [bonds[0], bonds[1], bonds[2], bonds[3]].map(TetrahedralLigand::Bond),
+            text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
+        },
+    ];
+    atom_tokens.extend(
+        (2..atom_count)
+            .map(|index| PreparedAtomToken::Fixed(char::from(b'A' + index as u8).to_string())),
+    );
+    let mut bond_tokens = vec![entry_token];
+    bond_tokens.extend(vec![NonStereoBondToken::Elided; bonds.len() - 1]);
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        atom_tokens,
+        bond_tokens,
+    )
+    .unwrap();
+    (surface, atoms, bonds)
+}
+
 fn incident(surface: &PreparedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
     surface
         .molecule()
@@ -366,6 +615,24 @@ fn choice_at(state: &State, index: usize) -> (String, State) {
 
 fn initial(surface: &PreparedNonStereo) -> State {
     State::initial(surface).unwrap().unwrap_consistent()
+}
+
+fn reachable_terminal_states(state: State) -> Vec<State> {
+    let mut pending = vec![state];
+    let mut complete = Vec::new();
+    let mut explored = 0_usize;
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored <= 100_000, "writer test exceeded its state bound");
+        if state.is_accepted() {
+            complete.push(state);
+            continue;
+        }
+        let choices = state.choices().unwrap();
+        assert!(!choices.is_empty());
+        pending.extend(choices.into_iter().map(Choice::into_successor));
+    }
+    complete
 }
 
 #[test]
@@ -471,6 +738,10 @@ fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
     assert_eq!(model.variable_count(), bonds.len() + 1);
     assert_eq!(model.factor_count(), 1);
     assert_eq!(
+        model.factors_for_variable(center.order_variable),
+        Some(&[][..])
+    );
+    assert_eq!(
         model
             .variable(center.order_variable)
             .unwrap()
@@ -566,6 +837,756 @@ fn surface_rejects_invalid_tetrahedral_bindings() {
         ),
         Err(PreparedNonStereoError::TetrahedralLigandsDoNotMatchGraph(atom)) if atom == atoms[0]
     ));
+}
+
+fn resolved_tetrahedral_order(state: &State, surface: &PreparedNonStereo, atom: AtomId) -> u8 {
+    let center = surface.tetrahedral_center(atom).unwrap();
+    let domain = state.structural.semantic_domain(center.order_variable);
+    assert!(domain.is_singleton());
+    domain.iter().next().unwrap()
+}
+
+fn independent_tetrahedral_order(
+    reference: &[TetrahedralLigand; 4],
+    value: u8,
+) -> [TetrahedralLigand; 4] {
+    permutations(reference)[value as usize]
+        .clone()
+        .try_into()
+        .unwrap()
+}
+
+fn independent_tetrahedral_order_is_even(reference: &[TetrahedralLigand; 4], value: u8) -> bool {
+    let order = independent_tetrahedral_order(reference, value);
+    let positions = order.map(|ligand| {
+        reference
+            .iter()
+            .position(|candidate| *candidate == ligand)
+            .unwrap()
+    });
+    (0..4)
+        .flat_map(|left| ((left + 1)..4).map(move |right| (left, right)))
+        .filter(|(left, right)| positions[*left] > positions[*right])
+        .count()
+        % 2
+        == 0
+}
+
+#[test]
+fn tetrahedral_domains_match_independent_permutation_and_parity_enumeration() {
+    let reference = [
+        TetrahedralLigand::Bond(BondId::new(3)),
+        TetrahedralLigand::Bond(BondId::new(7)),
+        TetrahedralLigand::VirtualHydrogen,
+        TetrahedralLigand::Bond(BondId::new(11)),
+    ];
+    let orders = (0..24)
+        .map(|value| independent_tetrahedral_order(&reference, value))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(orders.len(), 24);
+    assert_eq!(
+        (0..24)
+            .filter(|value| independent_tetrahedral_order_is_even(&reference, *value))
+            .count(),
+        12
+    );
+    for value in 0..24 {
+        assert_eq!(
+            parity_domain(TetrahedralParity::Even).contains(value),
+            independent_tetrahedral_order_is_even(&reference, value)
+        );
+        let order = independent_tetrahedral_order(&reference, value);
+        for prefix_len in 0..=4 {
+            let domain = prefix_domain(&reference, &order[..prefix_len]);
+            for candidate in 0..24 {
+                assert_eq!(
+                    domain.contains(candidate),
+                    independent_tetrahedral_order(&reference, candidate)[..prefix_len]
+                        == order[..prefix_len]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn four_arm_root_reaches_every_local_order_under_exactly_one_parity_token() {
+    let (surface, atoms, _) = tetrahedral_star_fixture(4);
+    let initial = initial(&surface);
+    let root_choices = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        root_choices.iter().map(Choice::text).collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+    let mut orders_by_token = BTreeMap::<String, BTreeSet<u8>>::new();
+    for root in root_choices {
+        let token = root.text().to_owned();
+        for terminal in reachable_terminal_states(root.into_successor()) {
+            orders_by_token
+                .entry(token.clone())
+                .or_default()
+                .insert(resolved_tetrahedral_order(&terminal, &surface, atoms[0]));
+        }
+    }
+
+    let reference = &surface
+        .tetrahedral_center(atoms[0])
+        .unwrap()
+        .reference_order;
+    let expected_even = (0..24)
+        .filter(|value| independent_tetrahedral_order_is_even(reference, *value))
+        .collect();
+    let expected_odd = (0..24)
+        .filter(|value| !independent_tetrahedral_order_is_even(reference, *value))
+        .collect();
+    assert_eq!(orders_by_token["[C@]"], expected_even);
+    assert_eq!(orders_by_token["[C@@]"], expected_odd);
+    assert_eq!(orders_by_token["[C@]"].len(), 12);
+    assert_eq!(orders_by_token["[C@@]"].len(), 12);
+}
+
+#[test]
+fn entered_four_arm_center_reaches_all_six_remaining_orders() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
+    let initial = initial(&surface);
+    let rooted_leaf = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let atom_choices = rooted_leaf.choices().unwrap();
+
+    assert_eq!(
+        atom_choices.iter().map(Choice::text).collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+    let mut orders = BTreeSet::new();
+    for choice in atom_choices {
+        for terminal in reachable_terminal_states(choice.into_successor()) {
+            let value = resolved_tetrahedral_order(&terminal, &surface, atoms[0]);
+            let order = independent_tetrahedral_order(
+                &surface
+                    .tetrahedral_center(atoms[0])
+                    .unwrap()
+                    .reference_order,
+                value,
+            );
+            assert_eq!(order[0], TetrahedralLigand::Bond(bonds[0]));
+            orders.insert(value);
+        }
+    }
+    assert_eq!(orders.len(), 6);
+}
+
+#[test]
+fn virtual_hydrogen_has_the_context_position_for_root_and_entry() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(3);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let initial = initial(&surface);
+
+    let rooted_orders = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .flat_map(|choice| reachable_terminal_states(choice.into_successor()))
+        .map(|terminal| {
+            independent_tetrahedral_order(
+                &center.reference_order,
+                resolved_tetrahedral_order(&terminal, &surface, atoms[0]),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(rooted_orders.len(), 6);
+    assert!(rooted_orders
+        .iter()
+        .all(|order| order[0] == TetrahedralLigand::VirtualHydrogen));
+
+    let rooted_leaf = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let entered_orders = rooted_leaf
+        .choices()
+        .unwrap()
+        .into_iter()
+        .flat_map(|choice| reachable_terminal_states(choice.into_successor()))
+        .map(|terminal| {
+            independent_tetrahedral_order(
+                &center.reference_order,
+                resolved_tetrahedral_order(&terminal, &surface, atoms[0]),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(entered_orders.len(), 2);
+    assert!(entered_orders.iter().all(|order| {
+        order[..2]
+            == [
+                TetrahedralLigand::Bond(bonds[0]),
+                TetrahedralLigand::VirtualHydrogen,
+            ]
+    }));
+}
+
+#[test]
+fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
+    let (elided_branch_surface, atoms, bonds) =
+        entered_tetrahedral_fixture(NonStereoBondToken::Elided, true);
+    let parent = initial(&elided_branch_surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let pending_branch = parent
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.successor().pending
+                == Some(PendingEmission::BranchBondOrAtom(incident(
+                    &elided_branch_surface,
+                    atoms[0],
+                    bonds[0],
+                )))
+        })
+        .unwrap()
+        .into_successor();
+    assert_eq!(
+        pending_branch
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+
+    let (explicit_branch_surface, atoms, bonds) =
+        entered_tetrahedral_fixture(NonStereoBondToken::Double, true);
+    let parent = initial(&explicit_branch_surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let pending_bond = parent
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.successor().pending
+                == Some(PendingEmission::BranchBondOrAtom(incident(
+                    &explicit_branch_surface,
+                    atoms[0],
+                    bonds[0],
+                )))
+        })
+        .unwrap()
+        .into_successor();
+    let (_, pending_atom) = only_choice(&pending_bond, "=");
+    assert_eq!(
+        pending_atom
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+
+    let (inline_surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
+    let parent = initial(&inline_surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let (_, pending_atom) = only_choice(&parent, "=");
+    assert_eq!(
+        pending_atom
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+}
+
+#[test]
+fn component_separator_defers_tetrahedral_parity_until_the_atom_token() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = (2..6)
+        .map(|child| graph.add_bond(atoms[1], atoms[child]).unwrap())
+        .collect::<Vec<_>>();
+    let mut atom_tokens = vec![
+        PreparedAtomToken::Fixed("X".to_owned()),
+        PreparedAtomToken::Tetrahedral {
+            reference_order: [bonds[0], bonds[1], bonds[2], bonds[3]].map(TetrahedralLigand::Bond),
+            text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
+        },
+    ];
+    atom_tokens.extend(
+        ["A", "B", "C", "D"]
+            .into_iter()
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned())),
+    );
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        atom_tokens,
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    )
+    .unwrap();
+    let after_first = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().structural.atom_is_visited(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let dot = after_first
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap();
+
+    assert_eq!(dot.text(), ".");
+    assert_eq!(
+        dot.successor()
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<Vec<_>>(),
+        vec!["[C@]", "[C@@]"]
+    );
+}
+
+#[test]
+fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let mut parent = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
+        })
+        .unwrap()
+        .into_successor();
+
+    for &bond in &bonds[..2] {
+        let selected = parent
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| {
+                matches!(
+                    choice.successor().pending,
+                    Some(PendingEmission::BranchBondOrAtom(incident))
+                        if incident.bond() == bond
+                )
+            })
+            .unwrap()
+            .into_successor();
+        let child = selected.choices().unwrap().remove(0).into_successor();
+        let restored = child.choices().unwrap().remove(0).into_successor();
+        assert_eq!(restored.active_atom(), Some(atoms[0]));
+        parent = restored;
+    }
+
+    let local = parent.structural.active_local_bond_order();
+    assert_eq!(local.committed_bonds, bonds[..2]);
+    assert_eq!(
+        parent.structural.semantic_domain(center.order_variable),
+        center
+            .prefix_domain_with_bond_order(None, &bonds[..2])
+            .intersect(parity_domain(TetrahedralParity::Even))
+    );
+    let next = parent.choices().unwrap();
+    assert_eq!(
+        next.len(),
+        1,
+        "the parity-incompatible third bond must not be advertised"
+    );
+    assert_eq!(next[0].text(), "(");
+    assert_eq!(
+        next[0]
+            .successor()
+            .structural
+            .active_local_bond_order()
+            .committed_bonds
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture_with_tokens(
+        4,
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+        ],
+    );
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let mut parent = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
+        })
+        .unwrap()
+        .into_successor();
+    for &bond in &bonds[..3] {
+        let pending = parent
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| {
+                matches!(
+                    choice.successor().pending,
+                    Some(PendingEmission::BranchBondOrAtom(incident))
+                        if incident.bond() == bond
+                )
+            })
+            .unwrap()
+            .into_successor();
+        let child = pending.choices().unwrap().remove(0).into_successor();
+        parent = child.choices().unwrap().remove(0).into_successor();
+    }
+
+    let (_, pending_atom) = only_choice(&parent, "=");
+    assert_eq!(pending_atom.active_atom(), Some(atoms[0]));
+    assert!(!pending_atom.structural.atom_is_visited(atoms[4]));
+    assert_eq!(
+        pending_atom
+            .structural
+            .active_local_bond_order()
+            .committed_bonds,
+        bonds
+    );
+    assert_eq!(
+        pending_atom
+            .structural
+            .semantic_domain(center.order_variable),
+        center.completed_order_domain(None, &bonds)
+    );
+    let (_, accepted) = only_choice(&pending_atom, "D");
+    assert!(accepted.is_accepted());
+}
+
+#[test]
+fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
+    let initial = NonStereoWriterState::<NonProjectingTetrahedralTestSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let mut parent = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
+        })
+        .unwrap()
+        .into_successor();
+    for &bond in &bonds[..3] {
+        let pending = parent
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| {
+                matches!(
+                    choice.successor().pending,
+                    Some(PendingEmission::BranchBondOrAtom(incident))
+                        if incident.bond() == bond
+                )
+            })
+            .unwrap()
+            .into_successor();
+        let child = pending
+            .choices()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .into_successor();
+        parent = child
+            .choices()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .into_successor();
+    }
+    let source = parent.observe_raw();
+
+    assert!(matches!(
+        parent.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::UnresolvedTetrahedralFrame { atom }
+        )) if atom == atoms[0]
+    ));
+    assert_eq!(parent.observe_raw(), source);
+}
+
+#[test]
+fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..8)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let shared = graph.add_bond(atoms[0], atoms[1]).unwrap();
+    let left = (2..5)
+        .map(|child| graph.add_bond(atoms[0], atoms[child]).unwrap())
+        .collect::<Vec<_>>();
+    let right = (5..8)
+        .map(|child| graph.add_bond(atoms[1], atoms[child]).unwrap())
+        .collect::<Vec<_>>();
+    let mut atom_tokens = vec![
+        PreparedAtomToken::Tetrahedral {
+            reference_order: [shared, left[0], left[1], left[2]].map(TetrahedralLigand::Bond),
+            text_by_parity: ["[L@]".to_owned(), "[L@@]".to_owned()],
+        },
+        PreparedAtomToken::Tetrahedral {
+            reference_order: [shared, right[0], right[1], right[2]].map(TetrahedralLigand::Bond),
+            text_by_parity: ["[R@]".to_owned(), "[R@@]".to_owned()],
+        },
+    ];
+    atom_tokens.extend((2..8).map(|index| PreparedAtomToken::Fixed(format!("A{index}"))));
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        atom_tokens,
+        vec![NonStereoBondToken::Elided; 7],
+    )
+    .unwrap();
+    let left_center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let right_center = surface.tetrahedral_center(atoms[1]).unwrap();
+    let root = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "[L@]" && choice.successor().active_atom() == Some(atoms[0])
+        })
+        .unwrap()
+        .into_successor();
+    let terminals = reachable_terminal_states(root);
+
+    assert!(!terminals.is_empty());
+    assert!(terminals.iter().all(|terminal| {
+        terminal
+            .structural
+            .semantic_domain(left_center.order_variable)
+            .is_singleton()
+            && terminal
+                .structural
+                .semantic_domain(right_center.order_variable)
+                .is_singleton()
+    }));
+    let right_orders = terminals
+        .iter()
+        .map(|terminal| resolved_tetrahedral_order(terminal, &surface, atoms[1]))
+        .collect::<BTreeSet<_>>();
+    assert!(right_orders
+        .iter()
+        .any(|value| independent_tetrahedral_order_is_even(&right_center.reference_order, *value)));
+    assert!(right_orders.iter().any(|value| {
+        !independent_tetrahedral_order_is_even(&right_center.reference_order, *value)
+    }));
+    for terminal in terminals {
+        let order = independent_tetrahedral_order(
+            &right_center.reference_order,
+            resolved_tetrahedral_order(&terminal, &surface, atoms[1]),
+        );
+        assert_eq!(order[0], TetrahedralLigand::Bond(shared));
+    }
+}
+
+#[test]
+fn ring_capable_tetrahedral_center_trips_only_at_its_atom_event() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[3]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    )
+    .unwrap();
+    let state = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+
+    assert!(matches!(
+        state.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::TetrahedralRingCouplingUnimplemented { atom }
+        )) if atom == atoms[0]
+    ));
+}
+
+#[test]
+fn contradictory_tetrahedral_token_is_filtered_without_suppressing_its_sibling() {
+    let (surface, atoms, _) = tetrahedral_star_fixture(4);
+    let state = NonStereoWriterState::<RejectEvenTetrahedralParitySolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let source = state.observe_raw();
+    let center_choices = state
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .collect::<Vec<_>>();
+
+    assert_eq!(center_choices.len(), 1);
+    assert_eq!(center_choices[0].text(), "[C@@]");
+    assert_eq!(state.observe_raw(), source);
+}
+
+#[test]
+fn backend_failure_aborts_the_tetrahedral_atom_token_batch() {
+    let (surface, _, _) = tetrahedral_star_fixture(4);
+    TETRAHEDRAL_BACKEND_ATTEMPTS.store(0, Ordering::Relaxed);
+    let state = NonStereoWriterState::<FailTetrahedralRestrictionSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+
+    assert!(matches!(
+        state.choices(),
+        Err(ChoiceFailure::Backend(InjectedSolverFailure::Restriction))
+    ));
+}
+
+#[test]
+fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
+    let (surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
+    let initial = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let parent = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+
+    assert!(matches!(
+        parent.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 1 }
+        ))
+    ));
+}
+
+#[test]
+fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
+    let (surface, atoms, bonds) = entered_tetrahedral_fixture(NonStereoBondToken::Elided, true);
+    let initial = NonStereoWriterState::<RejectTetrahedralParitySolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let parent = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let choices = parent.choices().unwrap();
+
+    assert_eq!(choices.len(), 1);
+    assert_eq!(choices[0].text(), "(");
+    assert!(matches!(
+        choices[0].successor().pending,
+        Some(PendingEmission::BranchBondOrAtom(incident))
+            if incident.bond() == bonds[4]
+    ));
+}
+
+#[test]
+fn each_tetrahedral_semantic_choice_uses_one_solver_restriction_batch() {
+    let (surface, atoms, _) = tetrahedral_star_fixture(4);
+    TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+    let initial = NonStereoWriterState::<CountTetrahedralRestrictionsSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let root_choices = initial.choices().unwrap();
+    assert_eq!(TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed), 2);
+    let rooted = root_choices
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
+        })
+        .unwrap()
+        .into_successor();
+
+    TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+    let branch_choices = rooted.choices().unwrap();
+    assert_eq!(branch_choices.len(), 4);
+    assert_eq!(TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed), 4);
+}
+
+#[test]
+fn isolated_tetrahedral_order_domains_do_not_create_exact_search_work() {
+    let (surface, _, _) = tetrahedral_star_fixture(4);
+    let state = initial(&surface);
+
+    assert_eq!(
+        state.structural.constraints_for_test().exact_run_counts(),
+        (0, 0)
+    );
+    let _choices = state.choices().unwrap();
+    assert_eq!(
+        state.structural.constraints_for_test().exact_run_counts(),
+        (0, 0)
+    );
 }
 
 #[test]

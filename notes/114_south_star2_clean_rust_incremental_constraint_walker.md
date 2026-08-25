@@ -85,6 +85,7 @@ valid state
 candidate contradiction
 spelling or dialect failure
 constraint-backend failure
+private implementation incompleteness
 internal defect
 ```
 
@@ -92,6 +93,11 @@ Candidate contradiction is filtered during choice generation; it is not a
 caller-visible choice result. An ordinary empty choice list means acceptance.
 A nonaccepted state with no successful candidate is an explicit invariant or
 spelling failure, not silent terminality.
+
+Private implementation incompleteness is a temporary internal outcome for a
+locally reached semantic relation that has not yet landed. It is distinct from
+contradiction and invariant failure, but it does not define a public capability,
+admission class, or molecule taxonomy.
 
 ## Two cooperating kernels
 

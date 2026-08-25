@@ -95,6 +95,8 @@ pub(crate) enum ObservedBondProgress {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ObservedFrame {
     pub(crate) atom: AtomId,
+    pub(crate) entry_bond: Option<BondId>,
+    pub(crate) committed_bonds: Vec<BondId>,
     pub(crate) attachment_groups: Vec<Vec<AdjacentBond>>,
 }
 
@@ -507,7 +509,16 @@ impl ResidualAttachment {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WriterFrame {
     atom: AtomId,
+    entry_bond: Option<BondId>,
+    committed_bonds: Vec<BondId>,
     attachments: Vec<ResidualAttachment>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LocalBondOrder {
+    pub(crate) atom: AtomId,
+    pub(crate) entry_bond: Option<BondId>,
+    pub(crate) committed_bonds: Vec<BondId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -522,6 +533,7 @@ impl WriterFrame {
         progress: &GraphProgress,
         residual: &ResidualPartition,
         atom: AtomId,
+        entry_bond: Option<BondId>,
     ) -> Self {
         let attachments = residual.attachments(graph, progress, atom);
         #[cfg(test)]
@@ -530,7 +542,27 @@ impl WriterFrame {
             residual_attachments_full(graph, progress, atom),
             "incremental residual partition must match full recomputation"
         );
-        Self { atom, attachments }
+        Self {
+            atom,
+            entry_bond,
+            committed_bonds: Vec::new(),
+            attachments,
+        }
+    }
+
+    fn commit_child(&mut self, incident: AdjacentBond) {
+        assert!(
+            self.attachments.iter().any(|attachment| {
+                attachment.incidences.len() == 1 && attachment.incidences[0] == incident
+            }),
+            "a committed child must be the sole incidence of one active attachment"
+        );
+        assert!(
+            self.entry_bond != Some(incident.bond())
+                && !self.committed_bonds.contains(&incident.bond()),
+            "one local bond occurrence may be committed only once"
+        );
+        self.committed_bonds.push(incident.bond());
     }
 
     fn remove_ring_incidence(&mut self, incident: AdjacentBond) {
@@ -639,6 +671,8 @@ impl TraversalState {
             .collect();
         let observe_frame = |frame: &WriterFrame| ObservedFrame {
             atom: frame.atom,
+            entry_bond: frame.entry_bond,
+            committed_bonds: frame.committed_bonds.clone(),
             attachment_groups: frame
                 .attachments
                 .iter()
@@ -701,7 +735,29 @@ impl TraversalState {
             &self.progress,
             &self.residual,
             root,
+            None,
         )));
+    }
+
+    pub(crate) fn active_local_bond_order(&self) -> LocalBondOrder {
+        let frame = self
+            .active
+            .as_ref()
+            .expect("local bond order requires an active writer frame");
+        LocalBondOrder {
+            atom: frame.atom,
+            entry_bond: frame.entry_bond,
+            committed_bonds: frame.committed_bonds.clone(),
+        }
+    }
+
+    pub(crate) fn commit_active_child(&mut self, incident: AdjacentBond) {
+        Arc::make_mut(
+            self.active
+                .as_mut()
+                .expect("child commitment requires an active writer frame"),
+        )
+        .commit_child(incident);
     }
 
     pub(crate) fn enter_inline_child(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
@@ -820,6 +876,11 @@ impl TraversalState {
             "a child edge must be unrepresented and lead to an unvisited atom"
         );
         Arc::make_mut(&mut parent).consume_child_attachment(incident);
+        assert_eq!(
+            parent.committed_bonds.last(),
+            Some(&incident.bond()),
+            "a child must be committed in local order before its atom is entered"
+        );
         let parent_atom = parent.atom;
 
         match placement {
@@ -851,6 +912,7 @@ impl TraversalState {
             &self.progress,
             &self.residual,
             child,
+            Some(incident.bond()),
         )));
     }
 
@@ -1038,6 +1100,16 @@ mod tests {
         components
     }
 
+    fn enter_inline(state: &mut TraversalState, graph: &PreparedGraph, incident: AdjacentBond) {
+        state.commit_active_child(incident);
+        state.enter_inline_child(graph, incident);
+    }
+
+    fn enter_branch(state: &mut TraversalState, graph: &PreparedGraph, incident: AdjacentBond) {
+        state.commit_active_child(incident);
+        state.enter_branch_child(graph, incident);
+    }
+
     #[test]
     fn residual_partition_matches_full_recomputation_for_bounded_deletions() {
         let fixtures = [
@@ -1094,7 +1166,11 @@ mod tests {
         let mut state = TraversalState::new(&graph);
         state.begin_component(&graph, atoms[0]);
         for index in 0..ATOM_COUNT - 1 {
-            state.enter_inline_child(&graph, incident(&graph, atoms[index], bonds[index]));
+            enter_inline(
+                &mut state,
+                &graph,
+                incident(&graph, atoms[index], bonds[index]),
+            );
         }
 
         assert_eq!(state.residual_split_scan_count(), 0);
@@ -1119,7 +1195,7 @@ mod tests {
         let mut state = TraversalState::new(&graph);
         state.begin_component(&graph, atoms[order[0]]);
         for (bond, pair) in bonds.into_iter().zip(order.windows(2)) {
-            state.enter_inline_child(&graph, incident(&graph, atoms[pair[0]], bond));
+            enter_inline(&mut state, &graph, incident(&graph, atoms[pair[0]], bond));
         }
 
         assert_eq!(state.residual_split_scan_count(), 0);
@@ -1146,7 +1222,7 @@ mod tests {
         source.progress.bonds.reset_copy_counts();
         source.residual.component_by_atom.reset_copy_counts();
         source.residual.components.reset_copy_counts();
-        successor.enter_inline_child(&graph, incident(&graph, atoms[0], bonds[0]));
+        enter_inline(&mut successor, &graph, incident(&graph, atoms[0], bonds[0]));
 
         assert_eq!(source.progress.visited_atoms.words.copy_counts(), (0, 1));
         assert_eq!(source.progress.bonds.copy_counts(), (1, 1));
@@ -1177,7 +1253,7 @@ mod tests {
         let mut state = TraversalState::new(&graph);
         state.begin_component(&graph, atoms[0]);
         let root_branch = graph.neighbors(atoms[0]).unwrap()[0];
-        state.enter_branch_child(&graph, root_branch);
+        enter_branch(&mut state, &graph, root_branch);
         let nested_branch = graph
             .neighbors(atoms[1])
             .unwrap()
@@ -1185,7 +1261,7 @@ mod tests {
             .copied()
             .find(|incident| incident.atom() == atoms[3])
             .unwrap();
-        state.enter_branch_child(&graph, nested_branch);
+        enter_branch(&mut state, &graph, nested_branch);
 
         let fork = state.clone();
         let state_top = state.branch_returns.as_ref().unwrap();
@@ -1257,7 +1333,7 @@ mod tests {
         let mut state = TraversalState::new(&graph);
 
         state.begin_component(&graph, atoms[0]);
-        state.enter_branch_child(&graph, incident(&graph, atoms[0], branch));
+        enter_branch(&mut state, &graph, incident(&graph, atoms[0], branch));
         assert_eq!(state.complete_path(&graph), Some(atoms[0]));
         assert_eq!(state.active_attachments().len(), 1);
         assert_eq!(
@@ -1304,8 +1380,8 @@ mod tests {
             Some(atoms[0])
         );
 
-        state.enter_inline_child(&graph, incident(&graph, atoms[0], first));
-        state.enter_inline_child(&graph, incident(&graph, atoms[1], second));
+        enter_inline(&mut state, &graph, incident(&graph, atoms[0], first));
+        enter_inline(&mut state, &graph, incident(&graph, atoms[1], second));
         let closing = incident(&graph, atoms[2], ring);
         assert_eq!(
             state.ring_first_endpoint_for_active_incident(&graph, closing),

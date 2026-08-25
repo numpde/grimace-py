@@ -1321,6 +1321,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         },
                     )]
                 } else {
+                    if let Err(failure) =
+                        self.validate_tetrahedral_traversal_scope(&self.structural, atom)
+                    {
+                        return vec![CandidateAttempt::Incomplete(failure)];
+                    }
                     collect_attempts_fail_fast(self.atom_token_specs(atom, None).into_iter().map(
                         |(text, restriction)| {
                             let structural = match self.attempt_candidate_with_restrictions(
@@ -1335,11 +1340,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 }
                                 Err(failure) => return CandidateAttempt::Failed(failure),
                             };
-                            if let Err(failure) =
-                                self.validate_tetrahedral_traversal_scope(&structural, atom)
-                            {
-                                return CandidateAttempt::Incomplete(failure);
-                            }
                             self.finish_attempt(
                                 text,
                                 Self {
@@ -1391,6 +1391,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 let bond_text = self.surface.bond_text(incident.bond(), parent);
                 let parent_restriction = self.parent_prefix_restriction(incident);
                 if bond_text.is_empty() {
+                    if let Err(failure) =
+                        self.validate_tetrahedral_traversal_scope(&self.structural, incident.atom())
+                    {
+                        return vec![CandidateAttempt::Incomplete(failure)];
+                    }
                     collect_attempts_fail_fast(
                         self.atom_token_specs(incident.atom(), Some(incident.bond()))
                             .into_iter()
@@ -1409,12 +1414,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                     }
                                     Err(failure) => return CandidateAttempt::Failed(failure),
                                 };
-                                if let Err(failure) = self.validate_tetrahedral_traversal_scope(
-                                    &structural,
-                                    incident.atom(),
-                                ) {
-                                    return CandidateAttempt::Incomplete(failure);
-                                }
                                 if let Err(failure) =
                                     self.validate_active_tetrahedral_completion(&structural)
                                 {
@@ -1580,6 +1579,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         entry_bond: Option<BondId>,
         entry: PendingAtomEntry,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        if let Err(failure) = self.validate_tetrahedral_traversal_scope(&self.structural, atom) {
+            return vec![CandidateAttempt::Incomplete(failure)];
+        }
         collect_attempts_fail_fast(self.atom_token_specs(atom, entry_bond).into_iter().map(
             |(text, restrictions)| {
                 let structural = match self.restrict_semantics(&restrictions) {
@@ -1591,9 +1593,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                     Err(failure) => return CandidateAttempt::Failed(failure),
                 };
-                if let Err(failure) = self.validate_tetrahedral_traversal_scope(&structural, atom) {
-                    return CandidateAttempt::Incomplete(failure);
-                }
                 let structural = match entry {
                     PendingAtomEntry::AlreadyEntered => structural,
                     PendingAtomEntry::Inline(incident) => {

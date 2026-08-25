@@ -13,8 +13,8 @@ use crate::solver::{Consistency, ConstraintSolver};
 use crate::traversal::ObservedTraversalState;
 use crate::traversal::{IncidentBondState, LocalBondOrder, PathCompletion, TraversalState};
 
-#[cfg(test)]
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(test)]
 use std::sync::Arc;

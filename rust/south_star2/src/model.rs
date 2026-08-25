@@ -174,10 +174,78 @@ impl SpanningTreeFactor {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TetrahedralLayoutBond {
+    decision_variable: VariableId,
+    role_partition: EdgeRolePartition,
+    pattern_bit: u8,
+}
+
+impl TetrahedralLayoutBond {
+    pub const fn new(
+        decision_variable: VariableId,
+        role_partition: EdgeRolePartition,
+        pattern_bit: u8,
+    ) -> Self {
+        Self {
+            decision_variable,
+            role_partition,
+            pattern_bit,
+        }
+    }
+
+    pub const fn decision_variable(self) -> VariableId {
+        self.decision_variable
+    }
+
+    pub const fn role_partition(self) -> EdgeRolePartition {
+        self.role_partition
+    }
+
+    pub const fn pattern_bit(self) -> u8 {
+        self.pattern_bit
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TetrahedralLayoutFactor {
+    order_variable: VariableId,
+    role_pattern_variable: VariableId,
+    bonds: Box<[TetrahedralLayoutBond]>,
+    allowed_orders_by_pattern: Box<[Domain]>,
+    variables: Box<[VariableId]>,
+}
+
+impl TetrahedralLayoutFactor {
+    pub const fn order_variable(&self) -> VariableId {
+        self.order_variable
+    }
+
+    pub const fn role_pattern_variable(&self) -> VariableId {
+        self.role_pattern_variable
+    }
+
+    pub fn bonds(&self) -> &[TetrahedralLayoutBond] {
+        &self.bonds
+    }
+
+    pub fn allowed_orders(&self, pattern: u8) -> Domain {
+        self.allowed_orders_by_pattern
+            .get(pattern as usize)
+            .copied()
+            .unwrap_or_else(Domain::empty)
+    }
+
+    pub fn variables(&self) -> &[VariableId] {
+        &self.variables
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FactorDefinition {
     BinaryRelation(BinaryRelationFactor),
     SpanningTree(SpanningTreeFactor),
+    TetrahedralLayout(TetrahedralLayoutFactor),
 }
 
 impl FactorDefinition {
@@ -185,15 +253,25 @@ impl FactorDefinition {
         match self {
             Self::BinaryRelation(factor) => factor.variables(),
             Self::SpanningTree(factor) => factor.variables(),
+            Self::TetrahedralLayout(factor) => factor.variables(),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FactorActivation {
+    Always,
+    Latent,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstraintModel {
     variables: Box<[VariableDefinition]>,
     factors: Box<[FactorDefinition]>,
-    factors_by_variable: Box<[Box<[FactorId]>]>,
+    factor_activation: Box<[FactorActivation]>,
+    initial_factor_ids: Box<[FactorId]>,
+    initial_factors_by_variable: Box<[Box<[FactorId]>]>,
+    potential_factors_by_variable: Box<[Box<[FactorId]>]>,
 }
 
 impl ConstraintModel {
@@ -217,8 +295,22 @@ impl ConstraintModel {
         self.factors.get(factor.index())
     }
 
-    pub fn factors_for_variable(&self, variable: VariableId) -> Option<&[FactorId]> {
-        self.factors_by_variable
+    pub fn factor_activation(&self, factor: FactorId) -> Option<FactorActivation> {
+        self.factor_activation.get(factor.index()).copied()
+    }
+
+    pub fn initial_factor_ids(&self) -> &[FactorId] {
+        &self.initial_factor_ids
+    }
+
+    pub fn initial_factors_for_variable(&self, variable: VariableId) -> Option<&[FactorId]> {
+        self.initial_factors_by_variable
+            .get(variable.index())
+            .map(AsRef::as_ref)
+    }
+
+    pub fn potential_factors_for_variable(&self, variable: VariableId) -> Option<&[FactorId]> {
+        self.potential_factors_by_variable
             .get(variable.index())
             .map(AsRef::as_ref)
     }
@@ -240,6 +332,7 @@ impl Default for ConstraintModel {
 pub struct ConstraintModelBuilder {
     variables: Vec<VariableDefinition>,
     factors: Vec<FactorDefinition>,
+    factor_activation: Vec<FactorActivation>,
     factors_by_variable: Vec<Vec<FactorId>>,
 }
 
@@ -248,6 +341,7 @@ impl ConstraintModelBuilder {
         Self {
             variables: Vec::new(),
             factors: Vec::new(),
+            factor_activation: Vec::new(),
             factors_by_variable: Vec::new(),
         }
     }
@@ -312,11 +406,14 @@ impl ConstraintModelBuilder {
                 .union(Domain::from_bits(1_u64 << left_value));
         }
 
-        self.push_factor(FactorDefinition::BinaryRelation(BinaryRelationFactor {
-            variables: [left, right],
-            allowed_right_by_left: allowed_right_by_left.into_boxed_slice(),
-            allowed_left_by_right: allowed_left_by_right.into_boxed_slice(),
-        }))
+        self.push_factor(
+            FactorDefinition::BinaryRelation(BinaryRelationFactor {
+                variables: [left, right],
+                allowed_right_by_left: allowed_right_by_left.into_boxed_slice(),
+                allowed_left_by_right: allowed_left_by_right.into_boxed_slice(),
+            }),
+            FactorActivation::Always,
+        )
     }
 
     pub fn add_spanning_tree(
@@ -386,18 +483,154 @@ impl ConstraintModelBuilder {
             variables.push(variable);
         }
 
-        self.push_factor(FactorDefinition::SpanningTree(SpanningTreeFactor {
-            atoms: atoms.into_boxed_slice(),
-            edges: edges.into_boxed_slice(),
-            variables: variables.into_boxed_slice(),
-        }))
+        self.push_factor(
+            FactorDefinition::SpanningTree(SpanningTreeFactor {
+                atoms: atoms.into_boxed_slice(),
+                edges: edges.into_boxed_slice(),
+                variables: variables.into_boxed_slice(),
+            }),
+            FactorActivation::Always,
+        )
+    }
+
+    pub fn add_latent_tetrahedral_layout(
+        &mut self,
+        order_variable: VariableId,
+        role_pattern_variable: VariableId,
+        bonds: impl IntoIterator<Item = TetrahedralLayoutBond>,
+        allowed_orders_by_pattern: impl IntoIterator<Item = Domain>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let order_domain = self
+            .variables
+            .get(order_variable.index())
+            .ok_or(ConstraintModelError::UnknownVariable(order_variable))?
+            .initial_domain;
+        let pattern_domain = self
+            .variables
+            .get(role_pattern_variable.index())
+            .ok_or(ConstraintModelError::UnknownVariable(role_pattern_variable))?
+            .initial_domain;
+        if order_variable == role_pattern_variable {
+            return Err(ConstraintModelError::RepeatedVariableInFactor(
+                order_variable,
+            ));
+        }
+
+        let bonds = bonds.into_iter().collect::<Vec<_>>();
+        if !(3..=4).contains(&bonds.len()) {
+            return Err(ConstraintModelError::InvalidTetrahedralBondCount(
+                bonds.len(),
+            ));
+        }
+        let pattern_count = 1_usize << bonds.len();
+        let expected_pattern_domain = Domain::from_bits((1_u64 << pattern_count) - 1);
+        if pattern_domain != expected_pattern_domain {
+            return Err(ConstraintModelError::InvalidTetrahedralPatternDomain {
+                variable: role_pattern_variable,
+                expected: expected_pattern_domain,
+            });
+        }
+
+        let mut seen_variables = BTreeSet::from([order_variable, role_pattern_variable]);
+        let mut seen_bits = BTreeSet::new();
+        for bond in &bonds {
+            let variable = bond.decision_variable;
+            let initial_domain = self
+                .variables
+                .get(variable.index())
+                .ok_or(ConstraintModelError::UnknownVariable(variable))?
+                .initial_domain;
+            if !seen_variables.insert(variable) {
+                return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
+            }
+            if usize::from(bond.pattern_bit) >= bonds.len() || !seen_bits.insert(bond.pattern_bit) {
+                return Err(ConstraintModelError::InvalidTetrahedralPatternBit(
+                    bond.pattern_bit,
+                ));
+            }
+            let traversal = initial_domain.intersect(bond.role_partition.traversal_values());
+            let ring = initial_domain.intersect(bond.role_partition.ring_values());
+            if !bond
+                .role_partition
+                .traversal_values()
+                .intersect(bond.role_partition.ring_values())
+                .is_empty()
+                || traversal.union(ring) != initial_domain
+            {
+                return Err(ConstraintModelError::InvalidEdgeRolePartition(variable));
+            }
+        }
+        if seen_bits.len() != bonds.len() {
+            return Err(ConstraintModelError::IncompleteTetrahedralPatternBits);
+        }
+
+        let allowed_orders_by_pattern = allowed_orders_by_pattern.into_iter().collect::<Vec<_>>();
+        if allowed_orders_by_pattern.len() != pattern_count {
+            return Err(ConstraintModelError::TetrahedralLayoutRowCountMismatch {
+                expected: pattern_count,
+                actual: allowed_orders_by_pattern.len(),
+            });
+        }
+        for &allowed in &allowed_orders_by_pattern {
+            if !allowed.is_subset_of(order_domain) {
+                return Err(ConstraintModelError::TetrahedralOrderOutsideInitialDomain(
+                    order_variable,
+                ));
+            }
+        }
+
+        let mut variables = Vec::with_capacity(bonds.len() + 2);
+        variables.extend([order_variable, role_pattern_variable]);
+        variables.extend(bonds.iter().map(|bond| bond.decision_variable));
+        self.push_factor(
+            FactorDefinition::TetrahedralLayout(TetrahedralLayoutFactor {
+                order_variable,
+                role_pattern_variable,
+                bonds: bonds.into_boxed_slice(),
+                allowed_orders_by_pattern: allowed_orders_by_pattern.into_boxed_slice(),
+                variables: variables.into_boxed_slice(),
+            }),
+            FactorActivation::Latent,
+        )
     }
 
     pub fn build(self) -> ConstraintModel {
+        let initial_factor_ids = self
+            .factor_activation
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, activation)| {
+                (activation == FactorActivation::Always).then(|| {
+                    FactorId::new(
+                        u32::try_from(index)
+                            .expect("prepared factor count must fit its identifier space"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let initial_factors_by_variable = self
+            .factors_by_variable
+            .iter()
+            .map(|factors| {
+                factors
+                    .iter()
+                    .copied()
+                    .filter(|factor| {
+                        self.factor_activation[factor.index()] == FactorActivation::Always
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         ConstraintModel {
             variables: self.variables.into_boxed_slice(),
             factors: self.factors.into_boxed_slice(),
-            factors_by_variable: self
+            factor_activation: self.factor_activation.into_boxed_slice(),
+            initial_factor_ids: initial_factor_ids.into_boxed_slice(),
+            initial_factors_by_variable,
+            potential_factors_by_variable: self
                 .factors_by_variable
                 .into_iter()
                 .map(Vec::into_boxed_slice)
@@ -409,6 +642,7 @@ impl ConstraintModelBuilder {
     fn push_factor(
         &mut self,
         definition: FactorDefinition,
+        activation: FactorActivation,
     ) -> Result<FactorId, ConstraintModelError> {
         let value = u32::try_from(self.factors.len())
             .map_err(|_| ConstraintModelError::FactorCapacityExceeded)?;
@@ -417,6 +651,7 @@ impl ConstraintModelBuilder {
             self.factors_by_variable[variable.index()].push(factor);
         }
         self.factors.push(definition);
+        self.factor_activation.push(activation);
         Ok(factor)
     }
 }
@@ -438,6 +673,18 @@ pub enum ConstraintModelError {
     SpanningTreeEdgeOutsideAtomSet(AtomId),
     InvalidEdgeRolePartition(VariableId),
     OverlappingSpanningTreeVariable(VariableId),
+    InvalidTetrahedralBondCount(usize),
+    InvalidTetrahedralPatternDomain {
+        variable: VariableId,
+        expected: Domain,
+    },
+    InvalidTetrahedralPatternBit(u8),
+    IncompleteTetrahedralPatternBits,
+    TetrahedralLayoutRowCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    TetrahedralOrderOutsideInitialDomain(VariableId),
 }
 
 impl fmt::Display for ConstraintModelError {
@@ -494,7 +741,7 @@ impl fmt::Display for ConstraintModelError {
             Self::InvalidEdgeRolePartition(variable) => {
                 write!(
                     formatter,
-                    "spanning-tree variable {variable:?} is not partitioned into disjoint Traversal and Ring values"
+                    "edge variable {variable:?} is not partitioned into disjoint Traversal and Ring values"
                 )
             }
             Self::OverlappingSpanningTreeVariable(variable) => {
@@ -503,6 +750,29 @@ impl fmt::Display for ConstraintModelError {
                     "constraint variable {variable:?} belongs to multiple spanning-tree factors"
                 )
             }
+            Self::InvalidTetrahedralBondCount(count) => write!(
+                formatter,
+                "a tetrahedral layout factor requires three or four bond variables, got {count}"
+            ),
+            Self::InvalidTetrahedralPatternDomain { variable, expected } => write!(
+                formatter,
+                "tetrahedral role-pattern variable {variable:?} must have initial domain {expected:?}"
+            ),
+            Self::InvalidTetrahedralPatternBit(bit) => write!(
+                formatter,
+                "tetrahedral layout pattern bit {bit} is repeated or outside the bond scope"
+            ),
+            Self::IncompleteTetrahedralPatternBits => formatter.write_str(
+                "tetrahedral layout pattern bits must cover every bond position exactly once",
+            ),
+            Self::TetrahedralLayoutRowCountMismatch { expected, actual } => write!(
+                formatter,
+                "tetrahedral layout requires {expected} pattern rows, got {actual}"
+            ),
+            Self::TetrahedralOrderOutsideInitialDomain(variable) => write!(
+                formatter,
+                "tetrahedral layout contains an order outside the initial domain of {variable:?}"
+            ),
         }
     }
 }
@@ -575,8 +845,14 @@ mod tests {
             model.variable(right).unwrap().initial_domain(),
             right_domain
         );
-        assert_eq!(model.factors_for_variable(left), Some(&[factor][..]));
-        assert_eq!(model.factors_for_variable(right), Some(&[factor][..]));
+        assert_eq!(
+            model.potential_factors_for_variable(left),
+            Some(&[factor][..])
+        );
+        assert_eq!(
+            model.potential_factors_for_variable(right),
+            Some(&[factor][..])
+        );
     }
 
     #[test]
@@ -692,8 +968,14 @@ mod tests {
             &[AtomId::new(0), AtomId::new(1), AtomId::new(2)]
         );
         assert_eq!(factor.variables(), &[first, second]);
-        assert_eq!(model.factors_for_variable(first), Some(&[factor_id][..]));
-        assert_eq!(model.factors_for_variable(second), Some(&[factor_id][..]));
+        assert_eq!(
+            model.potential_factors_for_variable(first),
+            Some(&[factor_id][..])
+        );
+        assert_eq!(
+            model.potential_factors_for_variable(second),
+            Some(&[factor_id][..])
+        );
     }
 
     #[test]
@@ -814,6 +1096,101 @@ mod tests {
                 .add_spanning_tree([AtomId::new(2)], std::iter::empty())
                 .unwrap(),
             FactorId::new(1)
+        );
+    }
+
+    #[test]
+    fn tetrahedral_layout_retains_latent_context_and_role_mapping() {
+        let mut builder = ConstraintModelBuilder::new();
+        let order = builder
+            .add_variable(Domain::from_indices(0_u8..4).unwrap())
+            .unwrap();
+        let pattern = builder
+            .add_variable(Domain::from_indices(0_u8..8).unwrap())
+            .unwrap();
+        let role_domain = Domain::from_indices([0, 1, 2]).unwrap();
+        let partition = EdgeRolePartition::new(
+            Domain::singleton(0).unwrap(),
+            Domain::from_indices([1, 2]).unwrap(),
+        );
+        let bonds = (0_u8..3)
+            .map(|bit| {
+                let variable = builder.add_variable(role_domain).unwrap();
+                TetrahedralLayoutBond::new(variable, partition, bit)
+            })
+            .collect::<Vec<_>>();
+        let rows = (0_u8..8)
+            .map(|pattern| Domain::singleton(pattern % 4).unwrap())
+            .collect::<Vec<_>>();
+
+        let factor_id = builder
+            .add_latent_tetrahedral_layout(order, pattern, bonds.clone(), rows.clone())
+            .unwrap();
+        let model = builder.build();
+        let FactorDefinition::TetrahedralLayout(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected tetrahedral layout factor");
+        };
+
+        assert_eq!(
+            model.factor_activation(factor_id),
+            Some(FactorActivation::Latent)
+        );
+        assert!(model.initial_factor_ids().is_empty());
+        assert_eq!(model.initial_factors_for_variable(order), Some(&[][..]));
+        assert_eq!(
+            model.potential_factors_for_variable(order),
+            Some(&[factor_id][..])
+        );
+        assert_eq!(factor.order_variable(), order);
+        assert_eq!(factor.role_pattern_variable(), pattern);
+        assert_eq!(factor.bonds(), bonds);
+        assert_eq!(
+            factor.variables(),
+            &[
+                order,
+                pattern,
+                bonds[0].decision_variable(),
+                bonds[1].decision_variable(),
+                bonds[2].decision_variable()
+            ]
+        );
+        for (pattern, expected) in rows.into_iter().enumerate() {
+            assert_eq!(factor.allowed_orders(pattern as u8), expected);
+        }
+    }
+
+    #[test]
+    fn tetrahedral_layout_rejects_invalid_pattern_shape() {
+        let mut builder = ConstraintModelBuilder::new();
+        let order = builder
+            .add_variable(Domain::from_indices(0_u8..4).unwrap())
+            .unwrap();
+        let malformed_pattern = builder
+            .add_variable(Domain::from_indices(0_u8..4).unwrap())
+            .unwrap();
+        let roles = (0..3)
+            .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let bonds = roles
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(bit, variable)| {
+                TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            builder.add_latent_tetrahedral_layout(
+                order,
+                malformed_pattern,
+                bonds,
+                vec![Domain::singleton(0).unwrap(); 8],
+            ),
+            Err(ConstraintModelError::InvalidTetrahedralPatternDomain {
+                variable: malformed_pattern,
+                expected: Domain::from_indices(0_u8..8).unwrap(),
+            })
         );
     }
 }

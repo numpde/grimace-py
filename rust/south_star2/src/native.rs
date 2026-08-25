@@ -52,8 +52,8 @@ impl NativeSolverState {
     pub(crate) fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
         let domains = PagedStore::from_values(model.initial_domains());
         let exact_plan = Arc::new(NativeExactPlan::compile(&model));
-        let factor_count = model.factor_count();
         let variable_count = model.variable_count();
+        let initial_factor_ids = model.initial_factor_ids().to_vec();
         let mut state = Self {
             model,
             exact_plan,
@@ -66,7 +66,7 @@ impl NativeSolverState {
             mixed_exact_runs: Arc::new(AtomicUsize::new(0)),
         };
         state.enforce_consistency(
-            (0..factor_count).map(factor_id_from_index),
+            initial_factor_ids,
             (0..variable_count).map(variable_id_from_index),
         )?;
         Ok(state)
@@ -136,7 +136,7 @@ impl NativeSolverState {
             seed_factors.extend(
                 successor
                     .model
-                    .factors_for_variable(variable)
+                    .initial_factors_for_variable(variable)
                     .expect("known variable must have an adjacency row")
                     .iter()
                     .copied(),
@@ -170,7 +170,7 @@ impl NativeSolverState {
             for variable in &exact_reductions {
                 seed_factors.extend(
                     self.model
-                        .factors_for_variable(*variable)
+                        .initial_factors_for_variable(*variable)
                         .expect("known variable must have an adjacency row")
                         .iter()
                         .copied(),
@@ -216,13 +216,16 @@ impl NativeSolverState {
                 FactorDefinition::SpanningTree(spanning_tree) => {
                     revise_spanning_tree(spanning_tree, &mut self.domains)?
                 }
+                FactorDefinition::TetrahedralLayout(_) => {
+                    unreachable!("latent tetrahedral factors require explicit activation")
+                }
             };
 
             for variable in reductions {
                 all_reductions.insert(variable);
                 for &neighbour in self
                     .model
-                    .factors_for_variable(variable)
+                    .initial_factors_for_variable(variable)
                     .expect("factor scope must reference a prepared variable")
                 {
                     enqueue_factor(neighbour, &mut queue, &mut queued);
@@ -394,7 +397,7 @@ impl NativeSolverState {
         successor.domains[variable.index()] = restricted;
         let seed_factors = successor
             .model
-            .factors_for_variable(variable)
+            .initial_factors_for_variable(variable)
             .expect("known variable must have an adjacency row")
             .to_vec();
         successor.propagate(seed_factors)?;
@@ -415,7 +418,7 @@ impl NativeExactPlan {
             .map(|index| {
                 let variable = variable_id_from_index(index);
                 model
-                    .factors_for_variable(variable)
+                    .potential_factors_for_variable(variable)
                     .expect("known variable must have an adjacency row")
                     .iter()
                     .any(|factor_id| {
@@ -449,7 +452,7 @@ impl NativeExactPlan {
                 visited_core[variable.index()] = true;
 
                 for &factor_id in model
-                    .factors_for_variable(variable)
+                    .potential_factors_for_variable(variable)
                     .expect("known variable must have an adjacency row")
                 {
                     match model
@@ -472,6 +475,7 @@ impl NativeExactPlan {
                                 );
                             }
                         }
+                        FactorDefinition::TetrahedralLayout(_) => {}
                     }
                 }
             }
@@ -1023,12 +1027,6 @@ fn enqueue_local_factors(
             queue.push_back(factor);
         }
     }
-}
-
-fn factor_id_from_index(index: usize) -> FactorId {
-    FactorId::new(
-        u32::try_from(index).expect("constraint model validated the factor identifier capacity"),
-    )
 }
 
 fn variable_id_from_index(index: usize) -> VariableId {

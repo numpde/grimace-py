@@ -147,6 +147,7 @@ fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
             FactorDefinition::SpanningTree(spanning_tree) => {
                 assignment_satisfies_spanning_tree(spanning_tree, assignment)
             }
+            FactorDefinition::TetrahedralLayout(_) => true,
         }
     })
 }

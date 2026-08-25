@@ -740,7 +740,7 @@ fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
     assert_eq!(model.variable_count(), bonds.len() + 1);
     assert_eq!(model.factor_count(), 1);
     assert_eq!(
-        model.factors_for_variable(center.order_variable),
+        model.potential_factors_for_variable(center.order_variable),
         Some(&[][..])
     );
     assert_eq!(

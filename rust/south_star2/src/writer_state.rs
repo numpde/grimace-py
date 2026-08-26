@@ -5,13 +5,15 @@
 //! entry, while its other active incidences become ring endpoints.
 
 use crate::domain::Domain;
-use crate::ids::{AtomId, BondId, VariableId};
+use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::model::BondRole;
 use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 #[cfg(test)]
 use crate::traversal::ObservedTraversalState;
-use crate::traversal::{IncidentBondState, LocalBondOrder, PathCompletion, TraversalState};
+use crate::traversal::{
+    IncidentBondState, LocalBondOrder, LocalLayoutContext, PathCompletion, TraversalState,
+};
 
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -112,6 +114,7 @@ pub(crate) struct WriterState<S> {
 pub(crate) struct ObservedWriterState {
     pub(crate) traversal: ObservedTraversalState,
     pub(crate) bond_plan_domains: Vec<Domain>,
+    pub(crate) active_factors: Vec<FactorId>,
 }
 
 impl<S: ConstraintSolver> WriterState<S> {
@@ -179,6 +182,12 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.constraints
             .domain(variable)
             .expect("prepared semantic variable must belong to the writer constraint model")
+    }
+
+    pub(crate) fn factor_is_active(&self, factor: FactorId) -> bool {
+        self.constraints
+            .factor_is_active(factor)
+            .expect("prepared semantic factor must belong to the solver state")
     }
 
     pub(crate) fn structural_frontier(&self) -> StructuralFrontier {
@@ -350,7 +359,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         candidate: StructuralCandidate,
     ) -> Result<Consistency<Self>, S::Failure> {
-        self.attempt_candidate_with_refinement(candidate, None, &[])
+        self.attempt_candidate_with_refinement(candidate, None, &[], &[])
     }
 
     pub(crate) fn attempt_candidate_with_bond_refinement(
@@ -369,31 +378,39 @@ impl<S: ConstraintSolver> WriterState<S> {
             ),
             "only a ring endpoint candidate accepts a visible bond refinement"
         );
-        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[])
+        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[], &[])
     }
 
-    pub(crate) fn attempt_candidate_with_semantic_restrictions(
+    pub(crate) fn attempt_candidate_with_semantic_transition(
         &self,
         candidate: StructuralCandidate,
+        allowed_representations: Option<Domain>,
         restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
         assert!(
-            !restrictions.is_empty(),
-            "a semantic candidate refinement must restrict at least one variable"
+            !restrictions.is_empty() || !activate.is_empty(),
+            "a semantic candidate transition must restrict or activate prepared state"
         );
-        self.attempt_candidate_with_refinement(candidate, None, restrictions)
+        self.attempt_candidate_with_refinement(
+            candidate,
+            allowed_representations,
+            restrictions,
+            activate,
+        )
     }
 
-    pub(crate) fn restricted_semantics(
+    pub(crate) fn transitioned_semantics(
         &self,
         restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
         assert!(
-            !restrictions.is_empty(),
-            "a semantic transition must restrict at least one variable"
+            !restrictions.is_empty() || !activate.is_empty(),
+            "a semantic transition must restrict or activate prepared state"
         );
         Ok(self
-            .restricted_constraints(None, None, restrictions)?
+            .restricted_constraints(None, None, restrictions, activate)?
             .map(|constraints| Self {
                 prepared: self.prepared.clone(),
                 traversal: self.traversal.clone(),
@@ -408,6 +425,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         candidate: StructuralCandidate,
         allowed_representations: Option<Domain>,
         semantic_restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
         let bond = match candidate {
             StructuralCandidate::RingOpen { incident }
@@ -438,7 +456,12 @@ impl<S: ConstraintSolver> WriterState<S> {
             .or_else(|| role.map(|role| self.role_domain(bond.unwrap(), role)));
         let restriction_bond = bond_domain.map(|_| bond.unwrap());
         let attempted = self
-            .restricted_constraints(restriction_bond, bond_domain, semantic_restrictions)?
+            .restricted_constraints(
+                restriction_bond,
+                bond_domain,
+                semantic_restrictions,
+                activate,
+            )?
             .map(|constraints| {
                 let mut traversal = self.traversal.clone();
                 match candidate {
@@ -517,6 +540,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         bond: Option<BondId>,
         bond_domain: Option<Domain>,
         semantic_restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
     ) -> Result<Consistency<S>, S::Failure> {
         assert_eq!(bond.is_some(), bond_domain.is_some());
         let mut merged = BTreeMap::<VariableId, Domain>::new();
@@ -532,8 +556,9 @@ impl<S: ConstraintSolver> WriterState<S> {
         if merged.values().any(|domain| domain.is_empty()) {
             return Ok(Consistency::Contradiction);
         }
-        if merged.is_empty()
+        if activate.is_empty() && merged.is_empty()
             || (semantic_restrictions.is_empty()
+                && activate.is_empty()
                 && merged.iter().all(|(variable, allowed)| {
                     self.constraints
                         .domain(*variable)
@@ -544,7 +569,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             return Ok(Consistency::Consistent(self.constraints.clone()));
         }
         self.constraints
-            .restricted(&merged.into_iter().collect::<Vec<_>>())
+            .transitioned(&merged.into_iter().collect::<Vec<_>>(), activate)
     }
 
     #[cfg(test)]
@@ -572,6 +597,10 @@ impl<S: ConstraintSolver> WriterState<S> {
         ObservedWriterState {
             traversal: self.traversal.observe_raw(),
             bond_plan_domains,
+            active_factors: (0..self.prepared.constraint_model().factor_count())
+                .map(|index| FactorId::new(u32::try_from(index).unwrap()))
+                .filter(|factor| self.factor_is_active(*factor))
+                .collect(),
         }
     }
 
@@ -590,6 +619,45 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     pub(crate) fn active_local_bond_order(&self) -> LocalBondOrder {
         self.traversal.active_local_bond_order()
+    }
+
+    pub(crate) fn active_local_layout_context(&self) -> LocalLayoutContext {
+        self.traversal
+            .active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_root_layout_context(&self, atom: AtomId) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.begin_component(self.prepared.graph(), atom);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_inline_child_layout_context(
+        &self,
+        incident: AdjacentBond,
+    ) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.commit_active_child(incident);
+        traversal.enter_inline_child(self.prepared.graph(), incident);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_committed_inline_child_layout_context(
+        &self,
+        incident: AdjacentBond,
+    ) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.enter_inline_child(self.prepared.graph(), incident);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_committed_branch_child_layout_context(
+        &self,
+        incident: AdjacentBond,
+    ) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.enter_branch_child(self.prepared.graph(), incident);
+        traversal.active_local_layout_context(self.prepared.graph())
     }
 
     pub(crate) fn enter_committed_branch_child(&self, incident: AdjacentBond) -> Self {

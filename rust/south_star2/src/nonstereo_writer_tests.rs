@@ -234,8 +234,30 @@ impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+        {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -270,8 +292,30 @@ impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions.iter().any(|(variable, domain)| {
+            self.0.domain(*variable) == Some(full_order_domain())
+                && domain.is_subset_of(parity_domain(TetrahedralParity::Even))
+        }) {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -313,8 +357,35 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+        {
+            assert_eq!(
+                TETRAHEDRAL_BACKEND_ATTEMPTS.fetch_add(1, Ordering::Relaxed),
+                0,
+                "atom-token generation must stop at the first backend failure"
+            );
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -340,8 +411,24 @@ impl ConstraintSolver for CountTetrahedralRestrictionsSolver {
         Ok(<NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)?.map(Self))
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        TETRAHEDRAL_RESTRICTION_CALLS.fetch_add(1, Ordering::Relaxed);
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -364,8 +451,23 @@ impl ConstraintSolver for NonconformingNonProjectingTetrahedralSolver {
         Ok(Consistency::Consistent(self.clone()))
     }
 
+    fn transitioned(
+        &self,
+        _restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, &[], activate)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -1462,7 +1564,7 @@ fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
 }
 
 #[test]
-fn ring_capable_tetrahedral_center_trips_only_at_its_atom_event() {
+fn ring_capable_tetrahedral_center_activates_layout_at_its_atom_event() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..4)
         .map(|_| graph.add_atom().unwrap())
@@ -1492,17 +1594,196 @@ fn ring_capable_tetrahedral_center_trips_only_at_its_atom_event() {
         vec![NonStereoBondToken::Elided; bonds.len()],
     )
     .unwrap();
-    let state =
-        NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
-            .unwrap()
-            .unwrap_consistent();
+    let state = State::initial(&surface).unwrap().unwrap_consistent();
 
-    assert!(matches!(
-        state.choices(),
-        Err(ChoiceFailure::Incomplete(
-            WriterIncompleteness::TetrahedralRingCoupling { atom }
-        )) if atom == atoms[0]
-    ));
+    let choices = state
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .collect::<Vec<_>>();
+    assert_eq!(choices.len(), 2);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    for choice in choices {
+        assert!(choice
+            .successor()
+            .structural
+            .factor_is_active(center.root_layout_factor));
+        assert!(!choice
+            .successor()
+            .structural
+            .semantic_domain(center.role_pattern_variable)
+            .is_empty());
+    }
+}
+
+#[test]
+fn prospective_frame_context_derives_exact_local_role_patterns() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(3);
+    let state = initial(&surface);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let root_context = LocalLayoutContext {
+        order: crate::traversal::LocalBondOrder {
+            atom: atoms[0],
+            entry_bond: None,
+            emitted_bonds: Vec::new(),
+            ring_occurrence_count: 0,
+        },
+        waiting_ring_bonds: Vec::new(),
+        residual_attachment_bonds: vec![vec![bonds[0], bonds[1]], vec![bonds[2]]],
+    };
+    let entered_context = LocalLayoutContext {
+        order: crate::traversal::LocalBondOrder {
+            atom: atoms[0],
+            entry_bond: Some(bonds[0]),
+            emitted_bonds: Vec::new(),
+            ring_occurrence_count: 0,
+        },
+        waiting_ring_bonds: vec![bonds[1]],
+        residual_attachment_bonds: vec![vec![bonds[2]]],
+    };
+
+    assert_eq!(
+        state.local_role_pattern_domain(center, &root_context),
+        Domain::from_indices([1, 2]).unwrap()
+    );
+    assert_eq!(
+        state.local_role_pattern_domain(center, &entered_context),
+        Domain::singleton(2).unwrap()
+    );
+}
+
+#[test]
+fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[3]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+    )
+    .unwrap();
+    let source = initial(&surface);
+    let pending = source
+        .choices()
+        .unwrap()
+        .into_iter()
+        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .flat_map(|choice| choice.into_successor().choices().unwrap())
+        .find(|choice| {
+            choice.text() == "="
+                && matches!(
+                    choice.successor().pending,
+                    Some(PendingEmission::RingOpeningLabel { incident, .. })
+                        if incident.bond() == bonds[0]
+                )
+        })
+        .unwrap()
+        .into_successor();
+    let before_label = pending.structural.active_local_bond_order();
+
+    assert_eq!(before_label.emitted_bonds, vec![bonds[0]]);
+    assert_eq!(before_label.ring_occurrence_count, 1);
+    let after_label = pending.choices().unwrap().remove(0).into_successor();
+    assert_eq!(
+        after_label.structural.active_local_bond_order(),
+        before_label
+    );
+}
+
+#[test]
+fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[3]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    )
+    .unwrap();
+
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let mut pending = vec![(initial(&surface), String::new())];
+    let mut paths = Vec::new();
+    let mut saw_entered_context = false;
+    let mut saw_waiting_closure = false;
+    let mut explored = 0;
+    while let Some((state, prefix)) = pending.pop() {
+        explored += 1;
+        assert!(explored < 20_000);
+        if state.is_accepted() {
+            paths.push(prefix);
+            continue;
+        }
+        if state.pending.is_none() && state.active_atom() == Some(atoms[0]) {
+            let context = state.structural.active_local_layout_context();
+            if let Some(entry) = context.order.entry_bond {
+                saw_entered_context = true;
+                assert!(state
+                    .structural
+                    .factor_is_active(center.layout_factor(Some(entry))));
+            }
+            saw_waiting_closure |= !context.waiting_ring_bonds.is_empty();
+        }
+        for choice in state.choices().unwrap() {
+            pending.push((
+                choice.successor().clone(),
+                format!("{prefix}{}", choice.text()),
+            ));
+        }
+    }
+
+    assert!(!paths.is_empty());
+    assert!(paths.iter().any(|text| text.contains('1')));
+    assert!(saw_entered_context);
+    assert!(saw_waiting_closure);
 }
 
 #[test]

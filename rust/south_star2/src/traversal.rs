@@ -525,6 +525,13 @@ pub(crate) struct LocalBondOrder {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LocalLayoutContext {
+    pub(crate) order: LocalBondOrder,
+    pub(crate) waiting_ring_bonds: Vec<BondId>,
+    pub(crate) residual_attachment_bonds: Vec<Vec<BondId>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct FrameNode {
     frame: Arc<WriterFrame>,
     parent: Option<Arc<FrameNode>>,
@@ -769,6 +776,38 @@ impl TraversalState {
             entry_bond: frame.entry_bond,
             emitted_bonds: frame.emitted_bonds.clone(),
             ring_occurrence_count: frame.ring_occurrence_count,
+        }
+    }
+
+    pub(crate) fn active_local_layout_context(&self, graph: &PreparedGraph) -> LocalLayoutContext {
+        let order = self.active_local_bond_order();
+        let waiting_ring_bonds = graph
+            .neighbors(order.atom)
+            .expect("local layout context requires a prepared atom")
+            .iter()
+            .copied()
+            .filter(|incident| {
+                self.progress
+                    .classify_incident(graph, order.atom, *incident)
+                    == IncidentBondState::RingOpenAtOtherAtom
+            })
+            .map(AdjacentBond::bond)
+            .collect();
+        let residual_attachment_bonds = self
+            .active_attachments()
+            .iter()
+            .map(|attachment| {
+                attachment
+                    .incidences()
+                    .iter()
+                    .map(|incident| incident.bond())
+                    .collect()
+            })
+            .collect();
+        LocalLayoutContext {
+            order,
+            waiting_ring_bonds,
+            residual_attachment_bonds,
         }
     }
 

@@ -2003,3 +2003,7 @@ mod tests;
 #[cfg(test)]
 #[path = "nonstereo_transition_oracle.rs"]
 mod transition_oracle;
+
+#[cfg(test)]
+#[path = "tetrahedral_transition_oracle.rs"]
+mod tetrahedral_transition_oracle;

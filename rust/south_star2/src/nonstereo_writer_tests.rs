@@ -907,6 +907,25 @@ fn independent_local_layout_groups(
     (waiting, groups)
 }
 
+fn set_partitions<T: Copy>(values: &[T]) -> Vec<Vec<Vec<T>>> {
+    if values.is_empty() {
+        return vec![Vec::new()];
+    }
+    let first = values[0];
+    let mut partitions = Vec::new();
+    for suffix in set_partitions(&values[1..]) {
+        let mut own_group = vec![vec![first]];
+        own_group.extend(suffix.clone());
+        partitions.push(own_group);
+        for group in 0..suffix.len() {
+            let mut inserted = suffix.clone();
+            inserted[group].push(first);
+            partitions.push(inserted);
+        }
+    }
+    partitions
+}
+
 fn incident(surface: &PreparedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
     surface
         .molecule()
@@ -1851,6 +1870,66 @@ fn prospective_frame_context_derives_exact_local_role_patterns() {
         state.local_role_pattern_domain(center, &entered_context),
         Domain::singleton(2).unwrap()
     );
+}
+
+#[test]
+fn every_small_event_context_matches_the_declarative_role_pattern_law() {
+    for bond_count in [3, 4] {
+        let (surface, atoms, bonds) = tetrahedral_star_fixture(bond_count);
+        let state = initial(&surface);
+        let center = surface.tetrahedral_center(atoms[0]).unwrap();
+        let entry_options = std::iter::once(None).chain(bonds.iter().copied().map(Some));
+        for entry in entry_options {
+            let candidates = bonds
+                .iter()
+                .copied()
+                .filter(|bond| Some(*bond) != entry)
+                .collect::<Vec<_>>();
+            for waiting_bits in 0..(1_usize << candidates.len()) {
+                let waiting = candidates
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, bond)| (waiting_bits & (1 << index) != 0).then_some(*bond))
+                    .collect::<Vec<_>>();
+                let residual = candidates
+                    .iter()
+                    .copied()
+                    .filter(|bond| !waiting.contains(bond))
+                    .collect::<Vec<_>>();
+                for attachments in set_partitions(&residual) {
+                    let context = LocalLayoutContext {
+                        order: crate::traversal::LocalBondOrder {
+                            atom: atoms[0],
+                            entry_bond: entry,
+                            emitted_bonds: Vec::new(),
+                            ring_occurrence_count: 0,
+                        },
+                        waiting_ring_bonds: waiting.clone(),
+                        residual_attachment_bonds: attachments.clone(),
+                    };
+                    let expected =
+                        Domain::from_indices((0..(1_u8 << bond_count)).filter(|pattern| {
+                            let bit = |bond: BondId| center.pattern_bit(bond);
+                            entry.is_none_or(|bond| pattern & (1 << bit(bond)) == 0)
+                                && waiting.iter().all(|bond| pattern & (1 << bit(*bond)) != 0)
+                                && attachments.iter().all(|group| {
+                                    group
+                                        .iter()
+                                        .filter(|bond| pattern & (1 << bit(**bond)) == 0)
+                                        .count()
+                                        == 1
+                                })
+                        }))
+                        .unwrap();
+                    assert_eq!(
+                        state.local_role_pattern_domain(center, &context),
+                        expected,
+                        "entry {entry:?}, waiting {waiting:?}, attachments {attachments:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

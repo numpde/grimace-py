@@ -9,13 +9,13 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
-use crate::ids::{AtomId, BondId, VariableId};
-use crate::model::EdgeRolePartition;
-use crate::prepared::{AdjacentBond, PreparedBond, PreparedMolecule};
+use crate::ids::{AtomId, BondId, FactorId, VariableId};
+use crate::model::{EdgeRolePartition, TetrahedralLayoutBond};
+use crate::prepared::{AdjacentBond, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
-    full_order_domain, parity_domain, prefix_domain, singleton_order, TetrahedralLigand,
-    TetrahedralParity,
+    full_order_domain, full_role_pattern_domain, layout_order_rows, parity_domain, prefix_domain,
+    singleton_order, TetrahedralLigand, TetrahedralParity,
 };
 #[cfg(test)]
 use crate::writer_state::ObservedWriterState;
@@ -173,6 +173,10 @@ struct PreparedTetrahedralCenter {
     reference_order: [TetrahedralLigand; 4],
     text_by_parity: [Box<str>; 2],
     order_variable: VariableId,
+    role_pattern_variable: VariableId,
+    bond_pattern_bits: Box<[(BondId, u8)]>,
+    root_layout_factor: FactorId,
+    entry_layout_factors: Box<[(BondId, FactorId)]>,
 }
 
 impl PreparedTetrahedralCenter {
@@ -213,6 +217,23 @@ impl PreparedTetrahedralCenter {
         let mut order = self.context_prefix(entry_bond);
         order.extend(committed_bonds.iter().copied().map(TetrahedralLigand::Bond));
         singleton_order(&self.reference_order, &order)
+    }
+
+    fn layout_factor(&self, entry_bond: Option<BondId>) -> FactorId {
+        let Some(entry_bond) = entry_bond else {
+            return self.root_layout_factor;
+        };
+        self.entry_layout_factors
+            .iter()
+            .find_map(|(bond, factor)| (*bond == entry_bond).then_some(*factor))
+            .expect("every prepared entry bond must own one latent layout factor")
+    }
+
+    fn pattern_bit(&self, bond: BondId) -> u8 {
+        self.bond_pattern_bits
+            .iter()
+            .find_map(|(candidate, bit)| (*candidate == bond).then_some(*bit))
+            .expect("every prepared tetrahedral bond must own one role-pattern bit")
     }
 }
 
@@ -268,11 +289,11 @@ impl PreparedNonStereo {
                 PreparedAtomToken::Tetrahedral {
                     reference_order,
                     text_by_parity,
-                } => PreparedAtom::Tetrahedral(PreparedTetrahedralCenter {
+                } => PreparedAtom::Tetrahedral(prepare_tetrahedral_center(
+                    &mut assembly,
                     reference_order,
-                    text_by_parity: text_by_parity.map(String::into_boxed_str),
-                    order_variable: assembly.add_isolated_variable(full_order_domain()),
-                }),
+                    text_by_parity,
+                )),
             })
             .collect::<Vec<_>>();
         let molecule = assembly.finish();
@@ -343,6 +364,70 @@ impl PreparedNonStereo {
         spelling: RingEndpointSpelling,
     ) -> Domain {
         BondRepresentation::endpoint_domain(self.fixed_endpoint(bond, atom), spelling)
+    }
+}
+
+fn prepare_tetrahedral_center(
+    assembly: &mut PreparedConstraintAssembly,
+    reference_order: [TetrahedralLigand; 4],
+    text_by_parity: [String; 2],
+) -> PreparedTetrahedralCenter {
+    let bond_pattern_bits = reference_order
+        .iter()
+        .filter_map(|ligand| match ligand {
+            TetrahedralLigand::Bond(bond) => Some(*bond),
+            TetrahedralLigand::VirtualHydrogen => None,
+        })
+        .enumerate()
+        .map(|(bit, bond)| (bond, u8::try_from(bit).unwrap()))
+        .collect::<Vec<_>>();
+    let order_variable = assembly.add_isolated_variable(full_order_domain());
+    let role_pattern_variable =
+        assembly.add_isolated_variable(full_role_pattern_domain(bond_pattern_bits.len()));
+    let layout_bonds = bond_pattern_bits
+        .iter()
+        .map(|(bond, bit)| {
+            TetrahedralLayoutBond::new(
+                assembly.bond_decision_variable(*bond),
+                assembly.bond_role_partition(*bond),
+                *bit,
+            )
+        })
+        .collect::<Vec<_>>();
+    let add_factor = |assembly: &mut PreparedConstraintAssembly,
+                      context_prefix: Vec<TetrahedralLigand>| {
+        assembly.add_latent_tetrahedral_layout(
+            order_variable,
+            role_pattern_variable,
+            layout_bonds.iter().copied(),
+            layout_order_rows(&reference_order, &context_prefix, &bond_pattern_bits),
+        )
+    };
+    let virtual_hydrogen = reference_order.contains(&TetrahedralLigand::VirtualHydrogen);
+    let root_prefix = virtual_hydrogen
+        .then_some(TetrahedralLigand::VirtualHydrogen)
+        .into_iter()
+        .collect();
+    let root_layout_factor = add_factor(assembly, root_prefix);
+    let entry_layout_factors = bond_pattern_bits
+        .iter()
+        .map(|(bond, _)| {
+            let mut prefix = vec![TetrahedralLigand::Bond(*bond)];
+            if virtual_hydrogen {
+                prefix.push(TetrahedralLigand::VirtualHydrogen);
+            }
+            (*bond, add_factor(assembly, prefix))
+        })
+        .collect::<Vec<_>>();
+
+    PreparedTetrahedralCenter {
+        reference_order,
+        text_by_parity: text_by_parity.map(String::into_boxed_str),
+        order_variable,
+        role_pattern_variable,
+        bond_pattern_bits: bond_pattern_bits.into_boxed_slice(),
+        root_layout_factor,
+        entry_layout_factors: entry_layout_factors.into_boxed_slice(),
     }
 }
 

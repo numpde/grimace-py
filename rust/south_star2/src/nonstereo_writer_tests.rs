@@ -714,7 +714,7 @@ fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
 }
 
 #[test]
-fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
+fn surface_prepares_one_latent_layout_context_per_tetrahedral_entry() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms: [AtomId; 5] = std::array::from_fn(|_| graph.add_atom().unwrap());
     let bonds: [BondId; 4] =
@@ -737,10 +737,22 @@ fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
     let model = surface.molecule().constraint_model();
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
 
-    assert_eq!(model.variable_count(), bonds.len() + 1);
-    assert_eq!(model.factor_count(), 1);
+    assert_eq!(model.variable_count(), bonds.len() + 2);
+    assert_eq!(model.factor_count(), 1 + bonds.len() + 1);
     assert_eq!(
         model.potential_factors_for_variable(center.order_variable),
+        Some(
+            &[
+                center.root_layout_factor,
+                center.entry_layout_factors[0].1,
+                center.entry_layout_factors[1].1,
+                center.entry_layout_factors[2].1,
+                center.entry_layout_factors[3].1,
+            ][..]
+        )
+    );
+    assert_eq!(
+        model.initial_factors_for_variable(center.order_variable),
         Some(&[][..])
     );
     assert_eq!(
@@ -750,6 +762,24 @@ fn surface_prepares_one_isolated_order_domain_per_tetrahedral_center() {
             .initial_domain(),
         full_order_domain()
     );
+    assert_eq!(
+        model
+            .variable(center.role_pattern_variable)
+            .unwrap()
+            .initial_domain(),
+        full_role_pattern_domain(bonds.len())
+    );
+    for factor in std::iter::once(center.root_layout_factor).chain(
+        center
+            .entry_layout_factors
+            .iter()
+            .map(|(_, factor)| *factor),
+    ) {
+        assert_eq!(
+            model.factor_activation(factor),
+            Some(crate::model::FactorActivation::Latent)
+        );
+    }
 }
 
 #[test]

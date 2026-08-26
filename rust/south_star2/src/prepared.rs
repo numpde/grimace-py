@@ -9,9 +9,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
-use crate::ids::{AtomId, BondId, VariableId};
+use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::model::{
     BondRole, ConstraintModel, ConstraintModelBuilder, EdgeRolePartition, SpanningTreeEdge,
+    TetrahedralLayoutBond,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -223,6 +224,31 @@ impl PreparedConstraintAssembly {
         self.builder
             .add_variable(initial_domain)
             .expect("prepared semantic variables must fit the constraint identifier space")
+    }
+
+    pub(crate) fn bond_decision_variable(&self, bond: BondId) -> VariableId {
+        self.bond_decision_variables[bond.index()]
+    }
+
+    pub(crate) fn bond_role_partition(&self, bond: BondId) -> EdgeRolePartition {
+        self.bond_role_partitions[bond.index()]
+    }
+
+    pub(crate) fn add_latent_tetrahedral_layout(
+        &mut self,
+        order_variable: VariableId,
+        role_pattern_variable: VariableId,
+        bonds: impl IntoIterator<Item = TetrahedralLayoutBond>,
+        allowed_orders_by_pattern: impl IntoIterator<Item = Domain>,
+    ) -> FactorId {
+        self.builder
+            .add_latent_tetrahedral_layout(
+                order_variable,
+                role_pattern_variable,
+                bonds,
+                allowed_orders_by_pattern,
+            )
+            .expect("prepared tetrahedral layout must define a valid latent factor")
     }
 
     pub(crate) fn finish(mut self) -> PreparedMolecule {

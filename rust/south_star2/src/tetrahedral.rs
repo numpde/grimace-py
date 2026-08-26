@@ -58,6 +58,55 @@ pub(crate) fn singleton_order(
     prefix_domain(reference_order, order)
 }
 
+pub(crate) fn full_role_pattern_domain(bond_count: usize) -> Domain {
+    assert!((3..=4).contains(&bond_count));
+    Domain::from_indices(0..(1_u8 << bond_count)).unwrap()
+}
+
+pub(crate) fn layout_order_rows(
+    reference_order: &[TetrahedralLigand; 4],
+    context_prefix: &[TetrahedralLigand],
+    bond_bits: &[(BondId, u8)],
+) -> Vec<Domain> {
+    assert!((3..=4).contains(&bond_bits.len()));
+    let bit_for_bond = |bond: BondId| {
+        bond_bits
+            .iter()
+            .find_map(|(candidate, bit)| (*candidate == bond).then_some(*bit))
+            .expect("every prepared bond ligand must own one role-pattern bit")
+    };
+    (0..(1_u8 << bond_bits.len()))
+        .map(|pattern| {
+            Domain::from_indices((0..TETRAHEDRAL_ORDER_COUNT as u8).filter(|value| {
+                let order = order_for_value(reference_order, *value)
+                    .expect("tetrahedral order value must be prepared");
+                if !order.starts_with(context_prefix) {
+                    return false;
+                }
+                if context_prefix.iter().any(|ligand| {
+                    matches!(ligand, TetrahedralLigand::Bond(bond)
+                        if pattern & (1_u8 << bit_for_bond(*bond)) != 0)
+                }) {
+                    return false;
+                }
+                let mut saw_traversal = false;
+                for ligand in &order[context_prefix.len()..] {
+                    let TetrahedralLigand::Bond(bond) = ligand else {
+                        return false;
+                    };
+                    let is_ring = pattern & (1_u8 << bit_for_bond(*bond)) != 0;
+                    if is_ring && saw_traversal {
+                        return false;
+                    }
+                    saw_traversal |= !is_ring;
+                }
+                true
+            }))
+            .unwrap()
+        })
+        .collect()
+}
+
 pub(crate) fn order_for_value(
     reference_order: &[TetrahedralLigand; 4],
     value: u8,
@@ -154,5 +203,61 @@ mod tests {
                 Domain::singleton(value).unwrap()
             );
         }
+    }
+
+    #[test]
+    fn layout_rows_are_context_then_rings_then_traversal_children() {
+        let reference = reference();
+        let bond_bits = [
+            (BondId::new(0), 0),
+            (BondId::new(1), 1),
+            (BondId::new(2), 2),
+        ];
+        let root_rows = layout_order_rows(
+            &reference,
+            &[TetrahedralLigand::VirtualHydrogen],
+            &bond_bits,
+        );
+        let entered_rows = layout_order_rows(
+            &reference,
+            &[
+                TetrahedralLigand::Bond(BondId::new(1)),
+                TetrahedralLigand::VirtualHydrogen,
+            ],
+            &bond_bits,
+        );
+
+        for (pattern, rows) in [(0_u8, &root_rows), (3, &root_rows), (5, &root_rows)] {
+            for value in rows[pattern as usize].iter() {
+                let order = order_for_value(&reference, value).unwrap();
+                assert_eq!(order[0], TetrahedralLigand::VirtualHydrogen);
+                let suffix = &order[1..];
+                let first_traversal = suffix.iter().position(|ligand| {
+                    let TetrahedralLigand::Bond(bond) = ligand else {
+                        unreachable!()
+                    };
+                    let bit = bond_bits
+                        .iter()
+                        .find_map(|(candidate, bit)| (*candidate == *bond).then_some(*bit))
+                        .unwrap();
+                    pattern & (1_u8 << bit) == 0
+                });
+                if let Some(first_traversal) = first_traversal {
+                    assert!(suffix[first_traversal..].iter().all(|ligand| {
+                        let TetrahedralLigand::Bond(bond) = ligand else {
+                            unreachable!()
+                        };
+                        let bit = bond_bits
+                            .iter()
+                            .find_map(|(candidate, bit)| (*candidate == *bond).then_some(*bit))
+                            .unwrap();
+                        pattern & (1_u8 << bit) == 0
+                    }));
+                }
+            }
+        }
+        assert!(entered_rows[2].is_empty());
+        assert!(!entered_rows[0].is_empty());
+        assert!(!entered_rows[1].is_empty());
     }
 }

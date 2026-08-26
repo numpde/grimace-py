@@ -465,6 +465,12 @@ impl ConstraintModelBuilder {
             if !seen_variables.insert(variable) {
                 return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
             }
+            if self
+                .prepared_edge_role_partition(variable)
+                .is_some_and(|existing| existing != edge.role_partition)
+            {
+                return Err(ConstraintModelError::ConflictingEdgeRolePartition(variable));
+            }
             if self.factors_by_variable[variable.index()]
                 .iter()
                 .any(|factor| {
@@ -558,6 +564,12 @@ impl ConstraintModelBuilder {
                 || traversal.union(ring) != initial_domain
             {
                 return Err(ConstraintModelError::InvalidEdgeRolePartition(variable));
+            }
+            if self
+                .prepared_edge_role_partition(variable)
+                .is_some_and(|existing| existing != bond.role_partition)
+            {
+                return Err(ConstraintModelError::ConflictingEdgeRolePartition(variable));
             }
         }
         if seen_bits.len() != bonds.len() {
@@ -654,6 +666,24 @@ impl ConstraintModelBuilder {
         self.factor_activation.push(activation);
         Ok(factor)
     }
+
+    fn prepared_edge_role_partition(&self, variable: VariableId) -> Option<EdgeRolePartition> {
+        self.factors_by_variable[variable.index()]
+            .iter()
+            .find_map(|factor| match &self.factors[factor.index()] {
+                FactorDefinition::BinaryRelation(_) => None,
+                FactorDefinition::SpanningTree(spanning) => spanning
+                    .edges()
+                    .iter()
+                    .find(|edge| edge.decision_variable() == variable)
+                    .map(|edge| edge.role_partition()),
+                FactorDefinition::TetrahedralLayout(layout) => layout
+                    .bonds()
+                    .iter()
+                    .find(|bond| bond.decision_variable() == variable)
+                    .map(|bond| bond.role_partition()),
+            })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -672,6 +702,7 @@ pub enum ConstraintModelError {
     SpanningTreeSelfEdge(AtomId),
     SpanningTreeEdgeOutsideAtomSet(AtomId),
     InvalidEdgeRolePartition(VariableId),
+    ConflictingEdgeRolePartition(VariableId),
     OverlappingSpanningTreeVariable(VariableId),
     InvalidTetrahedralBondCount(usize),
     InvalidTetrahedralPatternDomain {
@@ -744,6 +775,10 @@ impl fmt::Display for ConstraintModelError {
                     "edge variable {variable:?} is not partitioned into disjoint Traversal and Ring values"
                 )
             }
+            Self::ConflictingEdgeRolePartition(variable) => write!(
+                formatter,
+                "edge variable {variable:?} uses inconsistent Traversal/Ring partitions across factors"
+            ),
             Self::OverlappingSpanningTreeVariable(variable) => {
                 write!(
                     formatter,
@@ -1157,6 +1192,86 @@ mod tests {
         for (pattern, expected) in rows.into_iter().enumerate() {
             assert_eq!(factor.allowed_orders(pattern as u8), expected);
         }
+    }
+
+    #[test]
+    fn edge_role_partition_is_one_model_wide_structural_fact() {
+        let domain = Domain::from_indices([0, 1, 2]).unwrap();
+        let first = EdgeRolePartition::new(
+            Domain::singleton(0).unwrap(),
+            Domain::from_indices([1, 2]).unwrap(),
+        );
+        let second = EdgeRolePartition::new(
+            Domain::from_indices([0, 1]).unwrap(),
+            Domain::singleton(2).unwrap(),
+        );
+        let rows = || [Domain::singleton(0).unwrap(); 8];
+
+        let mut layout_first = ConstraintModelBuilder::new();
+        let order = layout_first
+            .add_variable(Domain::singleton(0).unwrap())
+            .unwrap();
+        let pattern = layout_first
+            .add_variable(Domain::from_indices(0_u8..8).unwrap())
+            .unwrap();
+        let roles: [VariableId; 3] =
+            std::array::from_fn(|_| layout_first.add_variable(domain).unwrap());
+        layout_first
+            .add_latent_tetrahedral_layout(
+                order,
+                pattern,
+                roles
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(bit, variable)| TetrahedralLayoutBond::new(variable, first, bit as u8)),
+                rows(),
+            )
+            .unwrap();
+        assert_eq!(
+            layout_first.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1)],
+                [SpanningTreeEdge::with_role_partition(
+                    roles[0],
+                    AtomId::new(0),
+                    AtomId::new(1),
+                    second,
+                )],
+            ),
+            Err(ConstraintModelError::ConflictingEdgeRolePartition(roles[0]))
+        );
+
+        let mut spanning_first = ConstraintModelBuilder::new();
+        let order = spanning_first
+            .add_variable(Domain::singleton(0).unwrap())
+            .unwrap();
+        let pattern = spanning_first
+            .add_variable(Domain::from_indices(0_u8..8).unwrap())
+            .unwrap();
+        let roles: [VariableId; 3] =
+            std::array::from_fn(|_| spanning_first.add_variable(domain).unwrap());
+        spanning_first
+            .add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1)],
+                [SpanningTreeEdge::with_role_partition(
+                    roles[0],
+                    AtomId::new(0),
+                    AtomId::new(1),
+                    first,
+                )],
+            )
+            .unwrap();
+        assert_eq!(
+            spanning_first.add_latent_tetrahedral_layout(
+                order,
+                pattern,
+                roles.iter().copied().enumerate().map(|(bit, variable)| {
+                    TetrahedralLayoutBond::new(variable, second, bit as u8)
+                }),
+                rows(),
+            ),
+            Err(ConstraintModelError::ConflictingEdgeRolePartition(roles[0]))
+        );
     }
 
     #[test]

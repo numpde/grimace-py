@@ -364,6 +364,9 @@ impl NativeSolverState {
             .copied()
             .filter(|factor| self.factor_is_active(*factor) == Some(true))
             .collect::<Vec<_>>();
+        if component.always_core_variables.is_empty() && active_layouts.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut core_variables = component.always_core_variables.to_vec();
         let mut active_layout_core_variables = BTreeSet::new();
         let mut active_layout_cores_overlap = false;
@@ -1378,6 +1381,25 @@ mod tests {
 
         assert_eq!(source.factor_is_active(factor), Some(false));
         assert_eq!(source.domain(order), Some(two_values()));
+    }
+
+    #[test]
+    fn inactive_layout_component_performs_no_exact_work() {
+        let (model, _, _, bonds, _) = latent_layout_model();
+        let source = NativeSolverState::initial(model).unwrap();
+        source.reset_exact_run_counts();
+        source.reset_mixed_search_branch_count();
+
+        let successor = source
+            .with_restrictions([(bonds[0], Domain::singleton(1).unwrap())])
+            .unwrap();
+
+        assert_eq!(
+            successor.domain(bonds[0]),
+            Some(Domain::singleton(1).unwrap())
+        );
+        assert_eq!(successor.exact_run_counts(), (0, 0));
+        assert_eq!(successor.mixed_search_branch_count(), 0);
     }
 
     #[test]

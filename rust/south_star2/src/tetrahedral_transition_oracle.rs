@@ -700,7 +700,8 @@ fn observe(fixture: &Fixture, state: &State) -> SemanticState {
             .structural
             .bond_plan_domains
             .iter()
-            .map(|domain| domain.iter().collect())
+            .copied()
+            .map(production_plan_domain)
             .collect(),
         order_domain: domain_for_atom(&observed.tetrahedral_order_domains),
         pattern_domain: domain_for_atom(&observed.tetrahedral_role_pattern_domains),
@@ -734,6 +735,19 @@ fn observe(fixture: &Fixture, state: &State) -> SemanticState {
     }
 }
 
+fn production_plan_domain(domain: Domain) -> Vec<u8> {
+    [
+        (BondRepresentation::Traversal, TRAVERSAL),
+        (BondRepresentation::Ring00, RING_00),
+        (BondRepresentation::Ring10, RING_10),
+        (BondRepresentation::Ring01, RING_01),
+        (BondRepresentation::Ring11, RING_11),
+    ]
+    .into_iter()
+    .filter_map(|(production, oracle)| domain.contains(production.value_index()).then_some(oracle))
+    .collect()
+}
+
 fn visible(fixture: &Fixture, choices: &[Choice<State>]) -> Vec<VisibleSuccessor> {
     let mut values = choices
         .iter()
@@ -755,23 +769,6 @@ fn initial(fixture: &Fixture) -> State {
     State::initial(&fixture.surface)
         .unwrap()
         .unwrap_consistent()
-}
-
-fn is_opening(fixture: &Fixture, source: &State, choice: &Choice<State>, endpoint: usize) -> bool {
-    let source = source.observe_raw();
-    let successor = choice.successor().observe_raw();
-    (0..4).any(|bond| {
-        matches!(
-            (
-                &source.structural.traversal.bond_progress[bond],
-                &successor.structural.traversal.bond_progress[bond],
-            ),
-            (
-                ObservedBondProgress::Unrepresented,
-                ObservedBondProgress::RingOpen { first_endpoint },
-            ) if *first_endpoint == fixture.atoms[endpoint]
-        )
-    })
 }
 
 #[test]
@@ -804,12 +801,7 @@ fn root_activation_and_ring_openings_match_primitive_one_step_oracle() {
         );
         let production_source = root.successor().clone();
         let source_observed = production_source.observe_raw();
-        let openings = production_source
-            .choices()
-            .unwrap()
-            .into_iter()
-            .filter(|choice| is_opening(&fixture, &production_source, choice, CENTER))
-            .collect::<Vec<_>>();
+        let openings = production_source.choices().unwrap();
 
         assert_eq!(
             visible(&fixture, &openings),
@@ -921,30 +913,7 @@ fn entered_activation_and_explicit_closure_match_primitive_one_step_oracle() {
         );
         let production_source = atom_choice.successor().clone();
         let source_observed = production_source.observe_raw();
-        let closures = production_source
-            .choices()
-            .unwrap()
-            .into_iter()
-            .filter(|choice| {
-                matches!(
-                    (
-                        &production_source.observe_raw().structural.traversal.bond_progress
-                            [CENTER_A],
-                        &choice.successor().observe_raw().structural.traversal.bond_progress
-                            [CENTER_A],
-                    ),
-                    (
-                        ObservedBondProgress::RingOpen { first_endpoint },
-                        ObservedBondProgress::RingClosed {
-                            first_endpoint: closed_first,
-                            second_endpoint,
-                        },
-                    ) if *first_endpoint == fixture.atoms[A]
-                        && *closed_first == fixture.atoms[A]
-                        && *second_endpoint == fixture.atoms[CENTER]
-                )
-            })
-            .collect::<Vec<_>>();
+        let closures = production_source.choices().unwrap();
 
         assert_eq!(
             visible(&fixture, &closures),

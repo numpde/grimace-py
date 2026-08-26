@@ -1418,9 +1418,14 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
         .unwrap()
         .into_successor();
-    let pending_branch = parent
-        .choices()
-        .unwrap()
+    parent.reset_writer_work_counts();
+    let parent_choices = parent.choices().unwrap();
+    assert_eq!(
+        parent.writer_work_counts(),
+        (2, 3),
+        "the two branch candidates prevalidate one tetrahedral and one fixed atom frontier"
+    );
+    let pending_branch = parent_choices
         .into_iter()
         .find(|choice| {
             choice.successor().pending
@@ -1432,6 +1437,7 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         })
         .unwrap()
         .into_successor();
+    pending_branch.reset_writer_work_counts();
     assert_eq!(
         pending_branch
             .choices()
@@ -1441,6 +1447,7 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
+    assert_eq!(pending_branch.writer_work_counts(), (1, 0));
 
     let (explicit_branch_surface, atoms, bonds) =
         entered_tetrahedral_fixture(NonStereoBondToken::Double, true);
@@ -1465,7 +1472,14 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         })
         .unwrap()
         .into_successor();
+    pending_bond.reset_writer_work_counts();
     let (_, pending_atom) = only_choice(&pending_bond, "=");
+    assert_eq!(
+        pending_bond.writer_work_counts(),
+        (1, 2),
+        "the explicit branch bond prevalidates its two-choice atom frontier"
+    );
+    pending_atom.reset_writer_work_counts();
     assert_eq!(
         pending_atom
             .choices()
@@ -1475,6 +1489,7 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
+    assert_eq!(pending_atom.writer_work_counts(), (1, 0));
 
     let (inline_surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
     let parent = initial(&inline_surface)
@@ -1530,14 +1545,20 @@ fn component_separator_defers_tetrahedral_parity_until_the_atom_token() {
         .find(|choice| choice.successor().structural.atom_is_visited(atoms[0]))
         .unwrap()
         .into_successor();
-    let dot = after_first
-        .choices()
-        .unwrap()
+    after_first.reset_writer_work_counts();
+    let root_choices = after_first.choices().unwrap();
+    assert_eq!(
+        after_first.writer_work_counts(),
+        (5, 6),
+        "five dot roots prevalidate four fixed and two tetrahedral atom successors"
+    );
+    let dot = root_choices
         .into_iter()
         .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
         .unwrap();
 
     assert_eq!(dot.text(), ".");
+    dot.successor().reset_writer_work_counts();
     assert_eq!(
         dot.successor()
             .choices()
@@ -1547,6 +1568,7 @@ fn component_separator_defers_tetrahedral_parity_until_the_atom_token() {
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
+    assert_eq!(dot.successor().writer_work_counts(), (1, 0));
 }
 
 #[test]

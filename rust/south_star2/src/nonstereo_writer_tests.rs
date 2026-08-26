@@ -733,6 +733,103 @@ fn ring_coupled_tetrahedral_fixture(
     (surface, atoms, bonds)
 }
 
+fn adjacent_ring_coupled_tetrahedral_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = vec![
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[3], atoms[0]).unwrap(),
+        graph.add_bond(atoms[0], atoms[4]).unwrap(),
+        graph.add_bond(atoms[1], atoms[5]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::Bond(bonds[4]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[L@H]".to_owned(), "[L@@H]".to_owned()],
+            },
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[5]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[R@H]".to_owned(), "[R@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("X".to_owned()),
+            PreparedAtomToken::Fixed("Y".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    )
+    .unwrap();
+    (surface, atoms, bonds)
+}
+
+fn disconnected_ring_coupled_tetrahedral_fixture() -> (PreparedNonStereo, Vec<AtomId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..8)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let mut bonds = Vec::new();
+    for offset in [0, 4] {
+        bonds.extend([
+            graph.add_bond(atoms[offset], atoms[offset + 1]).unwrap(),
+            graph.add_bond(atoms[offset], atoms[offset + 2]).unwrap(),
+            graph
+                .add_bond(atoms[offset + 1], atoms[offset + 2])
+                .unwrap(),
+            graph.add_bond(atoms[offset], atoms[offset + 3]).unwrap(),
+        ]);
+    }
+    let mut atom_tokens = Vec::new();
+    for component in 0..2 {
+        let bond_offset = component * 4;
+        atom_tokens.extend([
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[bond_offset]),
+                    TetrahedralLigand::Bond(bonds[bond_offset + 1]),
+                    TetrahedralLigand::Bond(bonds[bond_offset + 3]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: [format!("[C{component}@H]"), format!("[C{component}@@H]")],
+            },
+            PreparedAtomToken::Fixed(format!("A{component}")),
+            PreparedAtomToken::Fixed(format!("B{component}")),
+            PreparedAtomToken::Fixed(format!("D{component}")),
+        ]);
+    }
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        atom_tokens,
+        vec![
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+    )
+    .unwrap();
+    (surface, atoms)
+}
+
 fn independent_local_layout_groups(
     atom_count: usize,
     endpoints: &[(usize, usize)],
@@ -1970,6 +2067,134 @@ fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
     assert!(paths.iter().any(|text| text.contains('1')));
     assert!(saw_entered_context);
     assert!(saw_waiting_closure);
+}
+
+#[test]
+fn adjacent_ring_coupled_centers_activate_and_resolve_in_one_component() {
+    let (surface, atoms, _) = adjacent_ring_coupled_tetrahedral_fixture();
+    let centers = [
+        surface.tetrahedral_center(atoms[0]).unwrap(),
+        surface.tetrahedral_center(atoms[1]).unwrap(),
+    ];
+    let factor_ids = centers.map(|center| {
+        std::iter::once(center.root_layout_factor)
+            .chain(
+                center
+                    .entry_layout_factors
+                    .iter()
+                    .map(|(_, factor)| *factor),
+            )
+            .collect::<Vec<_>>()
+    });
+    let mut pending = vec![initial(&surface)];
+    let mut saw_both_active = false;
+    let mut saw_one_suspended_while_the_other_was_active = false;
+    let mut accepted = 0;
+    let mut explored = 0;
+
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored < 100_000);
+        let observed = state.observe_raw();
+        let center_is_active = factor_ids.each_ref().map(|ids| {
+            ids.iter()
+                .any(|factor| observed.structural.active_factors.contains(factor))
+        });
+        saw_both_active |= center_is_active == [true, true];
+        if let Some(active) = observed
+            .structural
+            .traversal
+            .active_frame
+            .as_ref()
+            .map(|frame| frame.atom)
+        {
+            let suspended = observed
+                .structural
+                .traversal
+                .branch_returns
+                .iter()
+                .map(|frame| frame.atom)
+                .collect::<BTreeSet<_>>();
+            saw_one_suspended_while_the_other_was_active |= (active == atoms[0]
+                && suspended.contains(&atoms[1]))
+                || (active == atoms[1] && suspended.contains(&atoms[0]));
+        }
+        if state.is_accepted() {
+            accepted += 1;
+            for center in centers {
+                assert!(state
+                    .structural
+                    .semantic_domain(center.order_variable)
+                    .is_singleton());
+                assert!(state
+                    .structural
+                    .semantic_domain(center.role_pattern_variable)
+                    .is_singleton());
+            }
+            if saw_both_active && saw_one_suspended_while_the_other_was_active {
+                break;
+            }
+            continue;
+        }
+        pending.extend(
+            state
+                .choices()
+                .unwrap()
+                .into_iter()
+                .map(Choice::into_successor),
+        );
+    }
+
+    assert!(accepted > 0);
+    assert!(saw_both_active);
+    assert!(saw_one_suspended_while_the_other_was_active);
+}
+
+#[test]
+fn disconnected_ring_coupled_centers_keep_factors_local_and_reuse_labels() {
+    let (surface, atoms) = disconnected_ring_coupled_tetrahedral_fixture();
+    let centers = [
+        surface.tetrahedral_center(atoms[0]).unwrap(),
+        surface.tetrahedral_center(atoms[4]).unwrap(),
+    ];
+    let mut pending = vec![(initial(&surface), String::new())];
+    let mut accepted = None;
+    let mut explored = 0;
+    while let Some((state, text)) = pending.pop() {
+        explored += 1;
+        assert!(explored < 100_000);
+        if state.is_accepted() {
+            accepted = Some((state, text));
+            break;
+        }
+        pending.extend(state.choices().unwrap().into_iter().map(|choice| {
+            let next_text = format!("{text}{}", choice.text());
+            (choice.into_successor(), next_text)
+        }));
+    }
+    let (accepted, text) = accepted.expect("disconnected cyclic fixture must have support");
+    let components = text.split('.').collect::<Vec<_>>();
+    assert_eq!(components.len(), 2);
+    assert!(components.iter().all(|component| component.contains('1')));
+    assert!(accepted.labels.is_clean());
+    for center in centers {
+        assert!(accepted
+            .structural
+            .semantic_domain(center.order_variable)
+            .is_singleton());
+        assert!(accepted
+            .structural
+            .semantic_domain(center.role_pattern_variable)
+            .is_singleton());
+        assert!(std::iter::once(center.root_layout_factor)
+            .chain(
+                center
+                    .entry_layout_factors
+                    .iter()
+                    .map(|(_, factor)| *factor)
+            )
+            .any(|factor| accepted.structural.factor_is_active(factor)));
+    }
 }
 
 #[test]

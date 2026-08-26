@@ -32,6 +32,8 @@ pub(crate) struct NativeSolverState {
     binary_exact_runs: Arc<AtomicUsize>,
     #[cfg(test)]
     mixed_exact_runs: Arc<AtomicUsize>,
+    #[cfg(test)]
+    tetrahedral_factor_revisions: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,6 +83,8 @@ impl NativeSolverState {
             binary_exact_runs: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
             mixed_exact_runs: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            tetrahedral_factor_revisions: Arc::new(AtomicUsize::new(0)),
         };
         state.enforce_consistency(
             initial_factor_ids,
@@ -119,6 +123,17 @@ impl NativeSolverState {
             self.binary_exact_runs.load(Ordering::Relaxed),
             self.mixed_exact_runs.load(Ordering::Relaxed),
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_tetrahedral_factor_revision_count(&self) {
+        self.tetrahedral_factor_revisions
+            .store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tetrahedral_factor_revision_count(&self) -> usize {
+        self.tetrahedral_factor_revisions.load(Ordering::Relaxed)
     }
 
     /// Return one atomically restricted and propagated successor.
@@ -279,6 +294,9 @@ impl NativeSolverState {
                     revise_spanning_tree(spanning_tree, &mut self.domains)?
                 }
                 FactorDefinition::TetrahedralLayout(layout) => {
+                    #[cfg(test)]
+                    self.tetrahedral_factor_revisions
+                        .fetch_add(1, Ordering::Relaxed);
                     revise_tetrahedral_layout(layout, &mut self.domains)?
                 }
             };

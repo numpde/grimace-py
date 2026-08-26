@@ -382,6 +382,177 @@ fn latent_layout_fixture() -> (
     (Arc::new(builder.build()), order, pattern, bonds, factor)
 }
 
+fn projected_domains<S: ConstraintSolver>(state: &S, variables: &[VariableId]) -> Vec<Domain> {
+    variables
+        .iter()
+        .map(|variable| {
+            state
+                .domain(*variable)
+                .expect("qualified variable must exist")
+        })
+        .collect()
+}
+
+fn activation_order_projections<S: ConstraintSolver>(
+    model: Arc<ConstraintModel>,
+    variables: &[VariableId],
+    factor: FactorId,
+    restrictions: &[(VariableId, Domain)],
+) -> Vec<Vec<Domain>> {
+    let initial = S::initial(model)
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+        .unwrap_consistent();
+    let initial_projection = projected_domains(&initial, variables);
+    assert_eq!(initial.factor_is_active(factor), Some(false));
+
+    let restricted = initial
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+        .unwrap_consistent();
+    assert_eq!(restricted.factor_is_active(factor), Some(false));
+    let restricted_projection = projected_domains(&restricted, variables);
+
+    let restricted_then_activated = restricted
+        .transitioned(&[], &[factor])
+        .unwrap_or_else(|failure| panic!("solver activation failed: {failure}"))
+        .unwrap_consistent();
+    let activated = initial
+        .transitioned(&[], &[factor])
+        .unwrap_or_else(|failure| panic!("solver activation failed: {failure}"))
+        .unwrap_consistent();
+    let activated_then_restricted = activated
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+        .unwrap_consistent();
+    let atomic = initial
+        .transitioned(restrictions, &[factor, factor])
+        .unwrap_or_else(|failure| panic!("atomic solver transition failed: {failure}"))
+        .unwrap_consistent();
+    let reactivated = atomic
+        .transitioned(restrictions, &[factor, factor])
+        .unwrap_or_else(|failure| panic!("repeated solver activation failed: {failure}"))
+        .unwrap_consistent();
+
+    assert_eq!(initial.factor_is_active(factor), Some(false));
+    assert_eq!(projected_domains(&initial, variables), initial_projection);
+    assert_eq!(
+        projected_domains(&restricted, variables),
+        restricted_projection
+    );
+    for successor in [
+        &restricted_then_activated,
+        &activated_then_restricted,
+        &atomic,
+        &reactivated,
+    ] {
+        assert_eq!(successor.factor_is_active(factor), Some(true));
+    }
+
+    [
+        restricted_then_activated,
+        activated_then_restricted,
+        atomic,
+        reactivated,
+    ]
+    .iter()
+    .map(|state| projected_domains(state, variables))
+    .collect()
+}
+
+#[test]
+fn latent_layout_activation_order_and_repetition_preserve_exact_restrictions() {
+    let (model, order, pattern, bonds, factor) = latent_layout_fixture();
+    let variables = std::iter::once(order)
+        .chain(std::iter::once(pattern))
+        .chain(bonds)
+        .collect::<Vec<_>>();
+    let restrictions = [
+        (order, Domain::singleton(1).unwrap()),
+        (bonds[0], Domain::singleton(2).unwrap()),
+    ];
+
+    let native = activation_order_projections::<NativeSolverState>(
+        Arc::clone(&model),
+        &variables,
+        factor,
+        &restrictions,
+    );
+    let exhaustive = activation_order_projections::<ExhaustiveSolverState>(
+        model,
+        &variables,
+        factor,
+        &restrictions,
+    );
+
+    assert!(native.windows(2).all(|pair| pair[0] == pair[1]));
+    assert_eq!(native, exhaustive);
+}
+
+fn contradictory_activation_results<S: ConstraintSolver>(
+    model: Arc<ConstraintModel>,
+    variables: &[VariableId],
+    factor: FactorId,
+    restrictions: &[(VariableId, Domain)],
+) -> [bool; 2] {
+    let initial = S::initial(model)
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+        .unwrap_consistent();
+    let restricted = initial
+        .restricted(restrictions)
+        .unwrap_or_else(|failure| panic!("solver restriction failed: {failure}"))
+        .unwrap_consistent();
+    let restricted_projection = projected_domains(&restricted, variables);
+
+    let after_restriction = matches!(
+        restricted
+            .transitioned(&[], &[factor])
+            .unwrap_or_else(|failure| panic!("solver activation failed: {failure}")),
+        Consistency::Contradiction
+    );
+    let atomic = matches!(
+        initial
+            .transitioned(restrictions, &[factor])
+            .unwrap_or_else(|failure| panic!("atomic solver transition failed: {failure}")),
+        Consistency::Contradiction
+    );
+
+    assert_eq!(restricted.factor_is_active(factor), Some(false));
+    assert_eq!(
+        projected_domains(&restricted, variables),
+        restricted_projection
+    );
+    [after_restriction, atomic]
+}
+
+#[test]
+fn contradictory_latent_layout_activation_matches_the_exhaustive_backend() {
+    let (model, order, pattern, bonds, factor) = latent_layout_fixture();
+    let variables = std::iter::once(order)
+        .chain(std::iter::once(pattern))
+        .chain(bonds)
+        .collect::<Vec<_>>();
+    let restrictions = [
+        (order, Domain::singleton(0).unwrap()),
+        (bonds[0], Domain::singleton(1).unwrap()),
+    ];
+
+    let native = contradictory_activation_results::<NativeSolverState>(
+        Arc::clone(&model),
+        &variables,
+        factor,
+        &restrictions,
+    );
+    let exhaustive = contradictory_activation_results::<ExhaustiveSolverState>(
+        model,
+        &variables,
+        factor,
+        &restrictions,
+    );
+
+    assert_eq!(native, [true, true]);
+    assert_eq!(native, exhaustive);
+}
+
 #[test]
 fn native_and_exhaustive_backends_share_atomic_activation_semantics() {
     let (model, order, pattern, bonds, factor) = latent_layout_fixture();
@@ -511,6 +682,307 @@ fn activated_layout_searches_jointly_through_the_spanning_projector() {
     {
         assert_eq!(native.domain(variable), exhaustive.domain(variable));
     }
+}
+
+fn layout_rows(entries: &[(usize, Domain)]) -> [Domain; 8] {
+    let mut rows = [Domain::empty(); 8];
+    for &(pattern, orders) in entries {
+        rows[pattern] = orders;
+    }
+    rows
+}
+
+struct LayoutPairFixture {
+    model: Arc<ConstraintModel>,
+    orders: [VariableId; 2],
+    patterns: [VariableId; 2],
+    bonds: Vec<VariableId>,
+    factors: [FactorId; 2],
+}
+
+impl LayoutPairFixture {
+    fn variables(&self) -> Vec<VariableId> {
+        self.orders
+            .into_iter()
+            .chain(self.patterns)
+            .chain(self.bonds.iter().copied())
+            .collect()
+    }
+}
+
+fn shared_layout_triangle_fixture() -> LayoutPairFixture {
+    let mut builder = ConstraintModelBuilder::new();
+    let order_domain = Domain::from_indices([0, 1]).unwrap();
+    let orders = std::array::from_fn(|_| builder.add_variable(order_domain).unwrap());
+    let pattern_domain = Domain::from_indices(0_u8..8).unwrap();
+    let patterns = std::array::from_fn(|_| builder.add_variable(pattern_domain).unwrap());
+    let bonds = (0..3)
+        .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+        .collect::<Vec<_>>();
+    let both_orders = Domain::from_indices([0, 1]).unwrap();
+
+    let first = builder
+        .add_latent_tetrahedral_layout(
+            orders[0],
+            patterns[0],
+            bonds.iter().copied().enumerate().map(|(bit, variable)| {
+                TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)
+            }),
+            layout_rows(&[
+                (1, Domain::singleton(0).unwrap()),
+                (2, Domain::singleton(1).unwrap()),
+                (4, both_orders),
+            ]),
+        )
+        .unwrap();
+    let second = builder
+        .add_latent_tetrahedral_layout(
+            orders[1],
+            patterns[1],
+            [2_u8, 0, 1]
+                .into_iter()
+                .zip(bonds.iter().copied())
+                .map(|(bit, variable)| {
+                    TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit)
+                }),
+            layout_rows(&[
+                (1, both_orders),
+                (2, Domain::singleton(0).unwrap()),
+                (4, Domain::singleton(1).unwrap()),
+            ]),
+        )
+        .unwrap();
+
+    let atoms = [AtomId::new(0), AtomId::new(1), AtomId::new(2)];
+    builder
+        .add_spanning_tree(
+            atoms,
+            [
+                SpanningTreeEdge::new(bonds[0], atoms[0], atoms[1]),
+                SpanningTreeEdge::new(bonds[1], atoms[1], atoms[2]),
+                SpanningTreeEdge::new(bonds[2], atoms[2], atoms[0]),
+            ],
+        )
+        .unwrap();
+
+    LayoutPairFixture {
+        model: Arc::new(builder.build()),
+        orders,
+        patterns,
+        bonds,
+        factors: [first, second],
+    }
+}
+
+fn activated_domains<S: ConstraintSolver>(
+    model: Arc<ConstraintModel>,
+    variables: &[VariableId],
+    restrictions: &[(VariableId, Domain)],
+    factors: &[FactorId],
+) -> Option<Vec<Domain>> {
+    let initial = S::initial(model)
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+        .unwrap_consistent();
+    let Consistency::Consistent(successor) = initial
+        .transitioned(restrictions, factors)
+        .unwrap_or_else(|failure| panic!("solver transition failed: {failure}"))
+    else {
+        return None;
+    };
+    for &factor in factors {
+        assert_eq!(successor.factor_is_active(factor), Some(true));
+    }
+    Some(projected_domains(&successor, variables))
+}
+
+#[test]
+fn two_active_layouts_share_one_spanning_component_under_partial_ambiguity() {
+    let fixture = shared_layout_triangle_fixture();
+    let variables = fixture.variables();
+    let both_orders = Domain::from_indices([0, 1]).unwrap();
+    let cases = [
+        vec![],
+        vec![(fixture.orders[0], Domain::singleton(0).unwrap())],
+        vec![(fixture.orders[1], Domain::singleton(0).unwrap())],
+        vec![
+            (fixture.orders[0], Domain::singleton(0).unwrap()),
+            (fixture.orders[1], Domain::singleton(0).unwrap()),
+        ],
+        vec![
+            (fixture.orders[0], Domain::singleton(1).unwrap()),
+            (fixture.orders[1], Domain::singleton(1).unwrap()),
+        ],
+        vec![
+            (fixture.patterns[0], Domain::from_indices([1, 4]).unwrap()),
+            (fixture.orders[1], both_orders),
+        ],
+        vec![(fixture.bonds[0], BondRole::Traversal.singleton_domain())],
+        vec![(fixture.bonds[1], BondRole::Ring.singleton_domain())],
+        vec![
+            (fixture.orders[0], Domain::singleton(0).unwrap()),
+            (fixture.bonds[1], BondRole::Traversal.singleton_domain()),
+        ],
+    ];
+
+    for restrictions in cases {
+        let native = activated_domains::<NativeSolverState>(
+            Arc::clone(&fixture.model),
+            &variables,
+            &restrictions,
+            &fixture.factors,
+        );
+        let exhaustive = activated_domains::<ExhaustiveSolverState>(
+            Arc::clone(&fixture.model),
+            &variables,
+            &restrictions,
+            &fixture.factors,
+        );
+        assert_eq!(native, exhaustive, "restrictions {restrictions:?}");
+    }
+
+    let projection = activated_domains::<NativeSolverState>(
+        Arc::clone(&fixture.model),
+        &variables,
+        &[],
+        &fixture.factors,
+    )
+    .expect("unrestricted pair must remain consistent");
+    assert!(projection.iter().all(|domain| domain.len() > 1));
+}
+
+fn disconnected_layout_pair_fixture() -> LayoutPairFixture {
+    let mut builder = ConstraintModelBuilder::new();
+    let order_domain = Domain::from_indices([0, 1]).unwrap();
+    let orders = std::array::from_fn(|_| builder.add_variable(order_domain).unwrap());
+    let pattern_domain = Domain::from_indices(0_u8..8).unwrap();
+    let patterns = std::array::from_fn(|_| builder.add_variable(pattern_domain).unwrap());
+    let bonds = (0..6)
+        .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+        .collect::<Vec<_>>();
+    let rows = layout_rows(&[
+        (1, Domain::singleton(0).unwrap()),
+        (2, Domain::singleton(1).unwrap()),
+        (4, Domain::from_indices([0, 1]).unwrap()),
+    ]);
+    let mut factors = Vec::new();
+
+    for component in 0..2 {
+        let component_bonds = &bonds[(component * 3)..(component * 3 + 3)];
+        factors.push(
+            builder
+                .add_latent_tetrahedral_layout(
+                    orders[component],
+                    patterns[component],
+                    component_bonds
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(bit, variable)| {
+                            TetrahedralLayoutBond::new(
+                                variable,
+                                EdgeRolePartition::bond_role(),
+                                bit as u8,
+                            )
+                        }),
+                    rows,
+                )
+                .unwrap(),
+        );
+
+        let atom_offset = u32::try_from(component * 3).unwrap();
+        let atoms = [
+            AtomId::new(atom_offset),
+            AtomId::new(atom_offset + 1),
+            AtomId::new(atom_offset + 2),
+        ];
+        builder
+            .add_spanning_tree(
+                atoms,
+                [
+                    SpanningTreeEdge::new(component_bonds[0], atoms[0], atoms[1]),
+                    SpanningTreeEdge::new(component_bonds[1], atoms[1], atoms[2]),
+                    SpanningTreeEdge::new(component_bonds[2], atoms[2], atoms[0]),
+                ],
+            )
+            .unwrap();
+    }
+
+    LayoutPairFixture {
+        model: Arc::new(builder.build()),
+        orders,
+        patterns,
+        bonds,
+        factors: factors.try_into().unwrap(),
+    }
+}
+
+fn disconnected_isolation_projections<S: ConstraintSolver>(
+    fixture: &LayoutPairFixture,
+) -> Vec<Vec<Domain>> {
+    let variables = fixture.variables();
+    let second_variables = std::iter::once(fixture.orders[1])
+        .chain(std::iter::once(fixture.patterns[1]))
+        .chain(fixture.bonds[3..].iter().copied())
+        .collect::<Vec<_>>();
+    let initial = S::initial(Arc::clone(&fixture.model))
+        .unwrap_or_else(|failure| panic!("solver initialization failed: {failure}"))
+        .unwrap_consistent();
+    let initial_second = projected_domains(&initial, &second_variables);
+    let first_active = initial
+        .transitioned(&[], &[fixture.factors[0]])
+        .unwrap_or_else(|failure| panic!("first activation failed: {failure}"))
+        .unwrap_consistent();
+    assert_eq!(
+        first_active.factor_is_active(fixture.factors[0]),
+        Some(true)
+    );
+    assert_eq!(
+        first_active.factor_is_active(fixture.factors[1]),
+        Some(false)
+    );
+    assert_eq!(
+        projected_domains(&first_active, &second_variables),
+        initial_second
+    );
+
+    let sequential = first_active
+        .transitioned(&[], &[fixture.factors[1]])
+        .unwrap_or_else(|failure| panic!("second activation failed: {failure}"))
+        .unwrap_consistent();
+    let atomic = initial
+        .transitioned(&[], &fixture.factors)
+        .unwrap_or_else(|failure| panic!("atomic activation failed: {failure}"))
+        .unwrap_consistent();
+    let atomic_projection = projected_domains(&atomic, &variables);
+    assert_eq!(
+        projected_domains(&sequential, &variables),
+        atomic_projection
+    );
+
+    let second_before = projected_domains(&atomic, &second_variables);
+    let restricted = atomic
+        .restricted(&[(fixture.orders[0], Domain::singleton(0).unwrap())])
+        .unwrap_or_else(|failure| panic!("isolated restriction failed: {failure}"))
+        .unwrap_consistent();
+    let second_after = projected_domains(&restricted, &second_variables);
+    assert_eq!(second_after, second_before);
+
+    vec![
+        atomic_projection,
+        projected_domains(&restricted, &variables),
+        second_before,
+        second_after,
+    ]
+}
+
+#[test]
+fn disconnected_active_layouts_preserve_factor_isolation() {
+    let fixture = disconnected_layout_pair_fixture();
+
+    let native = disconnected_isolation_projections::<NativeSolverState>(&fixture);
+    let exhaustive = disconnected_isolation_projections::<ExhaustiveSolverState>(&fixture);
+
+    assert_eq!(native, exhaustive);
 }
 
 fn exhaustive_triangle_supports(masks: [u16; 3], domains: [Domain; 3]) -> Option<[Domain; 3]> {

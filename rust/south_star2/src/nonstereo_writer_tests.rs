@@ -7,6 +7,7 @@ use super::*;
 use crate::native::NativeSolverState;
 use crate::native_solver::NativeSolverFailure;
 use crate::prepared::PreparedGraphBuilder;
+use crate::traversal::ObservedBondProgress;
 
 type State = NonStereoWriterState<NativeSolverState>;
 
@@ -690,6 +691,123 @@ fn entered_tetrahedral_fixture(
     )
     .unwrap();
     (surface, atoms, bonds)
+}
+
+fn ring_coupled_tetrahedral_fixture(
+    first_token: NonStereoBondToken,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = vec![
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[3]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![
+            first_token,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+    )
+    .unwrap();
+    (surface, atoms, bonds)
+}
+
+fn independent_local_layout_groups(
+    atom_count: usize,
+    endpoints: &[(usize, usize)],
+    observed: &ObservedNonStereoState,
+    active: usize,
+) -> (Vec<BondId>, Vec<Vec<BondId>>) {
+    let visited = observed
+        .structural
+        .traversal
+        .visited_atoms
+        .iter()
+        .map(|atom| atom.index())
+        .collect::<BTreeSet<_>>();
+    let mut component = vec![None; atom_count];
+    let mut next_component = 0;
+    for root in 0..atom_count {
+        if visited.contains(&root) || component[root].is_some() {
+            continue;
+        }
+        let mut stack = vec![root];
+        component[root] = Some(next_component);
+        while let Some(atom) = stack.pop() {
+            for &(a, b) in endpoints {
+                let other = if a == atom {
+                    Some(b)
+                } else if b == atom {
+                    Some(a)
+                } else {
+                    None
+                };
+                if let Some(other) = other {
+                    if !visited.contains(&other) && component[other].is_none() {
+                        component[other] = Some(next_component);
+                        stack.push(other);
+                    }
+                }
+            }
+        }
+        next_component += 1;
+    }
+
+    let mut waiting = Vec::new();
+    let mut groups = BTreeMap::<usize, Vec<BondId>>::new();
+    for (index, &(a, b)) in endpoints.iter().enumerate() {
+        let other = if a == active {
+            Some(b)
+        } else if b == active {
+            Some(a)
+        } else {
+            None
+        };
+        let Some(other) = other else { continue };
+        let bond = BondId::new(u32::try_from(index).unwrap());
+        match observed.structural.traversal.bond_progress[index] {
+            ObservedBondProgress::RingOpen { first_endpoint }
+                if first_endpoint.index() == other =>
+            {
+                waiting.push(bond);
+            }
+            ObservedBondProgress::Unrepresented if !visited.contains(&other) => {
+                groups
+                    .entry(component[other].expect("unvisited atom must own a component"))
+                    .or_default()
+                    .push(bond);
+            }
+            _ => {}
+        }
+    }
+    waiting.sort_unstable();
+    let mut groups = groups.into_values().collect::<Vec<_>>();
+    for group in &mut groups {
+        group.sort_unstable();
+    }
+    groups.sort_unstable();
+    (waiting, groups)
 }
 
 fn incident(surface: &PreparedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
@@ -1565,36 +1683,9 @@ fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
 
 #[test]
 fn ring_capable_tetrahedral_center_activates_layout_at_its_atom_event() {
-    let mut graph = PreparedGraphBuilder::new();
-    let atoms = (0..4)
-        .map(|_| graph.add_atom().unwrap())
-        .collect::<Vec<_>>();
-    let bonds = [
-        graph.add_bond(atoms[0], atoms[1]).unwrap(),
-        graph.add_bond(atoms[0], atoms[2]).unwrap(),
-        graph.add_bond(atoms[1], atoms[2]).unwrap(),
-        graph.add_bond(atoms[0], atoms[3]).unwrap(),
-    ];
-    let surface = PreparedNonStereo::with_atom_tokens(
-        PreparedMolecule::new(graph.build()),
-        vec![
-            PreparedAtomToken::Tetrahedral {
-                reference_order: [
-                    TetrahedralLigand::Bond(bonds[0]),
-                    TetrahedralLigand::Bond(bonds[1]),
-                    TetrahedralLigand::Bond(bonds[3]),
-                    TetrahedralLigand::VirtualHydrogen,
-                ],
-                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
-            },
-            PreparedAtomToken::Fixed("A".to_owned()),
-            PreparedAtomToken::Fixed("B".to_owned()),
-            PreparedAtomToken::Fixed("D".to_owned()),
-        ],
-        vec![NonStereoBondToken::Elided; bonds.len()],
-    )
-    .unwrap();
+    let (surface, atoms, _) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Elided);
     let state = State::initial(&surface).unwrap().unwrap_consistent();
+    let source = state.observe_raw();
 
     let choices = state
         .choices()
@@ -1605,16 +1696,28 @@ fn ring_capable_tetrahedral_center_activates_layout_at_its_atom_event() {
     assert_eq!(choices.len(), 2);
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
     for choice in choices {
+        let active_factors = &choice.successor().observe_raw().structural.active_factors;
         assert!(choice
             .successor()
             .structural
             .factor_is_active(center.root_layout_factor));
+        assert!(active_factors.contains(&center.root_layout_factor));
+        assert_eq!(
+            active_factors.len(),
+            source.structural.active_factors.len() + 1,
+            "the chosen layout is the only newly active factor"
+        );
+        assert!(center
+            .entry_layout_factors
+            .iter()
+            .all(|(_, factor)| !choice.successor().structural.factor_is_active(*factor)));
         assert!(!choice
             .successor()
             .structural
             .semantic_domain(center.role_pattern_variable)
             .is_empty());
     }
+    assert_eq!(state.observe_raw(), source);
 }
 
 #[test]
@@ -1654,41 +1757,60 @@ fn prospective_frame_context_derives_exact_local_role_patterns() {
 }
 
 #[test]
+fn live_tetrahedral_context_matches_declarative_graph_recomputation() {
+    let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Elided);
+    let endpoints = [(0, 1), (0, 2), (1, 2), (0, 3)];
+    let initial = initial(&surface);
+    let prospective = initial.structural.prospective_root_layout_context(atoms[0]);
+    assert_eq!(prospective.order.entry_bond, None);
+    assert!(prospective.waiting_ring_bonds.is_empty());
+    assert_eq!(
+        prospective.residual_attachment_bonds,
+        vec![vec![bonds[0], bonds[1]], vec![bonds[3]]]
+    );
+
+    let mut pending = vec![initial];
+    let mut saw_root = false;
+    let mut saw_entry = false;
+    let mut saw_waiting_closure = false;
+    let mut explored = 0;
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored < 20_000);
+        if state.pending.is_none() && state.active_atom() == Some(atoms[0]) {
+            let observed = state.observe_raw();
+            let context = state.structural.active_local_layout_context();
+            let (waiting, mut groups) =
+                independent_local_layout_groups(4, &endpoints, &observed, 0);
+            let mut actual_groups = context.residual_attachment_bonds.clone();
+            for group in &mut actual_groups {
+                group.sort_unstable();
+            }
+            actual_groups.sort_unstable();
+            groups.sort_unstable();
+            assert_eq!(context.waiting_ring_bonds, waiting);
+            assert_eq!(actual_groups, groups);
+            saw_root |= context.order.entry_bond.is_none();
+            saw_entry |= context.order.entry_bond.is_some();
+            saw_waiting_closure |= !waiting.is_empty();
+        }
+        if saw_root && saw_entry && saw_waiting_closure {
+            break;
+        }
+        pending.extend(
+            state
+                .choices()
+                .unwrap()
+                .into_iter()
+                .map(Choice::into_successor),
+        );
+    }
+    assert!(saw_root && saw_entry && saw_waiting_closure);
+}
+
+#[test]
 fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
-    let mut graph = PreparedGraphBuilder::new();
-    let atoms = (0..4)
-        .map(|_| graph.add_atom().unwrap())
-        .collect::<Vec<_>>();
-    let bonds = [
-        graph.add_bond(atoms[0], atoms[1]).unwrap(),
-        graph.add_bond(atoms[0], atoms[2]).unwrap(),
-        graph.add_bond(atoms[1], atoms[2]).unwrap(),
-        graph.add_bond(atoms[0], atoms[3]).unwrap(),
-    ];
-    let surface = PreparedNonStereo::with_atom_tokens(
-        PreparedMolecule::new(graph.build()),
-        vec![
-            PreparedAtomToken::Tetrahedral {
-                reference_order: [
-                    TetrahedralLigand::Bond(bonds[0]),
-                    TetrahedralLigand::Bond(bonds[1]),
-                    TetrahedralLigand::Bond(bonds[3]),
-                    TetrahedralLigand::VirtualHydrogen,
-                ],
-                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
-            },
-            PreparedAtomToken::Fixed("A".to_owned()),
-            PreparedAtomToken::Fixed("B".to_owned()),
-            PreparedAtomToken::Fixed("D".to_owned()),
-        ],
-        vec![
-            NonStereoBondToken::Double,
-            NonStereoBondToken::Elided,
-            NonStereoBondToken::Elided,
-            NonStereoBondToken::Elided,
-        ],
-    )
-    .unwrap();
+    let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
     let source = initial(&surface);
     let pending = source
         .choices()
@@ -1718,36 +1840,100 @@ fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
 }
 
 #[test]
+fn every_ring_endpoint_path_commits_one_local_occurrence() {
+    let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
+    let mut pending = vec![initial(&surface)];
+    let mut saw = [false; 4];
+    let mut explored = 0;
+
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored < 20_000);
+        let source = state.observe_raw();
+        let Some(source_frame) = source.structural.traversal.active_frame.as_ref() else {
+            pending.extend(
+                state
+                    .choices()
+                    .unwrap()
+                    .into_iter()
+                    .map(Choice::into_successor),
+            );
+            continue;
+        };
+        for choice in state.choices().unwrap() {
+            let successor = choice.successor().observe_raw();
+            let source_progress = &source.structural.traversal.bond_progress[bonds[0].index()];
+            let successor_progress =
+                &successor.structural.traversal.bond_progress[bonds[0].index()];
+            let event = match (source_progress, successor_progress) {
+                (
+                    ObservedBondProgress::Unrepresented,
+                    ObservedBondProgress::RingOpen { first_endpoint },
+                ) if *first_endpoint == atoms[0] && source_frame.atom == atoms[0] => {
+                    Some((0, choice.text() == "="))
+                }
+                (
+                    ObservedBondProgress::RingOpen { first_endpoint },
+                    ObservedBondProgress::RingClosed {
+                        first_endpoint: closed_first,
+                        second_endpoint,
+                    },
+                ) if *first_endpoint == *closed_first
+                    && *second_endpoint == atoms[0]
+                    && source_frame.atom == atoms[0] =>
+                {
+                    Some((2, choice.text() == "="))
+                }
+                _ => None,
+            };
+            if let Some((base, explicit)) = event {
+                let successor_frame = successor
+                    .structural
+                    .traversal
+                    .active_frame
+                    .as_ref()
+                    .expect("ring endpoint must retain the active tetrahedral frame");
+                assert_eq!(
+                    successor_frame.emitted_bonds.len(),
+                    source_frame.emitted_bonds.len() + 1
+                );
+                assert_eq!(successor_frame.emitted_bonds.last(), Some(&bonds[0]));
+                assert_eq!(
+                    successor_frame.ring_occurrence_count,
+                    source_frame.ring_occurrence_count + 1
+                );
+                saw[base + usize::from(explicit)] = true;
+
+                if explicit {
+                    let pending_state = choice.successor().clone();
+                    let after_label = pending_state
+                        .choices()
+                        .unwrap()
+                        .into_iter()
+                        .next()
+                        .unwrap()
+                        .into_successor()
+                        .observe_raw();
+                    assert_eq!(
+                        after_label.structural.traversal.active_frame,
+                        successor.structural.traversal.active_frame,
+                        "a pending label must not recommit the ring occurrence"
+                    );
+                }
+            }
+            pending.push(choice.into_successor());
+        }
+        if saw.iter().all(|value| *value) {
+            break;
+        }
+    }
+
+    assert_eq!(saw, [true; 4], "opening/closure emit/omit paths must occur");
+}
+
+#[test]
 fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
-    let mut graph = PreparedGraphBuilder::new();
-    let atoms = (0..4)
-        .map(|_| graph.add_atom().unwrap())
-        .collect::<Vec<_>>();
-    let bonds = [
-        graph.add_bond(atoms[0], atoms[1]).unwrap(),
-        graph.add_bond(atoms[0], atoms[2]).unwrap(),
-        graph.add_bond(atoms[1], atoms[2]).unwrap(),
-        graph.add_bond(atoms[0], atoms[3]).unwrap(),
-    ];
-    let surface = PreparedNonStereo::with_atom_tokens(
-        PreparedMolecule::new(graph.build()),
-        vec![
-            PreparedAtomToken::Tetrahedral {
-                reference_order: [
-                    TetrahedralLigand::Bond(bonds[0]),
-                    TetrahedralLigand::Bond(bonds[1]),
-                    TetrahedralLigand::Bond(bonds[3]),
-                    TetrahedralLigand::VirtualHydrogen,
-                ],
-                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
-            },
-            PreparedAtomToken::Fixed("A".to_owned()),
-            PreparedAtomToken::Fixed("B".to_owned()),
-            PreparedAtomToken::Fixed("D".to_owned()),
-        ],
-        vec![NonStereoBondToken::Elided; bonds.len()],
-    )
-    .unwrap();
+    let (surface, atoms, _) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Elided);
 
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
     let mut pending = vec![(initial(&surface), String::new())];
@@ -1892,18 +2078,165 @@ fn each_tetrahedral_semantic_choice_uses_one_solver_restriction_batch() {
 }
 
 #[test]
+fn ring_and_child_atom_frontiers_use_one_transition_per_semantic_choice() {
+    type CountingState = NonStereoWriterState<CountTetrahedralRestrictionsSolver>;
+
+    let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
+    let initial = CountingState::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    let mut pending = vec![rooted];
+    let mut saw_opening = false;
+    let mut saw_closure = false;
+    let mut explored = 0;
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored < 20_000);
+        let source = state.observe_raw();
+        TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+        let choices = state.choices().unwrap();
+        let ring_event = choices.iter().any(|choice| {
+            let successor = choice.successor().observe_raw();
+            match (
+                &source.structural.traversal.bond_progress[bonds[0].index()],
+                &successor.structural.traversal.bond_progress[bonds[0].index()],
+            ) {
+                (ObservedBondProgress::Unrepresented, ObservedBondProgress::RingOpen { .. }) => {
+                    saw_opening = true;
+                    true
+                }
+                (
+                    ObservedBondProgress::RingOpen { .. },
+                    ObservedBondProgress::RingClosed { .. },
+                ) => {
+                    saw_closure = true;
+                    true
+                }
+                _ => false,
+            }
+        });
+        if ring_event {
+            assert_eq!(
+                TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
+                choices.len(),
+                "each ring spelling candidate must use one atomic solver transition"
+            );
+        }
+        pending.extend(choices.into_iter().map(Choice::into_successor));
+        if saw_opening && saw_closure {
+            break;
+        }
+    }
+    assert!(saw_opening && saw_closure);
+
+    for token in [NonStereoBondToken::Elided, NonStereoBondToken::Double] {
+        let (surface, atoms, _) = entered_tetrahedral_fixture(token, false);
+        let initial = CountingState::initial(&surface)
+            .unwrap()
+            .unwrap_consistent();
+        let parent = initial
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+            .unwrap()
+            .into_successor();
+        let atom_frontier = if token == NonStereoBondToken::Double {
+            parent
+                .choices()
+                .unwrap()
+                .into_iter()
+                .find(|choice| choice.text() == "=")
+                .unwrap()
+                .into_successor()
+        } else {
+            parent
+        };
+        TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+        let atom_choices = atom_frontier.choices().unwrap();
+        assert_eq!(atom_choices.len(), 2);
+        assert_eq!(
+            TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
+            atom_choices.len(),
+            "each pending or combined child atom token must use one transition"
+        );
+    }
+}
+
+#[test]
 fn isolated_tetrahedral_order_domains_do_not_create_exact_search_work() {
     let (surface, _, _) = tetrahedral_star_fixture(4);
     let state = initial(&surface);
 
     assert_eq!(
-        state.structural.constraints_for_test().exact_run_counts(),
-        (0, 0)
+        state
+            .structural
+            .constraints_for_test()
+            .tetrahedral_factor_revision_count(),
+        0,
+        "latent tetrahedral factors do no initial work"
     );
-    let _choices = state.choices().unwrap();
     assert_eq!(
         state.structural.constraints_for_test().exact_run_counts(),
         (0, 0)
+    );
+    state
+        .structural
+        .constraints_for_test()
+        .reset_tetrahedral_factor_revision_count();
+    let _choices = state.choices().unwrap();
+    assert!(
+        state
+            .structural
+            .constraints_for_test()
+            .tetrahedral_factor_revision_count()
+            > 0,
+        "the tetrahedral root candidates revise their newly active factors"
+    );
+    assert_eq!(
+        state.structural.constraints_for_test().exact_run_counts(),
+        (0, 0)
+    );
+}
+
+#[test]
+fn pending_prevalidation_work_is_measured_at_the_lexical_frontier() {
+    let (surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
+    let parent = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+
+    parent.reset_writer_work_counts();
+    let pending_atom = parent
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "=")
+        .unwrap()
+        .into_successor();
+    assert_eq!(
+        parent.writer_work_counts(),
+        (1, 2),
+        "the explicit bond validates one two-choice atom frontier"
+    );
+
+    pending_atom.reset_writer_work_counts();
+    assert_eq!(pending_atom.choices().unwrap().len(), 2);
+    assert_eq!(
+        pending_atom.writer_work_counts(),
+        (1, 0),
+        "publishing the pending atom frontier does not discard its successors"
     );
 }
 

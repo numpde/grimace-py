@@ -8,6 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::model::{EdgeRolePartition, TetrahedralLayoutBond};
@@ -152,6 +155,15 @@ pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
     atoms: Arc<[PreparedAtom]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
+    #[cfg(test)]
+    work_counters: Arc<WriterWorkCounters>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Default)]
+struct WriterWorkCounters {
+    pending_atom_frontier_evaluations: AtomicUsize,
+    discarded_prevalidated_successors: AtomicUsize,
 }
 
 #[derive(Clone, Debug)]
@@ -303,6 +315,8 @@ impl PreparedNonStereo {
             molecule,
             atoms: Arc::from(atoms.into_boxed_slice()),
             bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
+            #[cfg(test)]
+            work_counters: Arc::new(WriterWorkCounters::default()),
         })
     }
 
@@ -1770,6 +1784,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         entry_bond: Option<BondId>,
         entry: PendingAtomEntry,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        #[cfg(test)]
+        self.surface
+            .work_counters
+            .pending_atom_frontier_evaluations
+            .fetch_add(1, Ordering::Relaxed);
         let context = match entry {
             PendingAtomEntry::AlreadyEntered => self.structural.active_local_layout_context(),
             PendingAtomEntry::Inline(incident) => self
@@ -1857,7 +1876,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let mut spelling_rejection = None;
             for attempt in self.pending_attempts(pending) {
                 match attempt {
-                    CandidateAttempt::Accepted { .. } => viable = true,
+                    CandidateAttempt::Accepted { .. } => {
+                        #[cfg(test)]
+                        self.surface
+                            .work_counters
+                            .discarded_prevalidated_successors
+                            .fetch_add(1, Ordering::Relaxed);
+                        viable = true;
+                    }
                     CandidateAttempt::Rejected { reason } => match reason {
                         CandidateRejection::Contradiction => semantic_rejection = true,
                         unavailable @ CandidateRejection::RingLabelUnavailable { .. } => {
@@ -1920,6 +1946,32 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 "component completion must not restore a branch parent"
             );
         }
+    }
+
+    #[cfg(test)]
+    fn reset_writer_work_counts(&self) {
+        self.surface
+            .work_counters
+            .pending_atom_frontier_evaluations
+            .store(0, Ordering::Relaxed);
+        self.surface
+            .work_counters
+            .discarded_prevalidated_successors
+            .store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    fn writer_work_counts(&self) -> (usize, usize) {
+        (
+            self.surface
+                .work_counters
+                .pending_atom_frontier_evaluations
+                .load(Ordering::Relaxed),
+            self.surface
+                .work_counters
+                .discarded_prevalidated_successors
+                .load(Ordering::Relaxed),
+        )
     }
 }
 

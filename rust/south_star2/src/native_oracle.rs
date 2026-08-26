@@ -8,20 +8,22 @@ use crate::domain::Domain;
 use crate::ids::{AtomId, FactorId, VariableId};
 use crate::model::{
     BondRole, ConstraintModel, ConstraintModelBuilder, EdgeRolePartition, FactorDefinition,
-    SpanningTreeEdge, SpanningTreeFactor,
+    SpanningTreeEdge, SpanningTreeFactor, TetrahedralLayoutBond,
 };
 use crate::native::NativeSolverState;
 use crate::solver::{Consistency, ConstraintSolver};
 
 #[derive(Clone, Debug)]
-struct ExhaustiveSolverState {
+pub(crate) struct ExhaustiveSolverState {
     model: Arc<ConstraintModel>,
     domains: Box<[Domain]>,
+    active_factors: Box<[bool]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum ExhaustiveSolverFailure {
+pub(crate) enum ExhaustiveSolverFailure {
     UnknownVariable(VariableId),
+    UnknownFactor(FactorId),
 }
 
 impl fmt::Display for ExhaustiveSolverFailure {
@@ -29,6 +31,9 @@ impl fmt::Display for ExhaustiveSolverFailure {
         match self {
             Self::UnknownVariable(variable) => {
                 write!(formatter, "unknown constraint variable {variable:?}")
+            }
+            Self::UnknownFactor(factor) => {
+                write!(formatter, "unknown constraint factor {factor:?}")
             }
         }
     }
@@ -41,9 +46,17 @@ impl ConstraintSolver for ExhaustiveSolverState {
 
     fn initial(model: Arc<ConstraintModel>) -> Result<Consistency<Self>, Self::Failure> {
         let initial = model.initial_domains().collect::<Vec<_>>();
+        let mut active_factors = vec![false; model.factor_count()];
+        for factor in model.initial_factor_ids() {
+            active_factors[factor.index()] = true;
+        }
         Ok(
-            match exhaustive_projected_domains(model.as_ref(), &initial) {
-                Some(domains) => Consistency::Consistent(Self { model, domains }),
+            match exhaustive_projected_domains(model.as_ref(), &initial, &active_factors) {
+                Some(domains) => Consistency::Consistent(Self {
+                    model,
+                    domains,
+                    active_factors: active_factors.into_boxed_slice(),
+                }),
                 None => Consistency::Contradiction,
             },
         )
@@ -53,9 +66,24 @@ impl ConstraintSolver for ExhaustiveSolverState {
         &self,
         restrictions: &[(VariableId, Domain)],
     ) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(restrictions, &[])
+    }
+
+    fn transitioned(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        let mut active_factors = self.active_factors.to_vec();
+        for &factor in activate {
+            let active = active_factors
+                .get_mut(factor.index())
+                .ok_or(ExhaustiveSolverFailure::UnknownFactor(factor))?;
+            *active = true;
+        }
+
         let mut requested = BTreeMap::new();
         let mut contradictory = false;
-
         for &(variable, allowed) in restrictions {
             let current = self
                 .domains
@@ -69,16 +97,16 @@ impl ConstraintSolver for ExhaustiveSolverState {
         if contradictory {
             return Ok(Consistency::Contradiction);
         }
-
         let mut candidate = self.domains.to_vec();
         for (variable, restricted) in requested {
             candidate[variable.index()] = restricted;
         }
         Ok(
-            match exhaustive_projected_domains(self.model.as_ref(), &candidate) {
+            match exhaustive_projected_domains(self.model.as_ref(), &candidate, &active_factors) {
                 Some(domains) => Consistency::Consistent(Self {
                     model: Arc::clone(&self.model),
                     domains,
+                    active_factors: active_factors.into_boxed_slice(),
                 }),
                 None => Consistency::Contradiction,
             },
@@ -88,20 +116,57 @@ impl ConstraintSolver for ExhaustiveSolverState {
     fn domain(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }
+
+    fn factor_is_active(&self, factor: FactorId) -> Option<bool> {
+        self.active_factors.get(factor.index()).copied()
+    }
 }
 
 fn exhaustive_projected_domains(
     model: &ConstraintModel,
     domains: &[Domain],
+    active_factors: &[bool],
 ) -> Option<Box<[Domain]>> {
     assert_eq!(domains.len(), model.variable_count());
+    assert_eq!(active_factors.len(), model.factor_count());
 
     let mut assignment = vec![0_u8; domains.len()];
-    let mut supported = vec![Domain::empty(); domains.len()];
+    let mut relevant = vec![false; domains.len()];
+    for (index, active) in active_factors.iter().copied().enumerate() {
+        if !active {
+            continue;
+        }
+        let factor = FactorId::new(
+            u32::try_from(index).expect("constraint model validated factor identifiers"),
+        );
+        for variable in model
+            .factor(factor)
+            .expect("active factor must exist")
+            .variables()
+        {
+            relevant[variable.index()] = true;
+        }
+    }
+    let mut supported = domains
+        .iter()
+        .copied()
+        .zip(&relevant)
+        .map(
+            |(domain, relevant)| {
+                if *relevant {
+                    Domain::empty()
+                } else {
+                    domain
+                }
+            },
+        )
+        .collect::<Vec<_>>();
     let mut found = false;
     enumerate_assignments(
         model,
         domains,
+        active_factors,
+        &relevant,
         0,
         &mut assignment,
         &mut supported,
@@ -113,30 +178,72 @@ fn exhaustive_projected_domains(
 fn enumerate_assignments(
     model: &ConstraintModel,
     domains: &[Domain],
+    active_factors: &[bool],
+    relevant: &[bool],
     variable: usize,
     assignment: &mut [u8],
     supported: &mut [Domain],
     found: &mut bool,
 ) {
     if variable == domains.len() {
-        if !assignment_satisfies(model, assignment) {
+        if !assignment_satisfies(model, active_factors, assignment) {
             return;
         }
         *found = true;
-        for (projection, value) in supported.iter_mut().zip(assignment.iter().copied()) {
-            *projection = projection.union(Domain::from_bits(1_u64 << value));
+        for (index, (projection, value)) in supported
+            .iter_mut()
+            .zip(assignment.iter().copied())
+            .enumerate()
+        {
+            if relevant[index] {
+                *projection = projection.union(Domain::from_bits(1_u64 << value));
+            }
         }
+        return;
+    }
+
+    if !relevant[variable] {
+        assignment[variable] = domains[variable]
+            .iter()
+            .next()
+            .expect("solver domains are nonempty");
+        enumerate_assignments(
+            model,
+            domains,
+            active_factors,
+            relevant,
+            variable + 1,
+            assignment,
+            supported,
+            found,
+        );
         return;
     }
 
     for value in domains[variable].iter() {
         assignment[variable] = value;
-        enumerate_assignments(model, domains, variable + 1, assignment, supported, found);
+        enumerate_assignments(
+            model,
+            domains,
+            active_factors,
+            relevant,
+            variable + 1,
+            assignment,
+            supported,
+            found,
+        );
     }
 }
 
-fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
+fn assignment_satisfies(
+    model: &ConstraintModel,
+    active_factors: &[bool],
+    assignment: &[u8],
+) -> bool {
     (0..model.factor_count()).all(|index| {
+        if !active_factors[index] {
+            return true;
+        }
         let factor_id = FactorId::new(
             u32::try_from(index).expect("constraint model validated factor identifiers"),
         );
@@ -147,7 +254,21 @@ fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
             FactorDefinition::SpanningTree(spanning_tree) => {
                 assignment_satisfies_spanning_tree(spanning_tree, assignment)
             }
-            FactorDefinition::TetrahedralLayout(_) => true,
+            FactorDefinition::TetrahedralLayout(layout) => {
+                let pattern = assignment[layout.role_pattern_variable().index()];
+                layout
+                    .allowed_orders(pattern)
+                    .contains(assignment[layout.order_variable().index()])
+                    && layout.bonds().iter().all(|bond| {
+                        let value = assignment[bond.decision_variable().index()];
+                        let role_values = if pattern & (1_u8 << bond.pattern_bit()) == 0 {
+                            bond.role_partition().traversal_values()
+                        } else {
+                            bond.role_partition().ring_values()
+                        };
+                        role_values.contains(value)
+                    })
+            }
         }
     })
 }
@@ -215,6 +336,181 @@ fn relation_rows(mask: u16) -> Vec<(u8, u8)> {
 fn relation_accepts(mask: u16, left: u8, right: u8) -> bool {
     let bit = usize::from(left) * 2 + usize::from(right);
     mask & (1_u16 << bit) != 0
+}
+
+fn latent_layout_fixture() -> (
+    Arc<ConstraintModel>,
+    VariableId,
+    VariableId,
+    [VariableId; 3],
+    FactorId,
+) {
+    let mut builder = ConstraintModelBuilder::new();
+    let order = builder
+        .add_variable(Domain::from_indices([0, 1]).unwrap())
+        .unwrap();
+    let pattern = builder
+        .add_variable(Domain::from_indices(0_u8..8).unwrap())
+        .unwrap();
+    let bond_domain = Domain::from_indices([0, 1, 2]).unwrap();
+    let partition = EdgeRolePartition::new(
+        Domain::singleton(0).unwrap(),
+        Domain::from_indices([1, 2]).unwrap(),
+    );
+    let bonds: [VariableId; 3] =
+        std::array::from_fn(|_| builder.add_variable(bond_domain).unwrap());
+    let factor =
+        builder
+            .add_latent_tetrahedral_layout(
+                order,
+                pattern,
+                bonds.iter().copied().enumerate().map(|(bit, variable)| {
+                    TetrahedralLayoutBond::new(variable, partition, bit as u8)
+                }),
+                [
+                    Domain::singleton(0).unwrap(),
+                    Domain::singleton(1).unwrap(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                ],
+            )
+            .unwrap();
+    (Arc::new(builder.build()), order, pattern, bonds, factor)
+}
+
+#[test]
+fn native_and_exhaustive_backends_share_atomic_activation_semantics() {
+    let (model, order, pattern, bonds, factor) = latent_layout_fixture();
+    let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+        .unwrap()
+        .unwrap_consistent();
+    let exhaustive = ExhaustiveSolverState::initial(model)
+        .unwrap()
+        .unwrap_consistent();
+
+    assert_eq!(native.factor_is_active(factor), Some(false));
+    assert_eq!(exhaustive.factor_is_active(factor), Some(false));
+    for variable in std::iter::once(order)
+        .chain(std::iter::once(pattern))
+        .chain(bonds)
+    {
+        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+    }
+
+    for restriction in [None, Some((order, Domain::singleton(0).unwrap()))] {
+        let restrictions = restriction.into_iter().collect::<Vec<_>>();
+        let native_successor = native
+            .transitioned(&restrictions, &[factor])
+            .unwrap()
+            .unwrap_consistent();
+        let exhaustive_successor = exhaustive
+            .transitioned(&restrictions, &[factor])
+            .unwrap()
+            .unwrap_consistent();
+        assert_eq!(native_successor.factor_is_active(factor), Some(true));
+        assert_eq!(exhaustive_successor.factor_is_active(factor), Some(true));
+        for variable in std::iter::once(order)
+            .chain(std::iter::once(pattern))
+            .chain(bonds)
+        {
+            assert_eq!(
+                native_successor.domain(variable),
+                exhaustive_successor.domain(variable)
+            );
+        }
+    }
+}
+
+fn mixed_layout_triangle_fixture() -> (
+    Arc<ConstraintModel>,
+    VariableId,
+    VariableId,
+    [VariableId; 3],
+    FactorId,
+) {
+    let mut builder = ConstraintModelBuilder::new();
+    let order = builder
+        .add_variable(Domain::from_indices([0, 1]).unwrap())
+        .unwrap();
+    let pattern = builder
+        .add_variable(Domain::from_indices(0_u8..8).unwrap())
+        .unwrap();
+    let bonds: [VariableId; 3] =
+        std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+    let factor = builder
+        .add_latent_tetrahedral_layout(
+            order,
+            pattern,
+            bonds.iter().copied().enumerate().map(|(bit, variable)| {
+                TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)
+            }),
+            [
+                Domain::singleton(0).unwrap(),
+                Domain::singleton(1).unwrap(),
+                Domain::empty(),
+                Domain::empty(),
+                Domain::empty(),
+                Domain::empty(),
+                Domain::empty(),
+                Domain::singleton(0).unwrap(),
+            ],
+        )
+        .unwrap();
+    let atoms = [AtomId::new(0), AtomId::new(1), AtomId::new(2)];
+    builder
+        .add_spanning_tree(
+            atoms,
+            [
+                SpanningTreeEdge::new(bonds[0], atoms[0], atoms[1]),
+                SpanningTreeEdge::new(bonds[1], atoms[1], atoms[2]),
+                SpanningTreeEdge::new(bonds[2], atoms[2], atoms[0]),
+            ],
+        )
+        .unwrap();
+    (Arc::new(builder.build()), order, pattern, bonds, factor)
+}
+
+#[test]
+fn activated_layout_searches_jointly_through_the_spanning_projector() {
+    let (model, order, pattern, bonds, factor) = mixed_layout_triangle_fixture();
+    let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+        .unwrap()
+        .unwrap_consistent();
+    let exhaustive = ExhaustiveSolverState::initial(model)
+        .unwrap()
+        .unwrap_consistent();
+
+    let native = native
+        .transitioned(&[], &[factor])
+        .unwrap()
+        .unwrap_consistent();
+    let exhaustive = exhaustive
+        .transitioned(&[], &[factor])
+        .unwrap()
+        .unwrap_consistent();
+
+    assert_eq!(native.domain(order), Some(Domain::singleton(1).unwrap()));
+    assert_eq!(native.domain(pattern), Some(Domain::singleton(1).unwrap()));
+    assert_eq!(
+        native.domain(bonds[0]),
+        Some(BondRole::Ring.singleton_domain())
+    );
+    for bond in &bonds[1..] {
+        assert_eq!(
+            native.domain(*bond),
+            Some(BondRole::Traversal.singleton_domain())
+        );
+    }
+    for variable in std::iter::once(order)
+        .chain(std::iter::once(pattern))
+        .chain(bonds)
+    {
+        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+    }
 }
 
 fn exhaustive_triangle_supports(masks: [u16; 3], domains: [Domain; 3]) -> Option<[Domain; 3]> {

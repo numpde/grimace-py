@@ -13,7 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
-use crate::model::{BinaryRelationFactor, ConstraintModel, FactorDefinition, SpanningTreeFactor};
+use crate::model::{
+    BinaryRelationFactor, ConstraintModel, EdgeRolePartition, FactorActivation, FactorDefinition,
+    SpanningTreeFactor, TetrahedralLayoutFactor,
+};
 use crate::persistent::PagedStore;
 
 #[derive(Clone, Debug)]
@@ -21,6 +24,8 @@ pub(crate) struct NativeSolverState {
     model: Arc<ConstraintModel>,
     exact_plan: Arc<NativeExactPlan>,
     domains: PagedStore<Domain>,
+    active_factors: PagedStore<bool>,
+    activated_factors_by_variable: PagedStore<Arc<[FactorId]>>,
     #[cfg(test)]
     mixed_search_branches: Arc<AtomicUsize>,
     #[cfg(test)]
@@ -32,6 +37,7 @@ pub(crate) struct NativeSolverState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NativeSolverError {
     UnknownVariable(VariableId),
+    UnknownFactor(FactorId),
     Contradiction,
 }
 
@@ -40,6 +46,9 @@ impl fmt::Display for NativeSolverError {
         match self {
             Self::UnknownVariable(variable) => {
                 write!(formatter, "unknown constraint variable {variable:?}")
+            }
+            Self::UnknownFactor(factor) => {
+                write!(formatter, "unknown constraint factor {factor:?}")
             }
             Self::Contradiction => formatter.write_str("constraint state is contradictory"),
         }
@@ -54,10 +63,18 @@ impl NativeSolverState {
         let exact_plan = Arc::new(NativeExactPlan::compile(&model));
         let variable_count = model.variable_count();
         let initial_factor_ids = model.initial_factor_ids().to_vec();
+        let active_factors = PagedStore::from_values((0..model.factor_count()).map(|index| {
+            model.factor_activation(factor_id_from_index(index)) == Some(FactorActivation::Always)
+        }));
         let mut state = Self {
             model,
             exact_plan,
             domains,
+            active_factors,
+            activated_factors_by_variable: PagedStore::filled(
+                variable_count,
+                Arc::<[FactorId]>::from([]),
+            ),
             #[cfg(test)]
             mixed_search_branches: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
@@ -74,6 +91,10 @@ impl NativeSolverState {
 
     pub(crate) fn domain(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
+    }
+
+    pub(crate) fn factor_is_active(&self, factor: FactorId) -> Option<bool> {
+        self.active_factors.get(factor.index()).copied()
     }
 
     #[cfg(test)]
@@ -108,6 +129,14 @@ impl NativeSolverState {
         &self,
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
     ) -> Result<Self, NativeSolverError> {
+        self.with_transition(restrictions, std::iter::empty())
+    }
+
+    pub(crate) fn with_transition(
+        &self,
+        restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
+        activate: impl IntoIterator<Item = FactorId>,
+    ) -> Result<Self, NativeSolverError> {
         let mut domains_by_variable = BTreeMap::new();
         let mut contradictory = false;
         for (variable, allowed) in restrictions {
@@ -117,6 +146,15 @@ impl NativeSolverState {
             let entry = domains_by_variable.entry(variable).or_insert(current);
             *entry = (*entry).intersect(allowed);
             contradictory |= entry.is_empty();
+        }
+        let mut newly_activated = BTreeSet::new();
+        for factor in activate {
+            let active = self
+                .factor_is_active(factor)
+                .ok_or(NativeSolverError::UnknownFactor(factor))?;
+            if !active {
+                newly_activated.insert(factor);
+            }
         }
         if contradictory {
             return Err(NativeSolverError::Contradiction);
@@ -133,22 +171,47 @@ impl NativeSolverState {
             }
             successor.domains[variable.index()] = restricted;
             changed_variables.push(variable);
-            seed_factors.extend(
-                successor
-                    .model
-                    .initial_factors_for_variable(variable)
-                    .expect("known variable must have an adjacency row")
-                    .iter()
-                    .copied(),
-            );
+            seed_factors.extend(successor.active_factors_for_variable(variable));
         }
 
-        if changed_variables.is_empty() {
+        for factor in newly_activated {
+            successor.active_factors[factor.index()] = true;
+            let variables = successor
+                .model
+                .factor(factor)
+                .expect("validated activation factor must exist")
+                .variables()
+                .to_vec();
+            for variable in variables.iter().copied() {
+                let mut factors =
+                    successor.activated_factors_by_variable[variable.index()].to_vec();
+                factors.push(factor);
+                successor.activated_factors_by_variable[variable.index()] = Arc::from(factors);
+            }
+            seed_factors.insert(factor);
+            changed_variables.extend(variables);
+        }
+
+        if changed_variables.is_empty() && seed_factors.is_empty() {
             return Ok(successor);
         }
 
         successor.enforce_consistency(seed_factors, changed_variables)?;
         Ok(successor)
+    }
+
+    fn active_factors_for_variable(&self, variable: VariableId) -> Vec<FactorId> {
+        let mut factors = self
+            .model
+            .initial_factors_for_variable(variable)
+            .expect("known variable must have an initial adjacency row")
+            .to_vec();
+        factors.extend(
+            self.activated_factors_by_variable[variable.index()]
+                .iter()
+                .copied(),
+        );
+        factors
     }
 
     fn enforce_consistency(
@@ -168,13 +231,7 @@ impl NativeSolverState {
 
             let mut seed_factors = BTreeSet::new();
             for variable in &exact_reductions {
-                seed_factors.extend(
-                    self.model
-                        .initial_factors_for_variable(*variable)
-                        .expect("known variable must have an adjacency row")
-                        .iter()
-                        .copied(),
-                );
+                seed_factors.extend(self.active_factors_for_variable(*variable));
             }
 
             let propagated_reductions = self.propagate(seed_factors)?;
@@ -196,6 +253,11 @@ impl NativeSolverState {
         let mut all_reductions = BTreeSet::new();
 
         for factor in seeds {
+            assert_eq!(
+                self.factor_is_active(factor),
+                Some(true),
+                "only active factors may enter the propagation queue"
+            );
             enqueue_factor(factor, &mut queue, &mut queued);
         }
 
@@ -216,18 +278,14 @@ impl NativeSolverState {
                 FactorDefinition::SpanningTree(spanning_tree) => {
                     revise_spanning_tree(spanning_tree, &mut self.domains)?
                 }
-                FactorDefinition::TetrahedralLayout(_) => {
-                    unreachable!("latent tetrahedral factors require explicit activation")
+                FactorDefinition::TetrahedralLayout(layout) => {
+                    revise_tetrahedral_layout(layout, &mut self.domains)?
                 }
             };
 
             for variable in reductions {
                 all_reductions.insert(variable);
-                for &neighbour in self
-                    .model
-                    .initial_factors_for_variable(variable)
-                    .expect("factor scope must reference a prepared variable")
-                {
+                for neighbour in self.active_factors_for_variable(variable) {
                     enqueue_factor(neighbour, &mut queue, &mut queued);
                 }
             }
@@ -255,8 +313,6 @@ impl NativeSolverState {
                     reductions.extend(self.complete_filter_binary_component(component)?);
                 }
                 ExactComponent::Mixed(component) => {
-                    #[cfg(test)]
-                    self.mixed_exact_runs.fetch_add(1, Ordering::Relaxed);
                     reductions.extend(self.complete_filter_mixed_component(component)?);
                 }
             }
@@ -302,34 +358,94 @@ impl NativeSolverState {
         &mut self,
         component: &MixedExactComponent,
     ) -> Result<Vec<VariableId>, NativeSolverError> {
-        if !component
-            .core_variables
+        let active_layouts = component
+            .potential_layout_factors
+            .iter()
+            .copied()
+            .filter(|factor| self.factor_is_active(*factor) == Some(true))
+            .collect::<Vec<_>>();
+        let mut core_variables = component.always_core_variables.to_vec();
+        let mut active_layout_core_variables = BTreeSet::new();
+        let mut active_layout_cores_overlap = false;
+        for factor in &active_layouts {
+            let FactorDefinition::TetrahedralLayout(layout) = self
+                .model
+                .factor(*factor)
+                .expect("active layout factor must exist")
+            else {
+                unreachable!("potential layout IDs must retain their factor kind");
+            };
+            for variable in [layout.order_variable(), layout.role_pattern_variable()] {
+                active_layout_cores_overlap |= !active_layout_core_variables.insert(variable);
+                core_variables.push(variable);
+            }
+        }
+        core_variables.sort_unstable();
+        core_variables.dedup();
+        let structural_role_is_ambiguous = component.structural_variables.iter().any(|entry| {
+            role_membership(self.domains[entry.variable.index()], entry.role_partition)
+                == (true, true)
+        });
+        if component.always_core_variables.is_empty()
+            && !active_layout_cores_overlap
+            && !structural_role_is_ambiguous
+        {
+            return Ok(Vec::new());
+        }
+
+        #[cfg(test)]
+        self.mixed_exact_runs.fetch_add(1, Ordering::Relaxed);
+
+        if !core_variables
             .iter()
             .any(|variable| self.domains[variable.index()].len() > 1)
         {
             return Ok(Vec::new());
         }
 
-        let target = component
-            .projected_variables
+        let mut projected_variables = component
+            .always_core_variables
+            .iter()
+            .copied()
+            .chain(
+                component
+                    .structural_variables
+                    .iter()
+                    .map(|entry| entry.variable),
+            )
+            .collect::<Vec<_>>();
+        for factor in active_layouts {
+            let FactorDefinition::TetrahedralLayout(layout) = self
+                .model
+                .factor(factor)
+                .expect("active layout factor must exist")
+            else {
+                unreachable!("potential layout IDs must retain their factor kind");
+            };
+            projected_variables.extend([layout.order_variable(), layout.role_pattern_variable()]);
+        }
+        projected_variables.sort_unstable();
+        projected_variables.dedup();
+
+        let target = projected_variables
             .iter()
             .map(|variable| self.domains[variable.index()])
             .collect::<Vec<_>>();
-        let mut supported = vec![Domain::empty(); component.projected_variables.len()];
+        let mut supported = vec![Domain::empty(); projected_variables.len()];
         let mut stack = vec![self.clone()];
         let mut found_solution = false;
 
         while let Some(candidate) = stack.pop() {
-            let Some(variable) = component
-                .core_variables
+            let Some(variable) = core_variables
                 .iter()
                 .copied()
-                .find(|variable| candidate.domains[variable.index()].len() > 1)
+                .filter(|variable| candidate.domains[variable.index()].len() > 1)
+                .min_by_key(|variable| candidate.domains[variable.index()].len())
             else {
                 found_solution = true;
                 for (accumulator, variable) in supported
                     .iter_mut()
-                    .zip(component.projected_variables.iter().copied())
+                    .zip(projected_variables.iter().copied())
                 {
                     *accumulator = accumulator.union(candidate.domains[variable.index()]);
                 }
@@ -364,9 +480,7 @@ impl NativeSolverState {
         }
 
         let mut reductions = Vec::new();
-        for (variable, supported_domain) in
-            component.projected_variables.iter().copied().zip(supported)
-        {
+        for (variable, supported_domain) in projected_variables.iter().copied().zip(supported) {
             let current = self.domains[variable.index()];
             debug_assert!(supported_domain.is_subset_of(current));
             if supported_domain != current {
@@ -395,11 +509,7 @@ impl NativeSolverState {
 
         let mut successor = self.clone();
         successor.domains[variable.index()] = restricted;
-        let seed_factors = successor
-            .model
-            .initial_factors_for_variable(variable)
-            .expect("known variable must have an adjacency row")
-            .to_vec();
+        let seed_factors = successor.active_factors_for_variable(variable);
         successor.propagate(seed_factors)?;
         Ok(successor)
     }
@@ -414,103 +524,153 @@ struct NativeExactPlan {
 impl NativeExactPlan {
     fn compile(model: &ConstraintModel) -> Self {
         let variable_count = model.variable_count();
-        let has_binary_factor = (0..variable_count)
-            .map(|index| {
-                let variable = variable_id_from_index(index);
-                model
-                    .potential_factors_for_variable(variable)
-                    .expect("known variable must have an adjacency row")
-                    .iter()
-                    .any(|factor_id| {
-                        matches!(
-                            model
-                                .factor(*factor_id)
-                                .expect("factor adjacency must reference a prepared factor"),
-                            FactorDefinition::BinaryRelation(_)
-                        )
-                    })
-            })
-            .collect::<Vec<_>>();
-        let mut visited_core = vec![false; variable_count];
+        let factor_count = model.factor_count();
+        let mut visited_semantic = vec![false; factor_count];
         let mut components = Vec::new();
         let mut component_by_variable = vec![None; variable_count];
 
-        for seed_index in 0..variable_count {
-            if !has_binary_factor[seed_index] || visited_core[seed_index] {
+        for seed_index in 0..factor_count {
+            let seed = factor_id_from_index(seed_index);
+            if visited_semantic[seed_index]
+                || matches!(
+                    model.factor(seed).expect("prepared factor must exist"),
+                    FactorDefinition::SpanningTree(_)
+                )
+            {
                 continue;
             }
 
-            let mut core_variables = BTreeSet::new();
             let mut binary_factors = BTreeSet::new();
+            let mut potential_layout_factors = BTreeSet::new();
+            let mut always_core_variables = BTreeSet::new();
+            let mut potential_core_variables = BTreeSet::new();
             let mut structural_factors = BTreeSet::new();
-            let mut pending = VecDeque::from([variable_id_from_index(seed_index)]);
+            let mut structural_partitions = BTreeMap::new();
+            let mut pending = VecDeque::from([seed]);
 
-            while let Some(variable) = pending.pop_front() {
-                if !core_variables.insert(variable) {
+            while let Some(factor_id) = pending.pop_front() {
+                if visited_semantic[factor_id.index()] {
                     continue;
                 }
-                visited_core[variable.index()] = true;
+                let factor = model
+                    .factor(factor_id)
+                    .expect("pending semantic factor must exist");
+                let semantic_variables = match factor {
+                    FactorDefinition::BinaryRelation(relation) => {
+                        visited_semantic[factor_id.index()] = true;
+                        binary_factors.insert(factor_id);
+                        always_core_variables.extend(relation.variables().iter().copied());
+                        potential_core_variables.extend(relation.variables().iter().copied());
+                        relation.variables().as_slice()
+                    }
+                    FactorDefinition::TetrahedralLayout(layout) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_layout_factors.insert(factor_id);
+                        potential_core_variables
+                            .extend([layout.order_variable(), layout.role_pattern_variable()]);
+                        for bond in layout.bonds() {
+                            structural_partitions
+                                .entry(bond.decision_variable())
+                                .and_modify(|existing| {
+                                    assert_eq!(
+                                        *existing,
+                                        bond.role_partition(),
+                                        "one structural variable must retain one role partition"
+                                    );
+                                })
+                                .or_insert(bond.role_partition());
+                        }
+                        layout.variables()
+                    }
+                    FactorDefinition::SpanningTree(_) => {
+                        unreachable!("semantic traversal cannot queue a spanning factor")
+                    }
+                };
 
-                for &factor_id in model
-                    .potential_factors_for_variable(variable)
-                    .expect("known variable must have an adjacency row")
-                {
-                    match model
-                        .factor(factor_id)
-                        .expect("factor adjacency must reference a prepared factor")
+                for &variable in semantic_variables {
+                    for &neighbour in model
+                        .potential_factors_for_variable(variable)
+                        .expect("semantic scope variable must have potential adjacency")
                     {
-                        FactorDefinition::BinaryRelation(relation) => {
-                            if binary_factors.insert(factor_id) {
-                                pending.extend(relation.variables().iter().copied());
+                        match model.factor(neighbour).expect("adjacent factor must exist") {
+                            FactorDefinition::BinaryRelation(_)
+                            | FactorDefinition::TetrahedralLayout(_) => {
+                                if !visited_semantic[neighbour.index()] {
+                                    pending.push_back(neighbour);
+                                }
+                            }
+                            FactorDefinition::SpanningTree(spanning_tree) => {
+                                if !structural_factors.insert(neighbour) {
+                                    continue;
+                                }
+                                for edge in spanning_tree.edges() {
+                                    structural_partitions
+                                        .entry(edge.decision_variable())
+                                        .and_modify(|existing| {
+                                            assert_eq!(
+                                                *existing,
+                                                edge.role_partition(),
+                                                "one structural variable must retain one role partition"
+                                            );
+                                        })
+                                        .or_insert(edge.role_partition());
+                                }
+                                for &structural_variable in spanning_tree.variables() {
+                                    for &candidate in model
+                                        .potential_factors_for_variable(structural_variable)
+                                        .expect("structural variable must have potential adjacency")
+                                    {
+                                        if matches!(
+                                            model.factor(candidate).expect("factor must exist"),
+                                            FactorDefinition::BinaryRelation(_)
+                                                | FactorDefinition::TetrahedralLayout(_)
+                                        ) && !visited_semantic[candidate.index()]
+                                        {
+                                            pending.push_back(candidate);
+                                        }
+                                    }
+                                }
                             }
                         }
-                        FactorDefinition::SpanningTree(spanning_tree) => {
-                            if structural_factors.insert(factor_id) {
-                                pending.extend(
-                                    spanning_tree
-                                        .variables()
-                                        .iter()
-                                        .copied()
-                                        .filter(|candidate| has_binary_factor[candidate.index()]),
-                                );
-                            }
-                        }
-                        FactorDefinition::TetrahedralLayout(_) => {}
                     }
                 }
             }
 
-            let core_variables = core_variables.into_iter().collect::<Vec<_>>();
-            let component = if structural_factors.is_empty() {
-                // Arc consistency is exact on an acyclic binary incidence
-                // graph, so only cyclic pure-binary components need search.
-                (binary_factors.len() >= core_variables.len()).then(|| {
-                    ExactComponent::Binary(BinaryExactComponent::compile(
-                        model,
-                        core_variables,
-                        binary_factors.into_iter().collect(),
-                    ))
-                })
-            } else {
-                let mut projected_variables =
-                    core_variables.iter().copied().collect::<BTreeSet<_>>();
-                for factor_id in structural_factors {
-                    let FactorDefinition::SpanningTree(spanning_tree) = model
-                        .factor(factor_id)
-                        .expect("prepared structural factor must resolve")
-                    else {
-                        unreachable!("mixed component structural IDs must be spanning factors");
-                    };
-                    projected_variables.extend(spanning_tree.variables().iter().copied());
-                }
-                Some(ExactComponent::Mixed(MixedExactComponent {
-                    core_variables: core_variables.into_boxed_slice(),
-                    projected_variables: projected_variables
+            let always_core_variables = always_core_variables.into_iter().collect::<Vec<_>>();
+            let potential_layout_factors = potential_layout_factors.into_iter().collect::<Vec<_>>();
+            let component =
+                if structural_partitions.is_empty() && potential_layout_factors.is_empty() {
+                    // Arc consistency is exact on an acyclic binary incidence
+                    // graph, so only cyclic pure-binary components need search.
+                    (binary_factors.len() >= always_core_variables.len()).then(|| {
+                        ExactComponent::Binary(BinaryExactComponent::compile(
+                            model,
+                            always_core_variables,
+                            binary_factors.into_iter().collect(),
+                        ))
+                    })
+                } else {
+                    let structural_variables = structural_partitions
                         .into_iter()
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                }))
-            };
+                        .map(|(variable, role_partition)| StructuralProjection {
+                            variable,
+                            role_partition,
+                        })
+                        .collect::<Vec<_>>();
+                    let projected_variables = potential_core_variables
+                        .into_iter()
+                        .chain(structural_variables.iter().map(|entry| entry.variable))
+                        .collect::<BTreeSet<_>>();
+                    Some(ExactComponent::Mixed(MixedExactComponent {
+                        always_core_variables: always_core_variables.into_boxed_slice(),
+                        potential_layout_factors: potential_layout_factors.into_boxed_slice(),
+                        structural_variables: structural_variables.into_boxed_slice(),
+                        projected_variables: projected_variables
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice(),
+                    }))
+                };
 
             let Some(component) = component else {
                 continue;
@@ -558,8 +718,16 @@ impl ExactComponent {
 
 #[derive(Debug)]
 struct MixedExactComponent {
-    core_variables: Box<[VariableId]>,
+    always_core_variables: Box<[VariableId]>,
+    potential_layout_factors: Box<[FactorId]>,
+    structural_variables: Box<[StructuralProjection]>,
     projected_variables: Box<[VariableId]>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct StructuralProjection {
+    variable: VariableId,
+    role_partition: EdgeRolePartition,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -772,6 +940,74 @@ fn values_with_support(
         }
     }
     retained
+}
+
+fn revise_tetrahedral_layout(
+    factor: &TetrahedralLayoutFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<Vec<VariableId>, NativeSolverError> {
+    let order_variable = factor.order_variable();
+    let pattern_variable = factor.role_pattern_variable();
+    let current_order = domains[order_variable.index()];
+    let current_patterns = domains[pattern_variable.index()];
+    let mut supported_order = Domain::empty();
+    let mut supported_patterns = Domain::empty();
+    let mut supported_bonds = vec![Domain::empty(); factor.bonds().len()];
+
+    for pattern in current_patterns.iter() {
+        let order_support = current_order.intersect(factor.allowed_orders(pattern));
+        if order_support.is_empty() {
+            continue;
+        }
+        let mut bond_support = Vec::with_capacity(factor.bonds().len());
+        let mut viable = true;
+        for bond in factor.bonds() {
+            let current = domains[bond.decision_variable().index()];
+            let role_values = if pattern & (1_u8 << bond.pattern_bit()) == 0 {
+                bond.role_partition().traversal_values()
+            } else {
+                bond.role_partition().ring_values()
+            };
+            let support = current.intersect(role_values);
+            if support.is_empty() {
+                viable = false;
+                break;
+            }
+            bond_support.push(support);
+        }
+        if !viable {
+            continue;
+        }
+        supported_order = supported_order.union(order_support);
+        supported_patterns = supported_patterns.union(Domain::from_bits(1_u64 << pattern));
+        for (accumulator, support) in supported_bonds.iter_mut().zip(bond_support) {
+            *accumulator = accumulator.union(support);
+        }
+    }
+
+    if supported_patterns.is_empty() {
+        return Err(NativeSolverError::Contradiction);
+    }
+
+    let mut reductions = Vec::new();
+    for (variable, supported) in std::iter::once((order_variable, supported_order))
+        .chain(std::iter::once((pattern_variable, supported_patterns)))
+        .chain(
+            factor
+                .bonds()
+                .iter()
+                .map(|bond| bond.decision_variable())
+                .zip(supported_bonds),
+        )
+    {
+        let current = domains[variable.index()];
+        debug_assert!(supported.is_subset_of(current));
+        if supported != current {
+            domains[variable.index()] = supported;
+            reductions.push(variable);
+        }
+    }
+    Ok(reductions)
 }
 
 fn revise_spanning_tree(
@@ -1029,6 +1265,12 @@ fn enqueue_local_factors(
     }
 }
 
+fn factor_id_from_index(index: usize) -> FactorId {
+    FactorId::new(
+        u32::try_from(index).expect("constraint model validated the factor identifier capacity"),
+    )
+}
+
 fn variable_id_from_index(index: usize) -> VariableId {
     VariableId::new(
         u32::try_from(index).expect("constraint model validated the variable identifier capacity"),
@@ -1038,7 +1280,10 @@ fn variable_id_from_index(index: usize) -> VariableId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{BondRole, ConstraintModelBuilder, SpanningTreeEdge};
+    use crate::model::{
+        BondRole, ConstraintModelBuilder, EdgeRolePartition, SpanningTreeEdge,
+        TetrahedralLayoutBond,
+    };
 
     fn two_values() -> Domain {
         Domain::from_indices([0, 1]).unwrap()
@@ -1060,11 +1305,236 @@ mod tests {
         (Arc::new(builder.build()), variables)
     }
 
+    fn latent_layout_model() -> (
+        Arc<ConstraintModel>,
+        VariableId,
+        VariableId,
+        [VariableId; 3],
+        FactorId,
+    ) {
+        let mut builder = ConstraintModelBuilder::new();
+        let order = builder.add_variable(two_values()).unwrap();
+        let pattern = builder
+            .add_variable(Domain::from_indices(0_u8..8).unwrap())
+            .unwrap();
+        let bond_domain = Domain::from_indices([0, 1, 2]).unwrap();
+        let partition = EdgeRolePartition::new(
+            Domain::singleton(0).unwrap(),
+            Domain::from_indices([1, 2]).unwrap(),
+        );
+        let bonds: [VariableId; 3] =
+            std::array::from_fn(|_| builder.add_variable(bond_domain).unwrap());
+        let rows = [
+            Domain::singleton(0).unwrap(),
+            Domain::singleton(1).unwrap(),
+            Domain::empty(),
+            Domain::empty(),
+            Domain::empty(),
+            Domain::empty(),
+            Domain::empty(),
+            Domain::empty(),
+        ];
+        let factor = builder
+            .add_latent_tetrahedral_layout(
+                order,
+                pattern,
+                bonds.iter().copied().enumerate().map(|(bit, variable)| {
+                    TetrahedralLayoutBond::new(variable, partition, bit as u8)
+                }),
+                rows,
+            )
+            .unwrap();
+        (Arc::new(builder.build()), order, pattern, bonds, factor)
+    }
+
     fn domains_for(state: &NativeSolverState, variables: &[VariableId]) -> Vec<Domain> {
         variables
             .iter()
             .map(|variable| state.domain(*variable).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn latent_layout_has_no_effect_until_atomic_activation() {
+        let (model, order, pattern, bonds, factor) = latent_layout_model();
+        let source = NativeSolverState::initial(model).unwrap();
+
+        assert_eq!(source.factor_is_active(factor), Some(false));
+        assert_eq!(source.domain(pattern).unwrap().len(), 8);
+        assert_eq!(source.domain(bonds[1]).unwrap().len(), 3);
+
+        let successor = source
+            .with_transition([(order, Domain::singleton(0).unwrap())], [factor])
+            .unwrap();
+        assert_eq!(successor.factor_is_active(factor), Some(true));
+        assert_eq!(successor.domain(order), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(
+            successor.domain(pattern),
+            Some(Domain::singleton(0).unwrap())
+        );
+        for bond in bonds {
+            assert_eq!(successor.domain(bond), Some(Domain::singleton(0).unwrap()));
+        }
+
+        assert_eq!(source.factor_is_active(factor), Some(false));
+        assert_eq!(source.domain(order), Some(two_values()));
+    }
+
+    #[test]
+    fn factor_activation_is_idempotent_and_unknown_ids_fail() {
+        let (model, _, _, _, factor) = latent_layout_model();
+        let source = NativeSolverState::initial(model).unwrap();
+        let active = source
+            .with_transition(std::iter::empty::<(VariableId, Domain)>(), [factor, factor])
+            .unwrap();
+        let repeated = active
+            .with_transition(std::iter::empty::<(VariableId, Domain)>(), [factor])
+            .unwrap();
+
+        assert_eq!(repeated.factor_is_active(factor), Some(true));
+        assert!(matches!(
+            repeated.with_transition(
+                std::iter::empty::<(VariableId, Domain)>(),
+                [FactorId::new(99)]
+            ),
+            Err(NativeSolverError::UnknownFactor(factor)) if factor == FactorId::new(99)
+        ));
+    }
+
+    #[test]
+    fn traversal_resolved_layout_avoids_mixed_search() {
+        let mut builder = ConstraintModelBuilder::new();
+        let order = builder.add_variable(two_values()).unwrap();
+        let pattern = builder
+            .add_variable(Domain::from_indices(0_u8..8).unwrap())
+            .unwrap();
+        let bonds: [VariableId; 3] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        let factor = builder
+            .add_latent_tetrahedral_layout(
+                order,
+                pattern,
+                bonds.iter().copied().enumerate().map(|(bit, variable)| {
+                    TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)
+                }),
+                [
+                    two_values(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                    Domain::empty(),
+                ],
+            )
+            .unwrap();
+        let atoms: [crate::AtomId; 4] =
+            std::array::from_fn(|index| crate::AtomId::new(index as u32));
+        builder
+            .add_spanning_tree(
+                atoms,
+                bonds.iter().copied().enumerate().map(|(index, variable)| {
+                    SpanningTreeEdge::new(variable, atoms[0], atoms[index + 1])
+                }),
+            )
+            .unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        source.reset_exact_run_counts();
+        source.reset_mixed_search_branch_count();
+
+        let successor = source
+            .with_transition(std::iter::empty::<(VariableId, Domain)>(), [factor])
+            .unwrap();
+
+        assert_eq!(successor.domain(order), Some(two_values()));
+        assert_eq!(
+            successor.domain(pattern),
+            Some(Domain::singleton(0).unwrap())
+        );
+        assert_eq!(successor.exact_run_counts(), (0, 0));
+        assert_eq!(successor.mixed_search_branch_count(), 0);
+    }
+
+    #[test]
+    fn disjoint_traversal_resolved_layouts_avoid_mixed_search_together() {
+        let mut builder = ConstraintModelBuilder::new();
+        let orders: [VariableId; 2] =
+            std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
+        let patterns: [VariableId; 2] = std::array::from_fn(|_| {
+            builder
+                .add_variable(Domain::from_indices(0_u8..8).unwrap())
+                .unwrap()
+        });
+        let bonds: [VariableId; 5] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        let layout_bonds = [
+            [bonds[0], bonds[1], bonds[2]],
+            [bonds[0], bonds[3], bonds[4]],
+        ];
+        let factors: [FactorId; 2] = std::array::from_fn(|center| {
+            builder
+                .add_latent_tetrahedral_layout(
+                    orders[center],
+                    patterns[center],
+                    layout_bonds[center]
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(bit, variable)| {
+                            TetrahedralLayoutBond::new(
+                                variable,
+                                EdgeRolePartition::bond_role(),
+                                bit as u8,
+                            )
+                        }),
+                    [
+                        two_values(),
+                        Domain::empty(),
+                        Domain::empty(),
+                        Domain::empty(),
+                        Domain::empty(),
+                        Domain::empty(),
+                        Domain::empty(),
+                        Domain::empty(),
+                    ],
+                )
+                .unwrap()
+        });
+        let atoms: [crate::AtomId; 6] =
+            std::array::from_fn(|index| crate::AtomId::new(index as u32));
+        let edges = [
+            (bonds[0], atoms[0], atoms[1]),
+            (bonds[1], atoms[0], atoms[2]),
+            (bonds[2], atoms[0], atoms[3]),
+            (bonds[3], atoms[1], atoms[4]),
+            (bonds[4], atoms[1], atoms[5]),
+        ];
+        builder
+            .add_spanning_tree(
+                atoms,
+                edges.map(|(variable, a, b)| SpanningTreeEdge::new(variable, a, b)),
+            )
+            .unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        source.reset_exact_run_counts();
+        source.reset_mixed_search_branch_count();
+
+        let successor = source
+            .with_transition(std::iter::empty::<(VariableId, Domain)>(), factors)
+            .unwrap();
+
+        for order in orders {
+            assert_eq!(successor.domain(order), Some(two_values()));
+        }
+        for pattern in patterns {
+            assert_eq!(
+                successor.domain(pattern),
+                Some(Domain::singleton(0).unwrap())
+            );
+        }
+        assert_eq!(successor.exact_run_counts(), (0, 0));
+        assert_eq!(successor.mixed_search_branch_count(), 0);
     }
 
     #[test]

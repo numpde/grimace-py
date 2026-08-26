@@ -4,7 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
-use crate::ids::VariableId;
+use crate::ids::{FactorId, VariableId};
 use crate::model::ConstraintModel;
 use crate::native::{NativeSolverError, NativeSolverState};
 use crate::solver::{Consistency, ConstraintSolver};
@@ -12,6 +12,7 @@ use crate::solver::{Consistency, ConstraintSolver};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NativeSolverFailure {
     UnknownVariable(VariableId),
+    UnknownFactor(FactorId),
 }
 
 impl fmt::Display for NativeSolverFailure {
@@ -19,6 +20,9 @@ impl fmt::Display for NativeSolverFailure {
         match self {
             Self::UnknownVariable(variable) => {
                 write!(formatter, "unknown constraint variable {variable:?}")
+            }
+            Self::UnknownFactor(factor) => {
+                write!(formatter, "unknown constraint factor {factor:?}")
             }
         }
     }
@@ -34,6 +38,9 @@ fn classify(
         Err(NativeSolverError::Contradiction) => Ok(Consistency::Contradiction),
         Err(NativeSolverError::UnknownVariable(variable)) => {
             Err(NativeSolverFailure::UnknownVariable(variable))
+        }
+        Err(NativeSolverError::UnknownFactor(factor)) => {
+            Err(NativeSolverFailure::UnknownFactor(factor))
         }
     }
 }
@@ -55,7 +62,23 @@ impl ConstraintSolver for NativeSolverState {
         ))
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        classify(NativeSolverState::with_transition(
+            self,
+            restrictions.iter().copied(),
+            activate.iter().copied(),
+        ))
+    }
+
     fn domain(&self, variable: VariableId) -> Option<Domain> {
         NativeSolverState::domain(self, variable)
+    }
+
+    fn factor_is_active(&self, factor: FactorId) -> Option<bool> {
+        NativeSolverState::factor_is_active(self, factor)
     }
 }

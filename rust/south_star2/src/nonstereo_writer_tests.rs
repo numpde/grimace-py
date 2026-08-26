@@ -1248,7 +1248,7 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
     }
 
     let local = parent.structural.active_local_bond_order();
-    assert_eq!(local.committed_bonds, bonds[..2]);
+    assert_eq!(local.emitted_bonds, bonds[..2]);
     assert_eq!(
         parent.structural.semantic_domain(center.order_variable),
         center
@@ -1267,7 +1267,7 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
             .successor()
             .structural
             .active_local_bond_order()
-            .committed_bonds
+            .emitted_bonds
             .len(),
         3
     );
@@ -1319,7 +1319,7 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
         pending_atom
             .structural
             .active_local_bond_order()
-            .committed_bonds,
+            .emitted_bonds,
         bonds
     );
     assert_eq!(

@@ -96,7 +96,8 @@ pub(crate) enum ObservedBondProgress {
 pub(crate) struct ObservedFrame {
     pub(crate) atom: AtomId,
     pub(crate) entry_bond: Option<BondId>,
-    pub(crate) committed_bonds: Vec<BondId>,
+    pub(crate) emitted_bonds: Vec<BondId>,
+    pub(crate) ring_occurrence_count: usize,
     pub(crate) attachment_groups: Vec<Vec<AdjacentBond>>,
 }
 
@@ -510,7 +511,8 @@ impl ResidualAttachment {
 struct WriterFrame {
     atom: AtomId,
     entry_bond: Option<BondId>,
-    committed_bonds: Vec<BondId>,
+    emitted_bonds: Vec<BondId>,
+    ring_occurrence_count: usize,
     attachments: Vec<ResidualAttachment>,
 }
 
@@ -518,7 +520,8 @@ struct WriterFrame {
 pub(crate) struct LocalBondOrder {
     pub(crate) atom: AtomId,
     pub(crate) entry_bond: Option<BondId>,
-    pub(crate) committed_bonds: Vec<BondId>,
+    pub(crate) emitted_bonds: Vec<BondId>,
+    pub(crate) ring_occurrence_count: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -545,7 +548,8 @@ impl WriterFrame {
         Self {
             atom,
             entry_bond,
-            committed_bonds: Vec::new(),
+            emitted_bonds: Vec::new(),
+            ring_occurrence_count: 0,
             attachments,
         }
     }
@@ -559,10 +563,25 @@ impl WriterFrame {
         );
         assert!(
             self.entry_bond != Some(incident.bond())
-                && !self.committed_bonds.contains(&incident.bond()),
+                && !self.emitted_bonds.contains(&incident.bond()),
             "one local bond occurrence may be committed only once"
         );
-        self.committed_bonds.push(incident.bond());
+        self.emitted_bonds.push(incident.bond());
+    }
+
+    fn commit_ring(&mut self, incident: AdjacentBond) {
+        assert_eq!(
+            self.ring_occurrence_count,
+            self.emitted_bonds.len(),
+            "ring occurrences must precede traversal-child occurrences"
+        );
+        assert!(
+            self.entry_bond != Some(incident.bond())
+                && !self.emitted_bonds.contains(&incident.bond()),
+            "one local bond occurrence may be committed only once"
+        );
+        self.emitted_bonds.push(incident.bond());
+        self.ring_occurrence_count += 1;
     }
 
     fn remove_ring_incidence(&mut self, incident: AdjacentBond) {
@@ -672,7 +691,8 @@ impl TraversalState {
         let observe_frame = |frame: &WriterFrame| ObservedFrame {
             atom: frame.atom,
             entry_bond: frame.entry_bond,
-            committed_bonds: frame.committed_bonds.clone(),
+            emitted_bonds: frame.emitted_bonds.clone(),
+            ring_occurrence_count: frame.ring_occurrence_count,
             attachment_groups: frame
                 .attachments
                 .iter()
@@ -747,7 +767,8 @@ impl TraversalState {
         LocalBondOrder {
             atom: frame.atom,
             entry_bond: frame.entry_bond,
-            committed_bonds: frame.committed_bonds.clone(),
+            emitted_bonds: frame.emitted_bonds.clone(),
+            ring_occurrence_count: frame.ring_occurrence_count,
         }
     }
 
@@ -783,6 +804,12 @@ impl TraversalState {
                 .as_mut()
                 .expect("ring opening requires an active frame"),
         )
+        .commit_ring(incident);
+        Arc::make_mut(
+            self.active
+                .as_mut()
+                .expect("ring opening requires an active frame"),
+        )
         .remove_ring_incidence(incident);
         self.progress.open_ring(incident.bond(), active_atom);
     }
@@ -797,6 +824,12 @@ impl TraversalState {
             IncidentBondState::RingOpenAtOtherAtom,
             "a second ring endpoint must pair a bond opened at its other atom"
         );
+        Arc::make_mut(
+            self.active
+                .as_mut()
+                .expect("ring closure requires an active frame"),
+        )
+        .commit_ring(incident);
         self.progress.close_ring(incident.bond(), active_atom);
     }
 
@@ -877,7 +910,7 @@ impl TraversalState {
         );
         Arc::make_mut(&mut parent).consume_child_attachment(incident);
         assert_eq!(
-            parent.committed_bonds.last(),
+            parent.emitted_bonds.last(),
             Some(&incident.bond()),
             "a child must be committed in local order before its atom is entered"
         );
@@ -1376,6 +1409,15 @@ mod tests {
         let opening = incident(&graph, atoms[0], ring);
         state.open_ring_endpoint(&graph, opening);
         assert_eq!(
+            state.active_local_bond_order(),
+            LocalBondOrder {
+                atom: atoms[0],
+                entry_bond: None,
+                emitted_bonds: vec![ring],
+                ring_occurrence_count: 1,
+            }
+        );
+        assert_eq!(
             state.ring_first_endpoint_for_active_incident(&graph, opening),
             Some(atoms[0])
         );
@@ -1388,6 +1430,15 @@ mod tests {
             Some(atoms[0])
         );
         state.close_ring_endpoint(&graph, closing);
+        assert_eq!(
+            state.active_local_bond_order(),
+            LocalBondOrder {
+                atom: atoms[2],
+                entry_bond: Some(second),
+                emitted_bonds: vec![ring],
+                ring_occurrence_count: 1,
+            }
+        );
         assert!(state.graph_is_complete());
         assert_eq!(state.complete_path(&graph), None);
     }

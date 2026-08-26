@@ -202,20 +202,20 @@ impl PreparedTetrahedralCenter {
     fn prefix_domain_with_bond_order(
         &self,
         entry_bond: Option<BondId>,
-        committed_bonds: &[BondId],
+        emitted_bonds: &[BondId],
     ) -> Domain {
         let mut prefix = self.context_prefix(entry_bond);
-        prefix.extend(committed_bonds.iter().copied().map(TetrahedralLigand::Bond));
+        prefix.extend(emitted_bonds.iter().copied().map(TetrahedralLigand::Bond));
         prefix_domain(&self.reference_order, &prefix)
     }
 
     fn completed_order_domain(
         &self,
         entry_bond: Option<BondId>,
-        committed_bonds: &[BondId],
+        emitted_bonds: &[BondId],
     ) -> Domain {
         let mut order = self.context_prefix(entry_bond);
-        order.extend(committed_bonds.iter().copied().map(TetrahedralLigand::Bond));
+        order.extend(emitted_bonds.iter().copied().map(TetrahedralLigand::Bond));
         singleton_order(&self.reference_order, &order)
     }
 
@@ -1333,11 +1333,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let Some(center) = self.surface.tetrahedral_center(local.atom) else {
             return Vec::new();
         };
-        let mut committed_bonds = local.committed_bonds;
-        committed_bonds.push(incident.bond());
+        let mut emitted_bonds = local.emitted_bonds;
+        emitted_bonds.push(incident.bond());
         vec![(
             center.order_variable,
-            center.prefix_domain_with_bond_order(local.entry_bond, &committed_bonds),
+            center.prefix_domain_with_bond_order(local.entry_bond, &emitted_bonds),
         )]
     }
 
@@ -1401,7 +1401,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let Some(center) = self.surface.tetrahedral_center(local.atom) else {
             return Ok(());
         };
-        let expected = center.completed_order_domain(local.entry_bond, &local.committed_bonds);
+        let expected = center.completed_order_domain(local.entry_bond, &local.emitted_bonds);
         if expected.is_empty() || structural.semantic_domain(center.order_variable) != expected {
             return Err(WriterInvariantFailure::UnresolvedTetrahedralFrame { atom: local.atom });
         }

@@ -2711,3 +2711,7 @@ mod transition_oracle;
 #[cfg(test)]
 #[path = "tetrahedral_transition_oracle.rs"]
 mod tetrahedral_transition_oracle;
+
+#[cfg(test)]
+#[path = "directional_transition_oracle.rs"]
+mod directional_transition_oracle;

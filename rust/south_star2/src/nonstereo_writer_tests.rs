@@ -4645,6 +4645,76 @@ fn directional_parity_components_flatten_to_exact_root_offsets() {
     assert!(directional_offsets(carriers[0], &[(carriers[0], carriers[0], true)]).is_err());
 }
 
+fn directional_hexagon_surface(
+    outward_sign_xors: [bool; 3],
+) -> Result<PreparedNonStereo, PreparedNonStereoError> {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = (0..6)
+        .map(|index| {
+            graph
+                .add_bond(atoms[index], atoms[(index + 1) % 6])
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        (0..6)
+            .map(|index| PreparedAtomToken::Fixed(format!("A{index}")))
+            .collect(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+        ],
+        vec![
+            PreparedDirectionalRelation {
+                double_bond: bonds[1],
+                left_endpoint: atoms[1],
+                left_carriers: vec![bonds[0]].into_boxed_slice(),
+                right_endpoint: atoms[2],
+                right_carriers: vec![bonds[2]].into_boxed_slice(),
+                outward_sign_xor: outward_sign_xors[0],
+            },
+            PreparedDirectionalRelation {
+                double_bond: bonds[3],
+                left_endpoint: atoms[3],
+                left_carriers: vec![bonds[2]].into_boxed_slice(),
+                right_endpoint: atoms[4],
+                right_carriers: vec![bonds[4]].into_boxed_slice(),
+                outward_sign_xor: outward_sign_xors[1],
+            },
+            PreparedDirectionalRelation {
+                double_bond: bonds[5],
+                left_endpoint: atoms[5],
+                left_carriers: vec![bonds[4]].into_boxed_slice(),
+                right_endpoint: atoms[0],
+                right_carriers: vec![bonds[0]].into_boxed_slice(),
+                outward_sign_xor: outward_sign_xors[2],
+            },
+        ],
+    )
+}
+
+#[test]
+fn preparation_rejects_contradictory_directional_cycles_and_flattens_consistent_ones() {
+    assert!(matches!(
+        directional_hexagon_surface([false, false, false]),
+        Err(PreparedNonStereoError::ContradictoryDirectionalParity { .. })
+    ));
+    let consistent = directional_hexagon_surface([true, false, false]).unwrap();
+    assert_eq!(
+        consistent.molecule().constraint_model().factor_count(),
+        3,
+        "two root-relative binary factors plus one spanning-tree factor"
+    );
+}
+
 #[test]
 fn directional_binary_star_propagates_signs_without_touching_roles_or_exact_search() {
     let (surface, _, bonds) = directional_chain_fixture();
@@ -4875,6 +4945,43 @@ fn one_visible_sign_choice_propagates_the_complete_shared_carrier_component() {
         slash.structural.semantic_domain(site.sign_variable)
     });
     assert!(domains.into_iter().all(Domain::is_singleton));
+}
+
+#[test]
+fn shared_site_walk_exposes_only_the_propagated_future_signs() {
+    let (surface, _, _) = shared_directional_chain_fixture();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "A")
+        .unwrap()
+        .into_successor();
+    let mut state = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "/")
+        .unwrap()
+        .into_successor();
+    (_, state) = only_choice(&state, "B");
+    (_, state) = only_choice(&state, "=");
+    (_, state) = only_choice(&state, "C");
+
+    let middle_signs = state.choices().unwrap();
+    assert_eq!(middle_signs.len(), 1);
+    assert!(matches!(middle_signs[0].text(), "/" | "\\"));
+    state = middle_signs.into_iter().next().unwrap().into_successor();
+    (_, state) = only_choice(&state, "D");
+    (_, state) = only_choice(&state, "=");
+    (_, state) = only_choice(&state, "E");
+
+    let outer_signs = state.choices().unwrap();
+    assert_eq!(outer_signs.len(), 1);
+    assert!(matches!(outer_signs[0].text(), "/" | "\\"));
+    state = outer_signs.into_iter().next().unwrap().into_successor();
+    (_, state) = only_choice(&state, "F");
+    assert!(state.is_accepted());
 }
 
 #[test]

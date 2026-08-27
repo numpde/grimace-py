@@ -4361,3 +4361,213 @@ fn fused_and_bridged_cycles_have_complete_online_walks() {
         assert!(!reachable_strings(&surface).is_empty());
     }
 }
+
+fn directional_chain_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+    ];
+    let molecule = PreparedMolecule::new(graph.build());
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        molecule,
+        ["F", "C", "C", "F"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![bonds[2]].into_boxed_slice(),
+            outward_sign_xor: false,
+        }],
+    )
+    .unwrap();
+    (surface, atoms, bonds.into())
+}
+
+#[test]
+fn directional_signs_are_canonical_fixed_endpoint_facts() {
+    assert_eq!(CarrierSign::SlashAtFixedA.text(true), "/");
+    assert_eq!(CarrierSign::SlashAtFixedA.text(false), "\\");
+    assert_eq!(CarrierSign::BackslashAtFixedA.text(true), "\\");
+    assert_eq!(CarrierSign::BackslashAtFixedA.text(false), "/");
+
+    let (surface, atoms, bonds) = directional_chain_fixture();
+    assert!(endpoint_flip(
+        surface.molecule().graph(),
+        bonds[0],
+        atoms[1]
+    ));
+    assert!(!endpoint_flip(
+        surface.molecule().graph(),
+        bonds[2],
+        atoms[2]
+    ));
+}
+
+#[test]
+fn directional_binary_star_propagates_signs_without_touching_roles_or_exact_search() {
+    let (surface, _, bonds) = directional_chain_fixture();
+    let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
+    else {
+        panic!("left carrier must be compiled");
+    };
+    let PreparedDirectionalBondStatus::CompiledSite(right) = surface.directional_status(bonds[2])
+    else {
+        panic!("right carrier must be compiled");
+    };
+    assert_ne!(left.sign_variable, right.sign_variable);
+
+    let initial = NativeSolverState::initial(surface.molecule().constraint_model_arc()).unwrap();
+    assert_eq!(initial.exact_run_counts(), (0, 0));
+    let source_bond_domains = bonds
+        .iter()
+        .map(|bond| {
+            initial
+                .domain(surface.molecule().bond_decision_variable(*bond).unwrap())
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let successor = NativeSolverState::with_restrictions(
+        &initial,
+        [(
+            left.sign_variable,
+            CarrierSign::SlashAtFixedA.singleton_domain(),
+        )],
+    )
+    .unwrap();
+
+    assert_eq!(
+        successor.domain(left.sign_variable),
+        Some(CarrierSign::SlashAtFixedA.singleton_domain())
+    );
+    assert_eq!(
+        successor.domain(right.sign_variable),
+        Some(CarrierSign::BackslashAtFixedA.singleton_domain())
+    );
+    assert_eq!(successor.exact_run_counts(), (0, 0));
+    assert_eq!(
+        bonds
+            .iter()
+            .map(|bond| successor
+                .domain(surface.molecule().bond_decision_variable(*bond).unwrap())
+                .unwrap())
+            .collect::<Vec<_>>(),
+        source_bond_domains
+    );
+}
+
+#[test]
+fn shared_directional_carrier_reuses_one_sign_variable() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = (0..5)
+        .map(|index| graph.add_bond(atoms[index], atoms[index + 1]).unwrap())
+        .collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        (0..6)
+            .map(|index| PreparedAtomToken::Fixed(format!("A{index}")))
+            .collect(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+        ],
+        vec![
+            PreparedDirectionalRelation {
+                double_bond: bonds[1],
+                left_endpoint: atoms[1],
+                left_carriers: vec![bonds[0]].into_boxed_slice(),
+                right_endpoint: atoms[2],
+                right_carriers: vec![bonds[2]].into_boxed_slice(),
+                outward_sign_xor: false,
+            },
+            PreparedDirectionalRelation {
+                double_bond: bonds[3],
+                left_endpoint: atoms[3],
+                left_carriers: vec![bonds[2]].into_boxed_slice(),
+                right_endpoint: atoms[4],
+                right_carriers: vec![bonds[4]].into_boxed_slice(),
+                outward_sign_xor: true,
+            },
+        ],
+    )
+    .unwrap();
+
+    let variables = [bonds[0], bonds[2], bonds[4]].map(|bond| {
+        let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bond)
+        else {
+            panic!("shared relation carriers must be compiled");
+        };
+        site.sign_variable
+    });
+    assert_eq!(variables.into_iter().collect::<BTreeSet<_>>().len(), 3);
+    assert_eq!(
+        surface.molecule().constraint_model().factor_count(),
+        3,
+        "two root-relative sign factors plus one molecular spanning factor"
+    );
+}
+
+#[test]
+fn multi_carrier_region_is_admitted_but_marked_incomplete() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["F", "C", "C", "F", "Cl"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Single,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![bonds[0], bonds[3]].into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![bonds[2]].into_boxed_slice(),
+            outward_sign_xor: false,
+        }],
+    )
+    .unwrap();
+    assert!(matches!(
+        surface.directional_status(bonds[0]),
+        PreparedDirectionalBondStatus::IncompleteSelection(_)
+    ));
+    assert!(matches!(
+        surface.directional_status(bonds[3]),
+        PreparedDirectionalBondStatus::IncompleteSelection(_)
+    ));
+    assert!(matches!(
+        surface.directional_status(bonds[2]),
+        PreparedDirectionalBondStatus::IncompleteSelection(_)
+    ));
+}

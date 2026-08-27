@@ -4,7 +4,7 @@
 //! concrete non-stereo spelling facts, live ring-label assignments, and the
 //! small lexical commitments forced by multi-token SMILES constructs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
@@ -148,6 +148,77 @@ impl NonStereoBondToken {
             Self::DativeBToA => "->",
         }
     }
+
+    const fn is_directional_carrier_base(self) -> bool {
+        matches!(self, Self::Elided | Self::Aromatic | Self::Single)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedDirectionalRelation {
+    pub(crate) double_bond: BondId,
+    pub(crate) left_endpoint: AtomId,
+    pub(crate) left_carriers: Box<[BondId]>,
+    pub(crate) right_endpoint: AtomId,
+    pub(crate) right_carriers: Box<[BondId]>,
+    pub(crate) outward_sign_xor: bool,
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum CarrierSign {
+    SlashAtFixedA = 0,
+    BackslashAtFixedA = 1,
+}
+
+impl CarrierSign {
+    const fn value_index(self) -> u8 {
+        self as u8
+    }
+
+    const fn domain() -> Domain {
+        Domain::from_bits(
+            (1_u64 << Self::SlashAtFixedA.value_index())
+                | (1_u64 << Self::BackslashAtFixedA.value_index()),
+        )
+    }
+
+    const fn singleton_domain(self) -> Domain {
+        Domain::from_bits(1_u64 << self.value_index())
+    }
+
+    const fn from_value(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::SlashAtFixedA),
+            1 => Some(Self::BackslashAtFixedA),
+            _ => None,
+        }
+    }
+
+    const fn text(self, from_fixed_a: bool) -> &'static str {
+        match (self, from_fixed_a) {
+            (Self::SlashAtFixedA, true) | (Self::BackslashAtFixedA, false) => "/",
+            (Self::BackslashAtFixedA, true) | (Self::SlashAtFixedA, false) => "\\",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct PreparedDirectionalSite {
+    sign_variable: VariableId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct IncompleteDirectionalSelection {
+    double_bond: BondId,
+    endpoint: AtomId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum PreparedDirectionalBondStatus {
+    Ordinary,
+    CompiledSite(PreparedDirectionalSite),
+    IncompleteSelection(IncompleteDirectionalSelection),
 }
 
 #[derive(Clone, Debug)]
@@ -155,6 +226,7 @@ pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
     atoms: Arc<[PreparedAtom]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
+    directional_bonds: Arc<[PreparedDirectionalBondStatus]>,
     #[cfg(test)]
     work_counters: Arc<WriterWorkCounters>,
 }
@@ -271,6 +343,15 @@ impl PreparedNonStereo {
         atoms: Vec<PreparedAtomToken>,
         bond_tokens: Vec<NonStereoBondToken>,
     ) -> Result<Self, PreparedNonStereoError> {
+        Self::with_atom_tokens_and_directional(molecule, atoms, bond_tokens, Vec::new())
+    }
+
+    pub(crate) fn with_atom_tokens_and_directional(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+        directional_relations: Vec<PreparedDirectionalRelation>,
+    ) -> Result<Self, PreparedNonStereoError> {
         let graph = molecule.graph();
         if atoms.len() != graph.atom_count() {
             return Err(PreparedNonStereoError::AtomTextCountMismatch {
@@ -309,12 +390,15 @@ impl PreparedNonStereo {
                 )),
             })
             .collect::<Vec<_>>();
+        let directional_bonds =
+            prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
         let molecule = assembly.finish();
 
         Ok(Self {
             molecule,
             atoms: Arc::from(atoms.into_boxed_slice()),
             bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
+            directional_bonds: Arc::from(directional_bonds.into_boxed_slice()),
             #[cfg(test)]
             work_counters: Arc::new(WriterWorkCounters::default()),
         })
@@ -355,6 +439,13 @@ impl PreparedNonStereo {
             .copied()
             .expect("prepared bond token must match the bound molecule")
             .text_from(topology, from)
+    }
+
+    fn directional_status(&self, bond: BondId) -> PreparedDirectionalBondStatus {
+        *self
+            .directional_bonds
+            .get(bond.index())
+            .expect("prepared directional status must match the bound molecule")
     }
 
     fn fixed_endpoint(&self, bond: BondId, atom: AtomId) -> FixedBondEndpoint {
@@ -446,6 +537,226 @@ fn prepare_tetrahedral_center(
     }
 }
 
+fn prepare_directional_bonds(
+    assembly: &mut PreparedConstraintAssembly,
+    graph: &crate::prepared::PreparedGraph,
+    bond_tokens: &[NonStereoBondToken],
+    relations: &[PreparedDirectionalRelation],
+) -> Result<Vec<PreparedDirectionalBondStatus>, PreparedNonStereoError> {
+    let mut statuses = vec![PreparedDirectionalBondStatus::Ordinary; graph.bond_count()];
+    let mut relations_by_carrier = BTreeMap::<BondId, Vec<usize>>::new();
+
+    for (index, relation) in relations.iter().enumerate() {
+        let double_bond = graph.bond(relation.double_bond).ok_or(
+            PreparedNonStereoError::UnknownDirectionalBond(relation.double_bond),
+        )?;
+        if !((double_bond.a() == relation.left_endpoint
+            && double_bond.b() == relation.right_endpoint)
+            || (double_bond.b() == relation.left_endpoint
+                && double_bond.a() == relation.right_endpoint))
+        {
+            return Err(PreparedNonStereoError::DirectionalDoubleBondEndpoints {
+                double_bond: relation.double_bond,
+                left: relation.left_endpoint,
+                right: relation.right_endpoint,
+            });
+        }
+        if bond_tokens[relation.double_bond.index()] != NonStereoBondToken::Double {
+            return Err(PreparedNonStereoError::DirectionalDoubleBondToken(
+                relation.double_bond,
+            ));
+        }
+        if relation.left_carriers.is_empty() {
+            return Err(PreparedNonStereoError::EmptyDirectionalCarrierSide {
+                double_bond: relation.double_bond,
+                endpoint: relation.left_endpoint,
+            });
+        }
+        if relation.right_carriers.is_empty() {
+            return Err(PreparedNonStereoError::EmptyDirectionalCarrierSide {
+                double_bond: relation.double_bond,
+                endpoint: relation.right_endpoint,
+            });
+        }
+        for (endpoint, carriers) in [
+            (relation.left_endpoint, relation.left_carriers.as_ref()),
+            (relation.right_endpoint, relation.right_carriers.as_ref()),
+        ] {
+            let mut seen = BTreeSet::new();
+            for carrier in carriers {
+                if !seen.insert(*carrier) {
+                    return Err(PreparedNonStereoError::RepeatedDirectionalCarrier {
+                        double_bond: relation.double_bond,
+                        endpoint,
+                        carrier: *carrier,
+                    });
+                }
+                if *carrier == relation.double_bond {
+                    return Err(PreparedNonStereoError::DirectionalCarrierIsDoubleBond(
+                        *carrier,
+                    ));
+                }
+                let topology = graph
+                    .bond(*carrier)
+                    .ok_or(PreparedNonStereoError::UnknownDirectionalBond(*carrier))?;
+                if topology.other(endpoint).is_none() {
+                    return Err(PreparedNonStereoError::DirectionalCarrierNotIncident {
+                        carrier: *carrier,
+                        endpoint,
+                    });
+                }
+                if !bond_tokens[carrier.index()].is_directional_carrier_base() {
+                    return Err(PreparedNonStereoError::InvalidDirectionalCarrierToken(
+                        *carrier,
+                    ));
+                }
+                relations_by_carrier
+                    .entry(*carrier)
+                    .or_default()
+                    .push(index);
+            }
+        }
+    }
+
+    let mut unseen = (0..relations.len()).collect::<BTreeSet<_>>();
+    while let Some(first) = unseen.pop_first() {
+        let mut component = vec![first];
+        let mut queue = VecDeque::from([first]);
+        while let Some(relation_index) = queue.pop_front() {
+            let relation = &relations[relation_index];
+            for carrier in relation
+                .left_carriers
+                .iter()
+                .chain(relation.right_carriers.iter())
+            {
+                for adjacent in &relations_by_carrier[carrier] {
+                    if unseen.remove(adjacent) {
+                        component.push(*adjacent);
+                        queue.push_back(*adjacent);
+                    }
+                }
+            }
+        }
+
+        let incomplete = component.iter().find_map(|index| {
+            let relation = &relations[*index];
+            if relation.left_carriers.len() != 1 {
+                Some(IncompleteDirectionalSelection {
+                    double_bond: relation.double_bond,
+                    endpoint: relation.left_endpoint,
+                })
+            } else if relation.right_carriers.len() != 1 {
+                Some(IncompleteDirectionalSelection {
+                    double_bond: relation.double_bond,
+                    endpoint: relation.right_endpoint,
+                })
+            } else {
+                None
+            }
+        });
+        if let Some(incomplete) = incomplete {
+            for index in component {
+                let relation = &relations[index];
+                for carrier in relation
+                    .left_carriers
+                    .iter()
+                    .chain(relation.right_carriers.iter())
+                {
+                    statuses[carrier.index()] =
+                        PreparedDirectionalBondStatus::IncompleteSelection(incomplete);
+                }
+            }
+            continue;
+        }
+
+        let mut parity_edges = Vec::with_capacity(component.len());
+        let mut carriers = BTreeSet::new();
+        for index in component {
+            let relation = &relations[index];
+            let left = relation.left_carriers[0];
+            let right = relation.right_carriers[0];
+            carriers.insert(left);
+            carriers.insert(right);
+            let parity = relation.outward_sign_xor
+                ^ endpoint_flip(graph, left, relation.left_endpoint)
+                ^ endpoint_flip(graph, right, relation.right_endpoint);
+            parity_edges.push((left, right, parity));
+        }
+
+        let root = *carriers
+            .first()
+            .expect("compiled relation component has carriers");
+        let mut adjacency = BTreeMap::<BondId, Vec<(BondId, bool)>>::new();
+        for (left, right, parity) in &parity_edges {
+            adjacency.entry(*left).or_default().push((*right, *parity));
+            adjacency.entry(*right).or_default().push((*left, *parity));
+        }
+        let mut offsets = BTreeMap::from([(root, false)]);
+        let mut queue = VecDeque::from([root]);
+        while let Some(carrier) = queue.pop_front() {
+            let source_offset = offsets[&carrier];
+            for (other, parity) in adjacency.get(&carrier).into_iter().flatten() {
+                let expected = source_offset ^ parity;
+                match offsets.get(other) {
+                    Some(existing) if *existing != expected => {
+                        return Err(PreparedNonStereoError::ContradictoryDirectionalParity {
+                            carrier: *other,
+                        });
+                    }
+                    Some(_) => {}
+                    None => {
+                        offsets.insert(*other, expected);
+                        queue.push_back(*other);
+                    }
+                }
+            }
+        }
+
+        let variables = carriers
+            .iter()
+            .map(|carrier| {
+                let variable = assembly.add_isolated_variable(CarrierSign::domain());
+                (*carrier, variable)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let root_variable = variables[&root];
+        for carrier in carriers {
+            let variable = variables[&carrier];
+            statuses[carrier.index()] =
+                PreparedDirectionalBondStatus::CompiledSite(PreparedDirectionalSite {
+                    sign_variable: variable,
+                });
+            if carrier != root {
+                let offset = u8::from(offsets[&carrier]);
+                assembly.add_binary_relation(
+                    root_variable,
+                    variable,
+                    [(0, offset), (1, 1 ^ offset)],
+                );
+            }
+        }
+    }
+
+    Ok(statuses)
+}
+
+fn endpoint_flip(
+    graph: &crate::prepared::PreparedGraph,
+    carrier: BondId,
+    endpoint: AtomId,
+) -> bool {
+    let bond = graph
+        .bond(carrier)
+        .expect("validated directional carrier must belong to the graph");
+    if bond.a() == endpoint {
+        false
+    } else if bond.b() == endpoint {
+        true
+    } else {
+        panic!("validated directional endpoint must be incident to its carrier")
+    }
+}
+
 fn validate_prepared_atom(
     graph: &crate::prepared::PreparedGraph,
     atom: AtomId,
@@ -503,14 +814,45 @@ fn validate_prepared_atom(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PreparedNonStereoError {
-    AtomTextCountMismatch { expected: usize, actual: usize },
-    BondTokenCountMismatch { expected: usize, actual: usize },
+    AtomTextCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    BondTokenCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
     EmptyAtomText(AtomId),
     EmptyTetrahedralAtomText(AtomId),
     RepeatedTetrahedralAtomText(AtomId),
     RepeatedTetrahedralLigand(AtomId),
     MultipleVirtualHydrogens(AtomId),
     TetrahedralLigandsDoNotMatchGraph(AtomId),
+    UnknownDirectionalBond(BondId),
+    DirectionalDoubleBondEndpoints {
+        double_bond: BondId,
+        left: AtomId,
+        right: AtomId,
+    },
+    DirectionalDoubleBondToken(BondId),
+    EmptyDirectionalCarrierSide {
+        double_bond: BondId,
+        endpoint: AtomId,
+    },
+    RepeatedDirectionalCarrier {
+        double_bond: BondId,
+        endpoint: AtomId,
+        carrier: BondId,
+    },
+    DirectionalCarrierIsDoubleBond(BondId),
+    DirectionalCarrierNotIncident {
+        carrier: BondId,
+        endpoint: AtomId,
+    },
+    InvalidDirectionalCarrierToken(BondId),
+    ContradictoryDirectionalParity {
+        carrier: BondId,
+    },
 }
 
 impl fmt::Display for PreparedNonStereoError {
@@ -549,6 +891,52 @@ impl fmt::Display for PreparedNonStereoError {
             Self::TetrahedralLigandsDoNotMatchGraph(atom) => write!(
                 formatter,
                 "prepared tetrahedral ligands for {atom:?} do not match its graph incidences"
+            ),
+            Self::UnknownDirectionalBond(bond) => {
+                write!(formatter, "prepared directional bond {bond:?} does not exist")
+            }
+            Self::DirectionalDoubleBondEndpoints {
+                double_bond,
+                left,
+                right,
+            } => write!(
+                formatter,
+                "prepared directional double bond {double_bond:?} does not join {left:?} and {right:?}"
+            ),
+            Self::DirectionalDoubleBondToken(bond) => write!(
+                formatter,
+                "prepared directional double bond {bond:?} must use the Double base token"
+            ),
+            Self::EmptyDirectionalCarrierSide {
+                double_bond,
+                endpoint,
+            } => write!(
+                formatter,
+                "prepared directional double bond {double_bond:?} has no carrier at {endpoint:?}"
+            ),
+            Self::RepeatedDirectionalCarrier {
+                double_bond,
+                endpoint,
+                carrier,
+            } => write!(
+                formatter,
+                "prepared directional double bond {double_bond:?} repeats carrier {carrier:?} at {endpoint:?}"
+            ),
+            Self::DirectionalCarrierIsDoubleBond(bond) => write!(
+                formatter,
+                "prepared directional carrier {bond:?} is the configured double bond"
+            ),
+            Self::DirectionalCarrierNotIncident { carrier, endpoint } => write!(
+                formatter,
+                "prepared directional carrier {carrier:?} is not incident to {endpoint:?}"
+            ),
+            Self::InvalidDirectionalCarrierToken(bond) => write!(
+                formatter,
+                "prepared directional carrier {bond:?} must use an elided, single, or aromatic base token"
+            ),
+            Self::ContradictoryDirectionalParity { carrier } => write!(
+                formatter,
+                "prepared directional parity is contradictory at carrier {carrier:?}"
             ),
         }
     }

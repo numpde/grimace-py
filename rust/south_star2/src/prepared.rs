@@ -226,6 +226,17 @@ impl PreparedConstraintAssembly {
             .expect("prepared semantic variables must fit the constraint identifier space")
     }
 
+    pub(crate) fn add_binary_relation(
+        &mut self,
+        left: VariableId,
+        right: VariableId,
+        allowed_pairs: impl IntoIterator<Item = (u8, u8)>,
+    ) -> FactorId {
+        self.builder
+            .add_binary_relation(left, right, allowed_pairs)
+            .expect("prepared binary relation must define a valid factor")
+    }
+
     pub(crate) fn bond_decision_variable(&self, bond: BondId) -> VariableId {
         self.bond_decision_variables[bond.index()]
     }

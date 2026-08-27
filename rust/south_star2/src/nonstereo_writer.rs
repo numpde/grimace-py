@@ -589,8 +589,14 @@ fn prepare_directional_bonds(
 ) -> Result<Vec<PreparedDirectionalBondStatus>, PreparedNonStereoError> {
     let mut statuses = vec![PreparedDirectionalBondStatus::Ordinary; graph.bond_count()];
     let mut relations_by_carrier = BTreeMap::<BondId, Vec<usize>>::new();
+    let mut configured_double_bonds = BTreeSet::new();
 
     for (index, relation) in relations.iter().enumerate() {
+        if !configured_double_bonds.insert(relation.double_bond) {
+            return Err(PreparedNonStereoError::RepeatedDirectionalRelation(
+                relation.double_bond,
+            ));
+        }
         let double_bond = graph.bond(relation.double_bond).ok_or(
             PreparedNonStereoError::UnknownDirectionalBond(relation.double_bond),
         )?;
@@ -879,6 +885,7 @@ pub(crate) enum PreparedNonStereoError {
     MultipleVirtualHydrogens(AtomId),
     TetrahedralLigandsDoNotMatchGraph(AtomId),
     UnknownDirectionalBond(BondId),
+    RepeatedDirectionalRelation(BondId),
     DirectionalDoubleBondEndpoints {
         double_bond: BondId,
         left: AtomId,
@@ -945,6 +952,10 @@ impl fmt::Display for PreparedNonStereoError {
             Self::UnknownDirectionalBond(bond) => {
                 write!(formatter, "prepared directional bond {bond:?} does not exist")
             }
+            Self::RepeatedDirectionalRelation(bond) => write!(
+                formatter,
+                "prepared directional double bond {bond:?} has more than one relation"
+            ),
             Self::DirectionalDoubleBondEndpoints {
                 double_bond,
                 left,

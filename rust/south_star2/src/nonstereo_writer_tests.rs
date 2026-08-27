@@ -5137,6 +5137,48 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
 }
 
 #[test]
+fn repeated_directional_relation_for_one_double_bond_is_rejected() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[3], atoms[4]).unwrap(),
+        graph.add_bond(atoms[3], atoms[5]).unwrap(),
+    ];
+    let relation = |left, right| PreparedDirectionalRelation {
+        double_bond: bonds[2],
+        left_endpoint: atoms[2],
+        left_carriers: vec![left].into_boxed_slice(),
+        right_endpoint: atoms[3],
+        right_carriers: vec![right].into_boxed_slice(),
+        outward_sign_xor: false,
+    };
+
+    assert_eq!(
+        PreparedNonStereo::with_atom_tokens_and_directional(
+            PreparedMolecule::new(graph.build()),
+            ["A", "B", "L", "R", "C", "D"]
+                .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+                .into(),
+            vec![
+                NonStereoBondToken::Elided,
+                NonStereoBondToken::Elided,
+                NonStereoBondToken::Double,
+                NonStereoBondToken::Elided,
+                NonStereoBondToken::Elided,
+            ],
+            vec![relation(bonds[0], bonds[3]), relation(bonds[1], bonds[4])],
+        )
+        .unwrap_err(),
+        PreparedNonStereoError::RepeatedDirectionalRelation(bonds[2])
+    );
+}
+
+#[test]
 fn inline_directional_carrier_emits_sign_before_the_child_atom() {
     let (surface, atoms, bonds) = directional_chain_fixture();
     let root = initial(&surface)

@@ -221,6 +221,17 @@ enum PreparedDirectionalBondStatus {
     IncompleteSelection(IncompleteDirectionalSelection),
 }
 
+#[derive(Copy, Clone, Debug)]
+enum TraversalBondEmission {
+    Elided,
+    Fixed(&'static str),
+    Directional {
+        site: PreparedDirectionalSite,
+        from_fixed_a: bool,
+    },
+    IncompleteSelection(IncompleteDirectionalSelection),
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
@@ -446,6 +457,39 @@ impl PreparedNonStereo {
             .directional_bonds
             .get(bond.index())
             .expect("prepared directional status must match the bound molecule")
+    }
+
+    fn traversal_bond_emission(&self, bond: BondId, from: AtomId) -> TraversalBondEmission {
+        match self.directional_status(bond) {
+            PreparedDirectionalBondStatus::Ordinary => {
+                let text = self.bond_text(bond, from);
+                if text.is_empty() {
+                    TraversalBondEmission::Elided
+                } else {
+                    TraversalBondEmission::Fixed(text)
+                }
+            }
+            PreparedDirectionalBondStatus::CompiledSite(site) => {
+                let topology = self
+                    .molecule
+                    .graph()
+                    .bond(bond)
+                    .expect("prepared directional carrier must belong to the graph");
+                TraversalBondEmission::Directional {
+                    site,
+                    from_fixed_a: if topology.a() == from {
+                        true
+                    } else if topology.b() == from {
+                        false
+                    } else {
+                        panic!("directional emission requires one carrier endpoint")
+                    },
+                }
+            }
+            PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => {
+                TraversalBondEmission::IncompleteSelection(incomplete)
+            }
+        }
     }
 
     fn fixed_endpoint(&self, bond: BondId, atom: AtomId) -> FixedBondEndpoint {
@@ -1032,6 +1076,7 @@ enum PendingEmission {
     ComponentRootAtom(AtomId),
     InlineAtom(AdjacentBond),
     BranchBondOrAtom(AdjacentBond),
+    BranchDirectionalSign(AdjacentBond),
     BranchAtom(AdjacentBond),
     RingOpeningLabel {
         incident: AdjacentBond,
@@ -1057,6 +1102,11 @@ pub(crate) enum ObservedPending {
         root: AtomId,
     },
     BranchBondOrAtom {
+        parent: AtomId,
+        child: AtomId,
+        bond: BondId,
+    },
+    BranchDirectionalSign {
         parent: AtomId,
         child: AtomId,
         bond: BondId,
@@ -1089,6 +1139,7 @@ pub(crate) struct ObservedNonStereoState {
     pub(crate) structural: ObservedWriterState,
     pub(crate) tetrahedral_order_domains: Vec<(AtomId, Domain)>,
     pub(crate) tetrahedral_role_pattern_domains: Vec<(AtomId, Domain)>,
+    pub(crate) directional_sign_domains: Vec<(BondId, Domain)>,
     pub(crate) labels_by_bond: Vec<(BondId, usize)>,
     pub(crate) pending: Option<ObservedPending>,
     pub(crate) maximum_spelling_label: usize,
@@ -1126,6 +1177,7 @@ enum CandidateRejection {
 enum CandidateAttempt<S, E> {
     Accepted { text: String, successor: S },
     Rejected { reason: CandidateRejection },
+    Incomplete(WriterIncompleteness),
     Invariant(WriterInvariantFailure),
     Failed(E),
 }
@@ -1133,6 +1185,7 @@ enum CandidateAttempt<S, E> {
 enum SuccessorAttempt<S, E> {
     Accepted(S),
     Rejected(CandidateRejection),
+    Incomplete(WriterIncompleteness),
     Invariant(WriterInvariantFailure),
     Failed(E),
 }
@@ -1144,7 +1197,9 @@ fn collect_attempts_fail_fast<S, E>(
     for attempt in attempts {
         let stop = matches!(
             attempt,
-            CandidateAttempt::Invariant(_) | CandidateAttempt::Failed(_)
+            CandidateAttempt::Incomplete(_)
+                | CandidateAttempt::Invariant(_)
+                | CandidateAttempt::Failed(_)
         );
         collected.push(attempt);
         if stop {
@@ -1187,6 +1242,7 @@ pub(crate) enum WriterInvariantFailure {
     PendingEmissionRejected,
     AllCandidatesSemanticallyRejected { candidate_count: usize },
     UnresolvedTetrahedralFrame { atom: AtomId },
+    UnresolvedDirectionalCarrier { bond: BondId },
 }
 
 impl fmt::Display for WriterInvariantFailure {
@@ -1209,16 +1265,52 @@ impl fmt::Display for WriterInvariantFailure {
                 formatter,
                 "tetrahedral atom {atom:?} completed without one exact procedural ligand order"
             ),
+            Self::UnresolvedDirectionalCarrier { bond } => write!(
+                formatter,
+                "directional carrier {bond:?} completed without one canonical sign"
+            ),
         }
     }
 }
 
 impl std::error::Error for WriterInvariantFailure {}
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WriterIncompleteness {
+    DirectionalCarrierSelection {
+        double_bond: BondId,
+        endpoint: AtomId,
+    },
+    DirectionalRingEndpoint {
+        carrier_bond: BondId,
+    },
+}
+
+impl fmt::Display for WriterIncompleteness {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DirectionalCarrierSelection {
+                double_bond,
+                endpoint,
+            } => write!(
+                formatter,
+                "directional carrier selection for double bond {double_bond:?} at {endpoint:?} is not implemented"
+            ),
+            Self::DirectionalRingEndpoint { carrier_bond } => write!(
+                formatter,
+                "directional ring-endpoint spelling for carrier {carrier_bond:?} is not implemented"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WriterIncompleteness {}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ChoiceFailure<E> {
     Backend(E),
     Spelling(SpellingFailure),
+    Incomplete(WriterIncompleteness),
     Invariant(WriterInvariantFailure),
 }
 
@@ -1227,6 +1319,9 @@ impl<E: fmt::Display> fmt::Display for ChoiceFailure<E> {
         match self {
             Self::Backend(failure) => write!(formatter, "constraint backend failure: {failure}"),
             Self::Spelling(failure) => failure.fmt(formatter),
+            Self::Incomplete(failure) => {
+                write!(formatter, "private writer incompleteness: {failure}")
+            }
             Self::Invariant(failure) => write!(formatter, "writer invariant failure: {failure}"),
         }
     }
@@ -1237,6 +1332,7 @@ impl<E: std::error::Error + 'static> std::error::Error for ChoiceFailure<E> {
         match self {
             Self::Backend(failure) => Some(failure),
             Self::Spelling(failure) => Some(failure),
+            Self::Incomplete(failure) => Some(failure),
             Self::Invariant(failure) => Some(failure),
         }
     }
@@ -1298,6 +1394,13 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 child: incident.atom(),
                 bond: incident.bond(),
             },
+            PendingEmission::BranchDirectionalSign(incident) => {
+                ObservedPending::BranchDirectionalSign {
+                    parent: active_endpoint(),
+                    child: incident.atom(),
+                    bond: incident.bond(),
+                }
+            }
             PendingEmission::BranchAtom(incident) => ObservedPending::BranchAtom {
                 parent: active_endpoint(),
                 child: incident.atom(),
@@ -1352,10 +1455,24 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 })
             })
             .collect();
+        let directional_sign_domains = self
+            .surface
+            .molecule()
+            .graph()
+            .bond_ids()
+            .filter_map(|bond| match self.surface.directional_status(bond) {
+                PreparedDirectionalBondStatus::CompiledSite(site) => {
+                    Some((bond, self.structural.semantic_domain(site.sign_variable)))
+                }
+                PreparedDirectionalBondStatus::Ordinary
+                | PreparedDirectionalBondStatus::IncompleteSelection(_) => None,
+            })
+            .collect();
         ObservedNonStereoState {
             structural,
             tetrahedral_order_domains,
             tetrahedral_role_pattern_domains,
+            directional_sign_domains,
             labels_by_bond,
             pending,
             maximum_spelling_label: self.labels.maximum_spelling_label(),
@@ -1386,6 +1503,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             spelling_rejection_count += 1;
                         }
                     },
+                    CandidateAttempt::Incomplete(failure) => {
+                        return Err(ChoiceFailure::Incomplete(failure));
+                    }
                     CandidateAttempt::Invariant(failure) => {
                         return Err(ChoiceFailure::Invariant(failure));
                     }
@@ -1432,12 +1552,33 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 panic!("component completion must already be normalized");
             }
             let attempts = match candidate {
-                StructuralCandidate::RingOpen { incident } => self
-                    .attempt_ring_openings(candidate, incident)
-                    .map_err(ChoiceFailure::Backend)?,
-                StructuralCandidate::RingClose { incident, .. } => self
-                    .attempt_ring_closures(candidate, incident)
-                    .map_err(ChoiceFailure::Backend)?,
+                StructuralCandidate::RingOpen { incident }
+                | StructuralCandidate::RingClose { incident, .. } => {
+                    match self.surface.directional_status(incident.bond()) {
+                        PreparedDirectionalBondStatus::CompiledSite(_) => {
+                            return Err(ChoiceFailure::Incomplete(
+                                WriterIncompleteness::DirectionalRingEndpoint {
+                                    carrier_bond: incident.bond(),
+                                },
+                            ));
+                        }
+                        PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => {
+                            return Err(ChoiceFailure::Incomplete(Self::incomplete_selection(
+                                incomplete,
+                            )));
+                        }
+                        PreparedDirectionalBondStatus::Ordinary => {}
+                    }
+                    match candidate {
+                        StructuralCandidate::RingOpen { .. } => self
+                            .attempt_ring_openings(candidate, incident)
+                            .map_err(ChoiceFailure::Backend)?,
+                        StructuralCandidate::RingClose { .. } => self
+                            .attempt_ring_closures(candidate, incident)
+                            .map_err(ChoiceFailure::Backend)?,
+                        _ => unreachable!(),
+                    }
+                }
                 _ => self.attempt_structural(candidate),
             };
             for attempt in attempts {
@@ -1458,6 +1599,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             spelling_rejection_count += 1;
                         }
                     },
+                    CandidateAttempt::Incomplete(failure) => {
+                        return Err(ChoiceFailure::Incomplete(failure));
+                    }
                     CandidateAttempt::Invariant(failure) => {
                         return Err(ChoiceFailure::Invariant(failure));
                     }
@@ -1562,6 +1706,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         CandidateAttempt::Accepted { text, successor }
                     }
                     SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
+                    SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
                     SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
                     SuccessorAttempt::Failed(failure) => return Err(failure),
                 },
@@ -1655,6 +1800,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             CandidateAttempt::Accepted { text, successor }
                         }
                         SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
+                        SuccessorAttempt::Incomplete(failure) => {
+                            CandidateAttempt::Incomplete(failure)
+                        }
                         SuccessorAttempt::Invariant(failure) => {
                             CandidateAttempt::Invariant(failure)
                         }
@@ -1793,6 +1941,34 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         )]
     }
 
+    fn directional_sign_specs(
+        &self,
+        site: PreparedDirectionalSite,
+        from_fixed_a: bool,
+    ) -> Vec<(String, (VariableId, Domain))> {
+        self.structural
+            .semantic_domain(site.sign_variable)
+            .iter()
+            .map(|value| {
+                let sign = CarrierSign::from_value(value)
+                    .expect("prepared directional sign domain has only canonical sign values");
+                (
+                    sign.text(from_fixed_a).to_owned(),
+                    (site.sign_variable, sign.singleton_domain()),
+                )
+            })
+            .collect()
+    }
+
+    const fn incomplete_selection(
+        incomplete: IncompleteDirectionalSelection,
+    ) -> WriterIncompleteness {
+        WriterIncompleteness::DirectionalCarrierSelection {
+            double_bond: incomplete.double_bond,
+            endpoint: incomplete.endpoint,
+        }
+    }
+
     fn attempt_candidate_with_transition(
         &self,
         candidate: StructuralCandidate,
@@ -1879,6 +2055,31 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         Ok(())
     }
 
+    fn validate_active_semantic_completion(
+        &self,
+        structural: &WriterState<S>,
+    ) -> Result<(), WriterInvariantFailure> {
+        self.validate_active_tetrahedral_completion(structural)?;
+        let local = structural.active_local_bond_order();
+        for bond in local
+            .entry_bond
+            .into_iter()
+            .chain(local.emitted_bonds.iter().copied())
+        {
+            if let PreparedDirectionalBondStatus::CompiledSite(site) =
+                self.surface.directional_status(bond)
+            {
+                if !structural
+                    .semantic_domain(site.sign_variable)
+                    .is_singleton()
+                {
+                    return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier { bond });
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn attempt_structural(
         &self,
         candidate: StructuralCandidate,
@@ -1948,6 +2149,26 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 panic!("ring closures expand into endpoint-spelling candidates: {incident:?}")
             }
             StructuralCandidate::BranchChild { incident } => {
+                let parent = self
+                    .structural
+                    .active_atom()
+                    .expect("branch emission requires an active atom");
+                let pending = match self
+                    .surface
+                    .traversal_bond_emission(incident.bond(), parent)
+                {
+                    TraversalBondEmission::IncompleteSelection(incomplete) => {
+                        return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
+                            incomplete,
+                        ))];
+                    }
+                    TraversalBondEmission::Directional { .. } => {
+                        PendingEmission::BranchDirectionalSign(incident)
+                    }
+                    TraversalBondEmission::Elided | TraversalBondEmission::Fixed(_) => {
+                        PendingEmission::BranchBondOrAtom(incident)
+                    }
+                };
                 let restrictions = self.parent_prefix_restriction(incident);
                 let structural = match self.attempt_candidate_with_transition(
                     candidate,
@@ -1970,7 +2191,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         surface: self.surface.clone(),
                         structural,
                         labels,
-                        pending: Some(PendingEmission::BranchBondOrAtom(incident)),
+                        pending: Some(pending),
                     },
                 )]
             }
@@ -1979,81 +2200,129 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .structural
                     .active_atom()
                     .expect("inline emission requires an active atom");
-                let bond_text = self.surface.bond_text(incident.bond(), parent);
                 let parent_restriction = self.parent_prefix_restriction(incident);
-                if bond_text.is_empty() {
-                    let context = self
-                        .structural
-                        .prospective_inline_child_layout_context(incident);
-                    collect_attempts_fail_fast(
-                        self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
-                            .into_iter()
-                            .map(|(text, mut child_restriction, activate)| {
-                                let mut restrictions = parent_restriction.clone();
-                                restrictions.append(&mut child_restriction);
-                                let structural = match self.attempt_candidate_with_transition(
-                                    candidate,
-                                    None,
-                                    restrictions.as_slice(),
-                                    activate.as_slice(),
-                                ) {
-                                    Ok(Consistency::Consistent(structural)) => structural,
-                                    Ok(Consistency::Contradiction) => {
-                                        return CandidateAttempt::Rejected {
-                                            reason: CandidateRejection::Contradiction,
-                                        };
-                                    }
-                                    Err(failure) => return CandidateAttempt::Failed(failure),
-                                };
-                                if let Err(failure) =
-                                    self.validate_active_tetrahedral_completion(&structural)
-                                {
-                                    return CandidateAttempt::Invariant(failure);
-                                }
-                                self.finish_attempt(
-                                    text,
-                                    Self {
-                                        surface: self.surface.clone(),
-                                        structural: structural
-                                            .enter_committed_inline_child(incident),
-                                        labels: self.labels.clone(),
-                                        pending: None,
-                                    },
-                                )
-                            }),
-                    )
-                } else {
-                    let structural = match self.attempt_candidate_with_transition(
-                        candidate,
-                        None,
-                        parent_restriction.as_slice(),
-                        &[],
-                    ) {
-                        Ok(Consistency::Consistent(structural)) => structural,
-                        Ok(Consistency::Contradiction) => {
-                            return vec![CandidateAttempt::Rejected {
-                                reason: CandidateRejection::Contradiction,
-                            }];
-                        }
-                        Err(failure) => return vec![CandidateAttempt::Failed(failure)],
-                    };
-                    if let Err(failure) = self.validate_active_tetrahedral_completion(&structural) {
-                        return vec![CandidateAttempt::Invariant(failure)];
+                match self
+                    .surface
+                    .traversal_bond_emission(incident.bond(), parent)
+                {
+                    TraversalBondEmission::IncompleteSelection(incomplete) => {
+                        vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
+                            incomplete,
+                        ))]
                     }
-                    vec![self.finish_attempt(
-                        bond_text.to_owned(),
-                        Self {
-                            surface: self.surface.clone(),
-                            structural,
-                            labels: self.labels.clone(),
-                            pending: Some(PendingEmission::InlineAtom(incident)),
-                        },
-                    )]
+                    TraversalBondEmission::Elided => {
+                        let context = self
+                            .structural
+                            .prospective_inline_child_layout_context(incident);
+                        collect_attempts_fail_fast(
+                            self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
+                                .into_iter()
+                                .map(|(text, mut child_restriction, activate)| {
+                                    let mut restrictions = parent_restriction.clone();
+                                    restrictions.append(&mut child_restriction);
+                                    let structural = match self.attempt_candidate_with_transition(
+                                        candidate,
+                                        None,
+                                        restrictions.as_slice(),
+                                        activate.as_slice(),
+                                    ) {
+                                        Ok(Consistency::Consistent(structural)) => structural,
+                                        Ok(Consistency::Contradiction) => {
+                                            return CandidateAttempt::Rejected {
+                                                reason: CandidateRejection::Contradiction,
+                                            };
+                                        }
+                                        Err(failure) => return CandidateAttempt::Failed(failure),
+                                    };
+                                    if let Err(failure) =
+                                        self.validate_active_semantic_completion(&structural)
+                                    {
+                                        return CandidateAttempt::Invariant(failure);
+                                    }
+                                    self.finish_attempt(
+                                        text,
+                                        Self {
+                                            surface: self.surface.clone(),
+                                            structural: structural
+                                                .enter_committed_inline_child(incident),
+                                            labels: self.labels.clone(),
+                                            pending: None,
+                                        },
+                                    )
+                                }),
+                        )
+                    }
+                    TraversalBondEmission::Fixed(bond_text) => {
+                        let structural = match self.attempt_candidate_with_transition(
+                            candidate,
+                            None,
+                            parent_restriction.as_slice(),
+                            &[],
+                        ) {
+                            Ok(Consistency::Consistent(structural)) => structural,
+                            Ok(Consistency::Contradiction) => {
+                                return vec![CandidateAttempt::Rejected {
+                                    reason: CandidateRejection::Contradiction,
+                                }];
+                            }
+                            Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+                        };
+                        if let Err(failure) = self.validate_active_semantic_completion(&structural)
+                        {
+                            return vec![CandidateAttempt::Invariant(failure)];
+                        }
+                        vec![self.finish_attempt(
+                            bond_text.to_owned(),
+                            Self {
+                                surface: self.surface.clone(),
+                                structural,
+                                labels: self.labels.clone(),
+                                pending: Some(PendingEmission::InlineAtom(incident)),
+                            },
+                        )]
+                    }
+                    TraversalBondEmission::Directional { site, from_fixed_a } => {
+                        collect_attempts_fail_fast(
+                            self.directional_sign_specs(site, from_fixed_a)
+                                .into_iter()
+                                .map(|(text, sign_restriction)| {
+                                    let mut restrictions = parent_restriction.clone();
+                                    restrictions.push(sign_restriction);
+                                    let structural = match self.attempt_candidate_with_transition(
+                                        candidate,
+                                        None,
+                                        restrictions.as_slice(),
+                                        &[],
+                                    ) {
+                                        Ok(Consistency::Consistent(structural)) => structural,
+                                        Ok(Consistency::Contradiction) => {
+                                            return CandidateAttempt::Rejected {
+                                                reason: CandidateRejection::Contradiction,
+                                            };
+                                        }
+                                        Err(failure) => return CandidateAttempt::Failed(failure),
+                                    };
+                                    if let Err(failure) =
+                                        self.validate_active_semantic_completion(&structural)
+                                    {
+                                        return CandidateAttempt::Invariant(failure);
+                                    }
+                                    self.finish_attempt(
+                                        text,
+                                        Self {
+                                            surface: self.surface.clone(),
+                                            structural,
+                                            labels: self.labels.clone(),
+                                            pending: Some(PendingEmission::InlineAtom(incident)),
+                                        },
+                                    )
+                                }),
+                        )
+                    }
                 }
             }
             StructuralCandidate::CloseBranch => {
-                if let Err(failure) = self.validate_active_tetrahedral_completion(&self.structural)
-                {
+                if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
                     return vec![CandidateAttempt::Invariant(failure)];
                 }
                 let structural = match self.structural.attempt_candidate(candidate) {
@@ -2117,6 +2386,42 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         },
                     )]
                 }
+            }
+            PendingEmission::BranchDirectionalSign(incident) => {
+                let parent = self
+                    .structural
+                    .active_atom()
+                    .expect("a pending directional branch requires its active parent");
+                let TraversalBondEmission::Directional { site, from_fixed_a } = self
+                    .surface
+                    .traversal_bond_emission(incident.bond(), parent)
+                else {
+                    panic!("a pending directional branch must retain a compiled carrier")
+                };
+                collect_attempts_fail_fast(
+                    self.directional_sign_specs(site, from_fixed_a)
+                        .into_iter()
+                        .map(|(text, restriction)| {
+                            let structural = match self.restrict_semantics(&[restriction], &[]) {
+                                Ok(Consistency::Consistent(structural)) => structural,
+                                Ok(Consistency::Contradiction) => {
+                                    return CandidateAttempt::Rejected {
+                                        reason: CandidateRejection::Contradiction,
+                                    };
+                                }
+                                Err(failure) => return CandidateAttempt::Failed(failure),
+                            };
+                            self.finish_attempt(
+                                text,
+                                Self {
+                                    surface: self.surface.clone(),
+                                    structural,
+                                    labels: self.labels.clone(),
+                                    pending: Some(PendingEmission::BranchAtom(incident)),
+                                },
+                            )
+                        }),
+                )
             }
             PendingEmission::BranchAtom(incident) => self.pending_atom_attempts(
                 incident.atom(),
@@ -2239,6 +2544,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 CandidateAttempt::Accepted { text, successor }
             }
             SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
+            SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
             SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
             SuccessorAttempt::Failed(failure) => CandidateAttempt::Failed(failure),
         }
@@ -2248,6 +2554,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         match successor.normalize_and_check() {
             SuccessorAttempt::Accepted(successor) => CandidateAttempt::Accepted { text, successor },
             SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
+            SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
             SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
             SuccessorAttempt::Failed(failure) => CandidateAttempt::Failed(failure),
         }
@@ -2278,6 +2585,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             spelling_rejection.get_or_insert(unavailable);
                         }
                     },
+                    CandidateAttempt::Incomplete(failure) => {
+                        return SuccessorAttempt::Incomplete(failure);
+                    }
                     CandidateAttempt::Invariant(failure) => {
                         return SuccessorAttempt::Invariant(failure);
                     }
@@ -2315,7 +2625,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 !self.labels.has_open_labels(),
                 "a component cannot finish with open visible ring labels"
             );
-            if let Err(failure) = self.validate_active_tetrahedral_completion(&self.structural) {
+            if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
                 return SuccessorAttempt::Invariant(failure);
             }
             self.structural = match self

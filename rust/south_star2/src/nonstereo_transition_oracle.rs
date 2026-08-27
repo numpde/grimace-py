@@ -1483,6 +1483,11 @@ enum PendingSnapshot {
         child: usize,
         bond: usize,
     },
+    BranchDirectionalSign {
+        parent: usize,
+        child: usize,
+        bond: usize,
+    },
     BranchAtom {
         parent: usize,
         child: usize,
@@ -1612,6 +1617,15 @@ fn production_pending_snapshot(pending: &ObservedPending) -> PendingSnapshot {
             child,
             bond,
         } => PendingSnapshot::BranchBondOrAtom {
+            parent: parent.index(),
+            child: child.index(),
+            bond: bond.index(),
+        },
+        ObservedPending::BranchDirectionalSign {
+            parent,
+            child,
+            bond,
+        } => PendingSnapshot::BranchDirectionalSign {
             parent: parent.index(),
             child: child.index(),
             bond: bond.index(),

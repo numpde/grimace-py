@@ -4375,7 +4375,7 @@ fn directional_chain_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) 
     let molecule = PreparedMolecule::new(graph.build());
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
         molecule,
-        ["F", "C", "C", "F"]
+        ["F", "L", "R", "Cl"]
             .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
             .into(),
         vec![
@@ -4570,4 +4570,155 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
         surface.directional_status(bonds[2]),
         PreparedDirectionalBondStatus::IncompleteSelection(_)
     ));
+}
+
+#[test]
+fn inline_directional_carrier_emits_sign_before_the_child_atom() {
+    let (surface, atoms, bonds) = directional_chain_fixture();
+    let root = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "F")
+        .unwrap()
+        .into_successor();
+    assert_eq!(root.active_atom(), Some(atoms[0]));
+
+    let choices = root.choices().unwrap();
+    assert_eq!(
+        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["/", "\\"])
+    );
+    assert!(choices.iter().all(|choice| {
+        choice.successor().pending
+            == Some(PendingEmission::InlineAtom(incident(
+                &surface, atoms[0], bonds[0],
+            )))
+    }));
+    let slash = choices
+        .into_iter()
+        .find(|choice| choice.text() == "/")
+        .unwrap()
+        .into_successor();
+    let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
+    else {
+        panic!("left carrier must be compiled");
+    };
+    let PreparedDirectionalBondStatus::CompiledSite(right) = surface.directional_status(bonds[2])
+    else {
+        panic!("right carrier must be compiled");
+    };
+    assert_eq!(
+        slash.structural.semantic_domain(left.sign_variable),
+        CarrierSign::SlashAtFixedA.singleton_domain()
+    );
+    assert_eq!(
+        slash.structural.semantic_domain(right.sign_variable),
+        CarrierSign::BackslashAtFixedA.singleton_domain()
+    );
+    only_choice(&slash, "L");
+}
+
+#[test]
+fn branch_directional_sign_is_selected_after_the_parenthesis() {
+    let (surface, atoms, bonds) = directional_chain_fixture();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "L")
+        .unwrap()
+        .into_successor();
+    let branch = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "("
+                && choice.successor().pending
+                    == Some(PendingEmission::BranchDirectionalSign(incident(
+                        &surface, atoms[1], bonds[0],
+                    )))
+        })
+        .unwrap()
+        .into_successor();
+    let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
+    else {
+        panic!("left carrier must be compiled");
+    };
+    assert_eq!(
+        branch.structural.semantic_domain(left.sign_variable),
+        CarrierSign::domain(),
+        "the parenthesis commits traversal but not directional sign"
+    );
+
+    let signs = branch.choices().unwrap();
+    assert_eq!(
+        signs.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["/", "\\"])
+    );
+    let slash = signs
+        .into_iter()
+        .find(|choice| choice.text() == "/")
+        .unwrap()
+        .into_successor();
+    assert_eq!(
+        slash.pending,
+        Some(PendingEmission::BranchAtom(incident(
+            &surface, atoms[1], bonds[0],
+        )))
+    );
+    assert_eq!(
+        slash.structural.semantic_domain(left.sign_variable),
+        CarrierSign::BackslashAtFixedA.singleton_domain(),
+        "emission from fixed endpoint B reverses the visible glyph"
+    );
+}
+
+#[test]
+fn directional_ring_candidate_aborts_the_complete_choice_batch_as_incomplete() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..3)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["A", "B", "C"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[0],
+            left_endpoint: atoms[0],
+            left_carriers: vec![bonds[2]].into_boxed_slice(),
+            right_endpoint: atoms[1],
+            right_carriers: vec![bonds[1]].into_boxed_slice(),
+            outward_sign_xor: false,
+        }],
+    )
+    .unwrap();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "A")
+        .unwrap()
+        .into_successor();
+    let before = rooted.observe_raw();
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Incomplete(
+            WriterIncompleteness::DirectionalRingEndpoint { carrier_bond }
+        )) if carrier_bond == bonds[2]
+    ));
+    assert_eq!(rooted.observe_raw(), before);
 }

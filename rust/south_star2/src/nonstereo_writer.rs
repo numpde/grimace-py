@@ -730,31 +730,9 @@ fn prepare_directional_bonds(
         let root = *carriers
             .first()
             .expect("compiled relation component has carriers");
-        let mut adjacency = BTreeMap::<BondId, Vec<(BondId, bool)>>::new();
-        for (left, right, parity) in &parity_edges {
-            adjacency.entry(*left).or_default().push((*right, *parity));
-            adjacency.entry(*right).or_default().push((*left, *parity));
-        }
-        let mut offsets = BTreeMap::from([(root, false)]);
-        let mut queue = VecDeque::from([root]);
-        while let Some(carrier) = queue.pop_front() {
-            let source_offset = offsets[&carrier];
-            for (other, parity) in adjacency.get(&carrier).into_iter().flatten() {
-                let expected = source_offset ^ parity;
-                match offsets.get(other) {
-                    Some(existing) if *existing != expected => {
-                        return Err(PreparedNonStereoError::ContradictoryDirectionalParity {
-                            carrier: *other,
-                        });
-                    }
-                    Some(_) => {}
-                    None => {
-                        offsets.insert(*other, expected);
-                        queue.push_back(*other);
-                    }
-                }
-            }
-        }
+        let offsets = directional_offsets(root, &parity_edges).map_err(|carrier| {
+            PreparedNonStereoError::ContradictoryDirectionalParity { carrier }
+        })?;
 
         let variables = carriers
             .iter()
@@ -782,6 +760,34 @@ fn prepare_directional_bonds(
     }
 
     Ok(statuses)
+}
+
+fn directional_offsets(
+    root: BondId,
+    parity_edges: &[(BondId, BondId, bool)],
+) -> Result<BTreeMap<BondId, bool>, BondId> {
+    let mut adjacency = BTreeMap::<BondId, Vec<(BondId, bool)>>::new();
+    for (left, right, parity) in parity_edges {
+        adjacency.entry(*left).or_default().push((*right, *parity));
+        adjacency.entry(*right).or_default().push((*left, *parity));
+    }
+    let mut offsets = BTreeMap::from([(root, false)]);
+    let mut queue = VecDeque::from([root]);
+    while let Some(carrier) = queue.pop_front() {
+        let source_offset = offsets[&carrier];
+        for (other, parity) in adjacency.get(&carrier).into_iter().flatten() {
+            let expected = source_offset ^ parity;
+            match offsets.get(other) {
+                Some(existing) if *existing != expected => return Err(*other),
+                Some(_) => {}
+                None => {
+                    offsets.insert(*other, expected);
+                    queue.push_back(*other);
+                }
+            }
+        }
+    }
+    Ok(offsets)
 }
 
 fn endpoint_flip(

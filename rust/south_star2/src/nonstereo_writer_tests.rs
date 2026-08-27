@@ -49,8 +49,20 @@ impl ConstraintSolver for FailingRestrictionSolver {
         Err(InjectedSolverFailure::Restriction)
     }
 
+    fn transitioned(
+        &self,
+        _restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        _activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Err(InjectedSolverFailure::Restriction)
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -85,8 +97,30 @@ impl ConstraintSolver for FailSecondVariableSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| *variable == crate::ids::VariableId::new(1))
+        {
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -135,8 +169,32 @@ impl ConstraintSolver for FailFirstRingAlternativeSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if matches!(
+            restrictions,
+            [(variable, domain)]
+                if *variable == crate::ids::VariableId::new(0)
+                    && *domain == BondRepresentation::Ring01.singleton_domain()
+        ) {
+            return Err(InjectedSolverFailure::Restriction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -171,8 +229,30 @@ impl ConstraintSolver for RejectFirstVariableSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        if restrictions
+            .iter()
+            .any(|(variable, _)| *variable == crate::ids::VariableId::new(0))
+        {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -197,8 +277,20 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
         Ok(Consistency::Contradiction)
     }
 
+    fn transitioned(
+        &self,
+        _restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        _activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(Consistency::Contradiction)
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -527,8 +619,53 @@ impl ConstraintSolver for WriterPolicyContradictionSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        let role_partition = BondRepresentation::role_partition();
+        let requested_first_ring = matches!(
+            restrictions,
+            [(variable, domain)]
+                if *variable == crate::ids::VariableId::new(0)
+                    && !domain.is_empty()
+                    && domain.is_subset_of(role_partition.ring_values())
+        );
+        let effective = if requested_first_ring {
+            let first_ring = restrictions[0];
+            vec![
+                first_ring,
+                (
+                    crate::ids::VariableId::new(1),
+                    role_partition.traversal_values(),
+                ),
+                (
+                    crate::ids::VariableId::new(2),
+                    role_partition.traversal_values(),
+                ),
+                (
+                    crate::ids::VariableId::new(3),
+                    role_partition.traversal_values(),
+                ),
+                (crate::ids::VariableId::new(4), role_partition.ring_values()),
+            ]
+        } else {
+            restrictions.to_vec()
+        };
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, &effective, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 
@@ -582,8 +719,24 @@ impl ConstraintSolver for PendingContradictionSolver {
         )
     }
 
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
     fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
     }
 }
 

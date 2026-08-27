@@ -66,13 +66,7 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
         &self,
         restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
-    ) -> Result<Consistency<Self>, Self::Failure> {
-        assert!(
-            activate.is_empty(),
-            "a solver backend must implement prepared factor activation before accepting latent factors"
-        );
-        self.restricted(restrictions)
-    }
+    ) -> Result<Consistency<Self>, Self::Failure>;
 
     /// Return the exact projected domain of a known variable in this state, or
     /// `None` when the variable does not belong to the prepared model.
@@ -80,7 +74,5 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
 
     /// Return whether a known prepared factor is active in this state, or
     /// `None` when the factor does not belong to the prepared model.
-    fn factor_is_active(&self, _factor: FactorId) -> Option<bool> {
-        None
-    }
+    fn factor_is_active(&self, factor: FactorId) -> Option<bool>;
 }

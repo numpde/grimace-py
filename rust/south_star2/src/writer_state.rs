@@ -760,7 +760,19 @@ mod tests {
             Ok(Consistency::Consistent(self.clone()))
         }
 
+        fn transitioned(
+            &self,
+            _restrictions: &[(VariableId, Domain)],
+            _activate: &[FactorId],
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            Ok(Consistency::Consistent(self.clone()))
+        }
+
         fn domain(&self, _variable: VariableId) -> Option<Domain> {
+            None
+        }
+
+        fn factor_is_active(&self, _factor: FactorId) -> Option<bool> {
             None
         }
     }
@@ -802,9 +814,31 @@ mod tests {
             )
         }
 
+        fn transitioned(
+            &self,
+            restrictions: &[(VariableId, Domain)],
+            activate: &[FactorId],
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            self.restriction_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(<NativeSolverState as ConstraintSolver>::transitioned(
+                &self.native,
+                restrictions,
+                activate,
+            )?
+            .map(|native| Self {
+                native,
+                domain_reads: Arc::clone(&self.domain_reads),
+                restriction_calls: Arc::clone(&self.restriction_calls),
+            }))
+        }
+
         fn domain(&self, variable: VariableId) -> Option<Domain> {
             self.domain_reads.fetch_add(1, Ordering::Relaxed);
             self.native.domain(variable)
+        }
+
+        fn factor_is_active(&self, factor: FactorId) -> Option<bool> {
+            self.native.factor_is_active(factor)
         }
     }
 

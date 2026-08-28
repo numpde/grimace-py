@@ -742,9 +742,9 @@ impl ConstraintSolver for PendingContradictionSolver {
 }
 
 #[derive(Clone, Debug)]
-struct FailSecondDirectionalSignSolver(NativeSolverState);
+struct FailSecondDirectionalMarkSolver(NativeSolverState);
 
-impl ConstraintSolver for FailSecondDirectionalSignSolver {
+impl ConstraintSolver for FailSecondDirectionalMarkSolver {
     type Failure = InjectedSolverFailure;
 
     fn initial(
@@ -769,7 +769,7 @@ impl ConstraintSolver for FailSecondDirectionalSignSolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions.iter().any(|(variable, domain)| {
             *variable == crate::ids::VariableId::new(3)
-                && *domain == CarrierSign::BackslashAtFixedA.singleton_domain()
+                && *domain == CarrierMark::BackslashAtFixedA.singleton_domain()
         }) {
             return Err(InjectedSolverFailure::Restriction);
         }
@@ -1673,7 +1673,7 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         .into_iter()
         .find(|choice| {
             choice.successor().pending
-                == Some(PendingEmission::BranchBondOrAtom(incident(
+                == Some(PendingEmission::BranchTraversalEmission(incident(
                     &elided_branch_surface,
                     atoms[0],
                     bonds[0],
@@ -1708,7 +1708,7 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         .into_iter()
         .find(|choice| {
             choice.successor().pending
-                == Some(PendingEmission::BranchBondOrAtom(incident(
+                == Some(PendingEmission::BranchTraversalEmission(incident(
                     &explicit_branch_surface,
                     atoms[0],
                     bonds[0],
@@ -1837,7 +1837,7 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
             .find(|choice| {
                 matches!(
                     choice.successor().pending,
-                    Some(PendingEmission::BranchBondOrAtom(incident))
+                    Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
             })
@@ -1904,7 +1904,7 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
             .find(|choice| {
                 matches!(
                     choice.successor().pending,
-                    Some(PendingEmission::BranchBondOrAtom(incident))
+                    Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
             })
@@ -1958,7 +1958,7 @@ fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
             .find(|choice| {
                 matches!(
                     choice.successor().pending,
-                    Some(PendingEmission::BranchBondOrAtom(incident))
+                    Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
             })
@@ -2619,7 +2619,7 @@ fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
     assert_eq!(choices[0].text(), "(");
     assert!(matches!(
         choices[0].successor().pending,
-        Some(PendingEmission::BranchBondOrAtom(incident))
+        Some(PendingEmission::BranchTraversalEmission(incident))
             if incident.bond() == bonds[4]
     ));
 }
@@ -3023,7 +3023,7 @@ fn ring_alternative_generation_stops_at_the_first_backend_failure() {
     };
 
     assert!(matches!(
-        rooted.attempt_ring_openings(candidate, incident),
+        rooted.attempt_ring_openings(candidate, incident, &[]),
         Err(InjectedSolverFailure::Restriction)
     ));
 }
@@ -3362,7 +3362,9 @@ fn explicit_endpoint_contradiction_precedes_pending_label_spelling() {
         unreachable!()
     };
 
-    let attempts = rooted.attempt_ring_openings(candidate, incident).unwrap();
+    let attempts = rooted
+        .attempt_ring_openings(candidate, incident, &[])
+        .unwrap();
 
     assert_eq!(attempts.len(), 2);
     assert!(attempts.into_iter().all(|attempt| matches!(
@@ -4010,7 +4012,9 @@ fn explicit_branch_commits_at_open_parenthesis() {
         .choices()
         .unwrap()
         .into_iter()
-        .find(|choice| choice.successor.pending == Some(PendingEmission::BranchBondOrAtom(oxygen)))
+        .find(|choice| {
+            choice.successor.pending == Some(PendingEmission::BranchTraversalEmission(oxygen))
+        })
         .unwrap();
     let open = branch_choice.text;
     let pending_branch = branch_choice.successor;
@@ -4226,7 +4230,8 @@ fn branch_closure_and_component_separator_have_distinct_tokens() {
         .unwrap()
         .into_iter()
         .find(|choice| {
-            choice.successor().pending == Some(PendingEmission::BranchBondOrAtom(branch_incident))
+            choice.successor().pending
+                == Some(PendingEmission::BranchTraversalEmission(branch_incident))
         })
         .unwrap();
     let open = branch_choice.text;
@@ -4483,10 +4488,11 @@ fn directional_chain_fixture_with_carrier_tokens(
         vec![PreparedDirectionalRelation {
             double_bond: bonds[1],
             left_endpoint: atoms[1],
-            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])].into_boxed_slice(),
             right_endpoint: atoms[2],
-            right_carriers: vec![bonds[2]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();
@@ -4536,10 +4542,11 @@ fn directional_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, V
         vec![PreparedDirectionalRelation {
             double_bond: bonds[1],
             left_endpoint: atoms[0],
-            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])].into_boxed_slice(),
             right_endpoint: atoms[1],
-            right_carriers: vec![bonds[2]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();
@@ -4586,10 +4593,11 @@ fn directional_tetrahedral_parent_fixture() -> (PreparedNonStereo, Vec<AtomId>, 
         vec![PreparedDirectionalRelation {
             double_bond: bonds[1],
             left_endpoint: atoms[0],
-            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])].into_boxed_slice(),
             right_endpoint: atoms[1],
-            right_carriers: vec![bonds[2]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();
@@ -4597,11 +4605,21 @@ fn directional_tetrahedral_parent_fixture() -> (PreparedNonStereo, Vec<AtomId>, 
 }
 
 #[test]
-fn directional_signs_are_canonical_fixed_endpoint_facts() {
-    assert_eq!(CarrierSign::SlashAtFixedA.text(true), "/");
-    assert_eq!(CarrierSign::SlashAtFixedA.text(false), "\\");
-    assert_eq!(CarrierSign::BackslashAtFixedA.text(true), "\\");
-    assert_eq!(CarrierSign::BackslashAtFixedA.text(false), "/");
+fn directional_marks_render_from_canonical_fixed_endpoints() {
+    assert_eq!(CarrierMark::SlashAtFixedA.directional_text(true), Some("/"));
+    assert_eq!(
+        CarrierMark::SlashAtFixedA.directional_text(false),
+        Some("\\")
+    );
+    assert_eq!(
+        CarrierMark::BackslashAtFixedA.directional_text(true),
+        Some("\\")
+    );
+    assert_eq!(
+        CarrierMark::BackslashAtFixedA.directional_text(false),
+        Some("/")
+    );
+    assert_eq!(CarrierMark::Plain.directional_text(true), None);
 
     let (surface, atoms, bonds) = directional_chain_fixture();
     assert!(endpoint_flip(
@@ -4616,37 +4634,8 @@ fn directional_signs_are_canonical_fixed_endpoint_facts() {
     ));
 }
 
-#[test]
-fn directional_parity_components_flatten_to_exact_root_offsets() {
-    let carriers = [
-        BondId::new(2),
-        BondId::new(5),
-        BondId::new(7),
-        BondId::new(11),
-    ];
-    let consistent = [
-        (carriers[0], carriers[1], true),
-        (carriers[1], carriers[2], false),
-        (carriers[0], carriers[3], true),
-        (carriers[2], carriers[3], false),
-    ];
-    let offsets = directional_offsets(carriers[0], &consistent).unwrap();
-    for (left, right, parity) in consistent {
-        assert_eq!(offsets[&left] ^ offsets[&right], parity);
-    }
-
-    let mut contradictory = consistent.to_vec();
-    contradictory.push((carriers[2], carriers[3], true));
-    assert!(directional_offsets(carriers[0], &contradictory).is_err());
-    assert_eq!(
-        directional_offsets(carriers[0], &[(carriers[0], carriers[0], false)]).unwrap(),
-        BTreeMap::from([(carriers[0], false)])
-    );
-    assert!(directional_offsets(carriers[0], &[(carriers[0], carriers[0], true)]).is_err());
-}
-
 fn directional_hexagon_surface(
-    outward_sign_xors: [bool; 3],
+    side_phase_xors: [bool; 3],
 ) -> Result<PreparedNonStereo, PreparedNonStereoError> {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..6)
@@ -4676,26 +4665,32 @@ fn directional_hexagon_surface(
             PreparedDirectionalRelation {
                 double_bond: bonds[1],
                 left_endpoint: atoms[1],
-                left_carriers: vec![bonds[0]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[2],
-                right_carriers: vec![bonds[2]].into_boxed_slice(),
-                outward_sign_xor: outward_sign_xors[0],
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
+                side_phase_xor: side_phase_xors[0],
             },
             PreparedDirectionalRelation {
                 double_bond: bonds[3],
                 left_endpoint: atoms[3],
-                left_carriers: vec![bonds[2]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[4],
-                right_carriers: vec![bonds[4]].into_boxed_slice(),
-                outward_sign_xor: outward_sign_xors[1],
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[4])]
+                    .into_boxed_slice(),
+                side_phase_xor: side_phase_xors[1],
             },
             PreparedDirectionalRelation {
                 double_bond: bonds[5],
                 left_endpoint: atoms[5],
-                left_carriers: vec![bonds[4]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[4])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[0],
-                right_carriers: vec![bonds[0]].into_boxed_slice(),
-                outward_sign_xor: outward_sign_xors[2],
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])]
+                    .into_boxed_slice(),
+                side_phase_xor: side_phase_xors[2],
             },
         ],
     )
@@ -4710,13 +4705,25 @@ fn preparation_rejects_contradictory_directional_cycles_and_flattens_consistent_
     let consistent = directional_hexagon_surface([true, false, false]).unwrap();
     assert_eq!(
         consistent.molecule().constraint_model().factor_count(),
-        3,
-        "two root-relative binary factors plus one spanning-tree factor"
+        10,
+        "three pattern-to-left, pattern-to-right, and cross-side relations plus one spanning factor"
     );
+    let model = consistent.molecule().constraint_model_arc();
+    let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+        .unwrap()
+        .unwrap_consistent();
+    let exhaustive = <ExhaustiveSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+        .unwrap()
+        .unwrap_consistent();
+    assert_eq!(native.exact_run_counts(), (1, 0));
+    for index in 0..model.variable_count() {
+        let variable = crate::ids::VariableId::new(index.try_into().unwrap());
+        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+    }
 }
 
 #[test]
-fn directional_binary_star_propagates_signs_without_touching_roles_or_exact_search() {
+fn directional_side_patterns_propagate_marks_without_touching_roles_or_exact_search() {
     let (surface, _, bonds) = directional_chain_fixture();
     let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
     else {
@@ -4726,7 +4733,7 @@ fn directional_binary_star_propagates_signs_without_touching_roles_or_exact_sear
     else {
         panic!("right carrier must be compiled");
     };
-    assert_ne!(left.sign_variable, right.sign_variable);
+    assert_ne!(left.mark_variable, right.mark_variable);
 
     let initial = NativeSolverState::initial(surface.molecule().constraint_model_arc()).unwrap();
     assert_eq!(initial.exact_run_counts(), (0, 0));
@@ -4741,19 +4748,19 @@ fn directional_binary_star_propagates_signs_without_touching_roles_or_exact_sear
     let successor = NativeSolverState::with_restrictions(
         &initial,
         [(
-            left.sign_variable,
-            CarrierSign::SlashAtFixedA.singleton_domain(),
+            left.mark_variable,
+            CarrierMark::SlashAtFixedA.singleton_domain(),
         )],
     )
     .unwrap();
 
     assert_eq!(
-        successor.domain(left.sign_variable),
-        Some(CarrierSign::SlashAtFixedA.singleton_domain())
+        successor.domain(left.mark_variable),
+        Some(CarrierMark::SlashAtFixedA.singleton_domain())
     );
     assert_eq!(
-        successor.domain(right.sign_variable),
-        Some(CarrierSign::BackslashAtFixedA.singleton_domain())
+        successor.domain(right.mark_variable),
+        Some(CarrierMark::BackslashAtFixedA.singleton_domain())
     );
     assert_eq!(successor.exact_run_counts(), (0, 0));
     assert_eq!(
@@ -4792,18 +4799,22 @@ fn shared_directional_carrier_reuses_one_sign_variable() {
             PreparedDirectionalRelation {
                 double_bond: bonds[1],
                 left_endpoint: atoms[1],
-                left_carriers: vec![bonds[0]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[2],
-                right_carriers: vec![bonds[2]].into_boxed_slice(),
-                outward_sign_xor: false,
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
+                side_phase_xor: false,
             },
             PreparedDirectionalRelation {
                 double_bond: bonds[3],
                 left_endpoint: atoms[3],
-                left_carriers: vec![bonds[2]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[4],
-                right_carriers: vec![bonds[4]].into_boxed_slice(),
-                outward_sign_xor: true,
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[4])]
+                    .into_boxed_slice(),
+                side_phase_xor: true,
             },
         ],
     )
@@ -4814,13 +4825,13 @@ fn shared_directional_carrier_reuses_one_sign_variable() {
         else {
             panic!("shared relation carriers must be compiled");
         };
-        site.sign_variable
+        site.mark_variable
     });
     assert_eq!(variables.into_iter().collect::<BTreeSet<_>>().len(), 3);
     assert_eq!(
         surface.molecule().constraint_model().factor_count(),
-        3,
-        "two root-relative sign factors plus one molecular spanning factor"
+        7,
+        "two side-pattern triples plus one molecular spanning factor"
     );
 }
 
@@ -4848,18 +4859,22 @@ fn shared_directional_chain_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<Bo
             PreparedDirectionalRelation {
                 double_bond: bonds[1],
                 left_endpoint: atoms[1],
-                left_carriers: vec![bonds[0]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[2],
-                right_carriers: vec![bonds[2]].into_boxed_slice(),
-                outward_sign_xor: false,
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
+                side_phase_xor: false,
             },
             PreparedDirectionalRelation {
                 double_bond: bonds[3],
                 left_endpoint: atoms[3],
-                left_carriers: vec![bonds[2]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[4],
-                right_carriers: vec![bonds[4]].into_boxed_slice(),
-                outward_sign_xor: true,
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[4])]
+                    .into_boxed_slice(),
+                side_phase_xor: true,
             },
         ],
     )
@@ -4893,10 +4908,14 @@ fn disconnected_directional_fixture() -> (PreparedNonStereo, Vec<BondId>) {
             PreparedDirectionalRelation {
                 double_bond: bonds[bond_offset + 1],
                 left_endpoint: atoms[atom_offset + 1],
-                left_carriers: vec![bonds[bond_offset]].into_boxed_slice(),
+                left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[bond_offset])]
+                    .into_boxed_slice(),
                 right_endpoint: atoms[atom_offset + 2],
-                right_carriers: vec![bonds[bond_offset + 2]].into_boxed_slice(),
-                outward_sign_xor: component == 1,
+                right_carriers: vec![PreparedDirectionalCarrier::unflipped(
+                    bonds[bond_offset + 2],
+                )]
+                .into_boxed_slice(),
+                side_phase_xor: component == 1,
             }
         })
         .into();
@@ -4942,7 +4961,7 @@ fn one_visible_sign_choice_propagates_the_complete_shared_carrier_component() {
         else {
             panic!("shared carrier must be compiled");
         };
-        slash.structural.semantic_domain(site.sign_variable)
+        slash.structural.semantic_domain(site.mark_variable)
     });
     assert!(domains.into_iter().all(Domain::is_singleton));
 }
@@ -4985,14 +5004,14 @@ fn shared_site_walk_exposes_only_the_propagated_future_signs() {
 }
 
 #[test]
-fn compiled_directional_star_matches_exhaustive_projection_for_every_unary_restriction() {
+fn one_candidate_side_patterns_match_exhaustive_projection_for_every_unary_restriction() {
     let (surface, _, bonds) = shared_directional_chain_fixture();
     let variables = [bonds[0], bonds[2], bonds[4]].map(|bond| {
         let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bond)
         else {
             panic!("shared carrier must be compiled");
         };
-        site.sign_variable
+        site.mark_variable
     });
     let model = surface.molecule().constraint_model_arc();
 
@@ -5002,9 +5021,9 @@ fn compiled_directional_star_matches_exhaustive_projection_for_every_unary_restr
         for variable in variables {
             match remaining % 3 {
                 0 => {}
-                1 => restrictions.push((variable, CarrierSign::SlashAtFixedA.singleton_domain())),
+                1 => restrictions.push((variable, CarrierMark::SlashAtFixedA.singleton_domain())),
                 2 => {
-                    restrictions.push((variable, CarrierSign::BackslashAtFixedA.singleton_domain()))
+                    restrictions.push((variable, CarrierMark::BackslashAtFixedA.singleton_domain()))
                 }
                 _ => unreachable!(),
             }
@@ -5034,6 +5053,50 @@ fn compiled_directional_star_matches_exhaustive_projection_for_every_unary_restr
 }
 
 #[test]
+fn selectable_side_patterns_match_exhaustive_projection_for_every_mark_domain() {
+    let (surface, _, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let variables = [bonds[0], bonds[3], bonds[2]].map(|bond| {
+        let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bond)
+        else {
+            panic!("selectable carrier must be compiled");
+        };
+        site.mark_variable
+    });
+    let model = surface.molecule().constraint_model_arc();
+
+    for code in 0..343_u32 {
+        let mut remaining = code;
+        let restrictions = variables.map(|variable| {
+            let domain = Domain::from_bits(1_u64 + u64::from(remaining % 7));
+            remaining /= 7;
+            (variable, domain)
+        });
+        let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+            .unwrap()
+            .unwrap_consistent()
+            .restricted(&restrictions)
+            .unwrap();
+        let exhaustive = <ExhaustiveSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+            .unwrap()
+            .unwrap_consistent()
+            .restricted(&restrictions)
+            .unwrap();
+        match (native, exhaustive) {
+            (Consistency::Contradiction, Consistency::Contradiction) => {}
+            (Consistency::Consistent(native), Consistency::Consistent(exhaustive)) => {
+                for index in 0..model.variable_count() {
+                    let variable = crate::ids::VariableId::new(index.try_into().unwrap());
+                    assert_eq!(native.domain(variable), exhaustive.domain(variable));
+                }
+                assert_eq!(native.exact_run_counts(), (0, 0));
+            }
+            _ => panic!("native and exhaustive selectable projections disagree for {code}"),
+        }
+    }
+}
+
+#[test]
 fn disconnected_directional_components_remain_constraint_and_writer_local() {
     let (surface, bonds) = disconnected_directional_fixture();
     let sites = [bonds[0], bonds[2], bonds[3], bonds[5]].map(|bond| {
@@ -5048,22 +5111,22 @@ fn disconnected_directional_components_remain_constraint_and_writer_local() {
     let restricted = NativeSolverState::with_restrictions(
         &native_initial,
         [(
-            sites[0].sign_variable,
-            CarrierSign::SlashAtFixedA.singleton_domain(),
+            sites[0].mark_variable,
+            CarrierMark::SlashAtFixedA.singleton_domain(),
         )],
     )
     .unwrap();
     assert!(restricted
-        .domain(sites[1].sign_variable)
+        .domain(sites[1].mark_variable)
         .unwrap()
         .is_singleton());
     assert_eq!(
-        restricted.domain(sites[2].sign_variable),
-        Some(CarrierSign::domain())
+        restricted.domain(sites[2].mark_variable),
+        Some(CarrierMark::marked_domain())
     );
     assert_eq!(
-        restricted.domain(sites[3].sign_variable),
-        Some(CarrierSign::domain())
+        restricted.domain(sites[3].mark_variable),
+        Some(CarrierMark::marked_domain())
     );
 
     let terminals = reachable_terminal_states(initial(&surface));
@@ -5074,7 +5137,7 @@ fn disconnected_directional_components_remain_constraint_and_writer_local() {
 #[test]
 fn multi_carrier_region_is_admitted_but_marked_incomplete() {
     let mut graph = PreparedGraphBuilder::new();
-    let atoms = (0..5)
+    let atoms = (0..6)
         .map(|_| graph.add_atom().unwrap())
         .collect::<Vec<_>>();
     let bonds = [
@@ -5082,10 +5145,11 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
         graph.add_bond(atoms[1], atoms[2]).unwrap(),
         graph.add_bond(atoms[2], atoms[3]).unwrap(),
         graph.add_bond(atoms[1], atoms[4]).unwrap(),
+        graph.add_bond(atoms[1], atoms[5]).unwrap(),
     ];
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
         PreparedMolecule::new(graph.build()),
-        ["F", "C", "C", "F", "Cl"]
+        ["F", "C", "C", "F", "Cl", "Br"]
             .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
             .into(),
         vec![
@@ -5093,14 +5157,21 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
             NonStereoBondToken::Double,
             NonStereoBondToken::Elided,
             NonStereoBondToken::Single,
+            NonStereoBondToken::Elided,
         ],
         vec![PreparedDirectionalRelation {
             double_bond: bonds[1],
             left_endpoint: atoms[1],
-            left_carriers: vec![bonds[0], bonds[3]].into_boxed_slice(),
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier::unflipped(bonds[3]),
+                PreparedDirectionalCarrier::unflipped(bonds[4]),
+            ]
+            .into_boxed_slice(),
             right_endpoint: atoms[2],
-            right_carriers: vec![bonds[2]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();
@@ -5137,6 +5208,385 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
 }
 
 #[test]
+fn two_candidate_side_prepares_six_live_patterns_without_mixed_search() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["F", "L", "R", "Cl", "Br"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Single,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+
+    let left = surface
+        .directional_sides
+        .iter()
+        .find(|side| side.endpoint == atoms[1])
+        .unwrap();
+    let right = surface
+        .directional_sides
+        .iter()
+        .find(|side| side.endpoint == atoms[2])
+        .unwrap();
+    assert_eq!(left.double_bond, bonds[1]);
+    assert_eq!(left.patterns.len(), 6);
+    assert_eq!(right.patterns.len(), 2);
+    assert!(left.patterns.iter().all(|pattern| {
+        pattern.marks.iter().any(|mark| *mark != CarrierMark::Plain)
+            && pattern
+                .marks
+                .iter()
+                .zip(&left.carriers)
+                .filter_map(|(mark, carrier)| {
+                    mark.canonical_sign().map(|sign| {
+                        sign ^ endpoint_flip(
+                            surface.molecule().graph(),
+                            carrier.bond,
+                            left.endpoint,
+                        ) ^ carrier.side_flip
+                    })
+                })
+                .all(|phase| phase == pattern.phase)
+    }));
+
+    let native = NativeSolverState::initial(surface.molecule().constraint_model_arc()).unwrap();
+    assert_eq!(native.exact_run_counts(), (0, 0));
+    for bond in [bonds[0], bonds[3]] {
+        let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bond)
+        else {
+            panic!("two-candidate sides must compile physical mark variables")
+        };
+        assert_eq!(
+            native.domain(site.mark_variable),
+            Some(CarrierMark::domain())
+        );
+    }
+}
+
+fn selectable_directional_fixture(
+    first_token: NonStereoBondToken,
+    second_token: NonStereoBondToken,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["F", "L", "R", "Cl", "Br"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            first_token,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            second_token,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+    (surface, atoms, bonds.into())
+}
+
+fn selectable_directional_ring_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+        graph.add_bond(atoms[0], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["A", "L", "R", "X", "B"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+    (surface, atoms, bonds.into())
+}
+
+#[test]
+fn selectable_inline_elision_exposes_plain_atom_and_directional_tokens() {
+    let (surface, atoms, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+
+    let choices = rooted.choices().unwrap();
+    assert_eq!(
+        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["L", "/", "\\"])
+    );
+    let site = match surface.directional_status(bonds[0]) {
+        PreparedDirectionalBondStatus::CompiledSite(site) => site,
+        _ => panic!("selectable carrier must compile"),
+    };
+    let plain = choices.iter().find(|choice| choice.text() == "L").unwrap();
+    assert_eq!(plain.successor().active_atom(), Some(atoms[1]));
+    assert_eq!(plain.successor().pending, None);
+    assert_eq!(
+        plain
+            .successor()
+            .structural
+            .semantic_domain(site.mark_variable),
+        CarrierMark::Plain.singleton_domain()
+    );
+    for choice in choices.iter().filter(|choice| choice.text() != "L") {
+        assert_eq!(choice.successor().active_atom(), Some(atoms[0]));
+        assert_eq!(
+            choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident(
+                &surface, atoms[0], bonds[0]
+            )))
+        );
+    }
+}
+
+#[test]
+fn selectable_explicit_plain_and_directional_tokens_share_one_inline_frontier() {
+    let (surface, atoms, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[4]))
+        .unwrap()
+        .into_successor();
+
+    let choices = rooted.choices().unwrap();
+    assert_eq!(
+        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["-", "/", "\\"])
+    );
+    assert!(choices.iter().all(|choice| {
+        choice.successor().pending
+            == Some(PendingEmission::InlineAtom(incident(
+                &surface, atoms[4], bonds[3],
+            )))
+    }));
+}
+
+#[test]
+fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
+    let (surface, atoms, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let branch = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "("
+                && choice.successor().pending
+                    == Some(PendingEmission::BranchTraversalEmission(incident(
+                        &surface, atoms[1], bonds[0],
+                    )))
+        })
+        .unwrap()
+        .into_successor();
+    let site = match surface.directional_status(bonds[0]) {
+        PreparedDirectionalBondStatus::CompiledSite(site) => site,
+        _ => panic!("selectable carrier must compile"),
+    };
+    assert_eq!(
+        branch.structural.semantic_domain(site.mark_variable),
+        CarrierMark::domain()
+    );
+
+    let choices = branch.choices().unwrap();
+    assert_eq!(
+        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["F", "/", "\\"])
+    );
+    let plain = choices.iter().find(|choice| choice.text() == "F").unwrap();
+    assert_eq!(plain.successor().active_atom(), Some(atoms[0]));
+    assert_eq!(plain.successor().pending, None);
+    assert_eq!(
+        plain
+            .successor()
+            .structural
+            .semantic_domain(site.mark_variable),
+        CarrierMark::Plain.singleton_domain()
+    );
+}
+
+#[test]
+fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_incomplete() {
+    let (surface, atoms, bonds) = selectable_directional_ring_fixture();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let incident = incident(&surface, atoms[1], bonds[0]);
+    let candidate = rooted
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == incident)
+        })
+        .unwrap();
+    let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
+    else {
+        panic!("selectable ring carrier must compile");
+    };
+
+    let unrestricted = rooted.attempt_directional_ring_candidate(candidate, incident);
+    assert!(unrestricted
+        .iter()
+        .any(|attempt| matches!(attempt, CandidateAttempt::Accepted { .. })));
+    assert!(unrestricted.iter().any(|attempt| matches!(
+        attempt,
+        CandidateAttempt::Incomplete(WriterIncompleteness::DirectionalRingEndpoint {
+            carrier_bond
+        }) if *carrier_bond == bonds[0]
+    )));
+
+    let mut plain_source = rooted.clone();
+    plain_source.structural = plain_source
+        .structural
+        .transitioned_semantics(
+            &[(site.mark_variable, CarrierMark::Plain.singleton_domain())],
+            &[],
+        )
+        .unwrap()
+        .unwrap_consistent();
+    let plain = plain_source.attempt_directional_ring_candidate(candidate, incident);
+    assert!(plain
+        .iter()
+        .all(|attempt| !matches!(attempt, CandidateAttempt::Incomplete(_))));
+    assert!(plain.iter().any(|attempt| matches!(
+        attempt,
+        CandidateAttempt::Accepted { successor, .. }
+            if successor.structural.semantic_domain(site.mark_variable)
+                == CarrierMark::Plain.singleton_domain()
+    )));
+}
+
+#[test]
+fn every_complete_selectable_walk_resolves_physical_marks_and_side_patterns() {
+    let (surface, _, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let terminals = reachable_terminal_states(initial(&surface));
+    assert!(!terminals.is_empty());
+    for terminal in terminals {
+        assert!(terminal.is_accepted());
+        for bond in [bonds[0], bonds[2], bonds[3]] {
+            let PreparedDirectionalBondStatus::CompiledSite(site) =
+                surface.directional_status(bond)
+            else {
+                panic!("selectable carrier must remain compiled");
+            };
+            assert!(terminal
+                .structural
+                .semantic_domain(site.mark_variable)
+                .is_singleton());
+        }
+        assert!(surface.directional_sides.iter().all(|side| terminal
+            .structural
+            .semantic_domain(side.pattern_variable)
+            .is_singleton()));
+    }
+}
+
+#[test]
 fn repeated_directional_relation_for_one_double_bond_is_rejected() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..6)
@@ -5155,7 +5605,7 @@ fn repeated_directional_relation_for_one_double_bond_is_rejected() {
         left_carriers: vec![left].into_boxed_slice(),
         right_endpoint: atoms[3],
         right_carriers: vec![right].into_boxed_slice(),
-        outward_sign_xor: false,
+        side_phase_xor: false,
     };
 
     assert_eq!(
@@ -5171,7 +5621,16 @@ fn repeated_directional_relation_for_one_double_bond_is_rejected() {
                 NonStereoBondToken::Elided,
                 NonStereoBondToken::Elided,
             ],
-            vec![relation(bonds[0], bonds[3]), relation(bonds[1], bonds[4])],
+            vec![
+                relation(
+                    PreparedDirectionalCarrier::unflipped(bonds[0]),
+                    PreparedDirectionalCarrier::unflipped(bonds[3]),
+                ),
+                relation(
+                    PreparedDirectionalCarrier::unflipped(bonds[1]),
+                    PreparedDirectionalCarrier::unflipped(bonds[4]),
+                ),
+            ],
         )
         .unwrap_err(),
         PreparedNonStereoError::RepeatedDirectionalRelation(bonds[2])
@@ -5215,12 +5674,12 @@ fn inline_directional_carrier_emits_sign_before_the_child_atom() {
         panic!("right carrier must be compiled");
     };
     assert_eq!(
-        slash.structural.semantic_domain(left.sign_variable),
-        CarrierSign::SlashAtFixedA.singleton_domain()
+        slash.structural.semantic_domain(left.mark_variable),
+        CarrierMark::SlashAtFixedA.singleton_domain()
     );
     assert_eq!(
-        slash.structural.semantic_domain(right.sign_variable),
-        CarrierSign::BackslashAtFixedA.singleton_domain()
+        slash.structural.semantic_domain(right.mark_variable),
+        CarrierMark::BackslashAtFixedA.singleton_domain()
     );
     only_choice(&slash, "L");
 }
@@ -5250,7 +5709,7 @@ fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
 }
 
 #[test]
-fn branch_directional_sign_is_selected_after_the_parenthesis() {
+fn branch_directional_mark_is_selected_after_the_parenthesis() {
     let (surface, atoms, bonds) = directional_chain_fixture();
     let rooted = initial(&surface)
         .choices()
@@ -5266,7 +5725,7 @@ fn branch_directional_sign_is_selected_after_the_parenthesis() {
         .find(|choice| {
             choice.text() == "("
                 && choice.successor().pending
-                    == Some(PendingEmission::BranchDirectionalSign(incident(
+                    == Some(PendingEmission::BranchTraversalEmission(incident(
                         &surface, atoms[1], bonds[0],
                     )))
         })
@@ -5277,9 +5736,9 @@ fn branch_directional_sign_is_selected_after_the_parenthesis() {
         panic!("left carrier must be compiled");
     };
     assert_eq!(
-        branch.structural.semantic_domain(left.sign_variable),
-        CarrierSign::domain(),
-        "the parenthesis commits traversal but not directional sign"
+        branch.structural.semantic_domain(left.mark_variable),
+        CarrierMark::marked_domain(),
+        "the parenthesis commits traversal but not the directional mark"
     );
 
     let signs = branch.choices().unwrap();
@@ -5299,16 +5758,16 @@ fn branch_directional_sign_is_selected_after_the_parenthesis() {
         )))
     );
     assert_eq!(
-        slash.structural.semantic_domain(left.sign_variable),
-        CarrierSign::BackslashAtFixedA.singleton_domain(),
+        slash.structural.semantic_domain(left.mark_variable),
+        CarrierMark::BackslashAtFixedA.singleton_domain(),
         "emission from fixed endpoint B reverses the visible glyph"
     );
 }
 
 #[test]
-fn backend_failure_on_second_directional_sign_aborts_the_complete_frontier() {
+fn backend_failure_on_second_directional_mark_aborts_the_complete_frontier() {
     let (surface, _, _) = directional_chain_fixture();
-    let initial = NonStereoWriterState::<FailSecondDirectionalSignSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<FailSecondDirectionalMarkSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let rooted = initial
@@ -5327,7 +5786,7 @@ fn backend_failure_on_second_directional_sign_aborts_the_complete_frontier() {
 }
 
 #[test]
-fn each_directional_sign_choice_uses_one_solver_restriction_batch() {
+fn each_directional_mark_choice_uses_one_solver_restriction_batch() {
     let (surface, _, _) = directional_chain_fixture();
     let initial = NonStereoWriterState::<CountDirectionalRestrictionsSolver>::initial(&surface)
         .unwrap()
@@ -5368,7 +5827,7 @@ fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection(
         .find(|choice| {
             choice.text() == "("
                 && choice.successor().pending
-                    == Some(PendingEmission::BranchDirectionalSign(incident(
+                    == Some(PendingEmission::BranchTraversalEmission(incident(
                         &surface, atoms[0], bonds[0],
                     )))
         })
@@ -5382,8 +5841,8 @@ fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection(
         panic!("tetrahedral parent carrier must be compiled");
     };
     assert_eq!(
-        branch.structural.semantic_domain(site.sign_variable),
-        CarrierSign::domain()
+        branch.structural.semantic_domain(site.mark_variable),
+        CarrierMark::marked_domain()
     );
 }
 
@@ -5439,7 +5898,7 @@ fn every_complete_directional_walk_resolves_each_carrier_sign() {
             };
             assert!(terminal
                 .structural
-                .semantic_domain(site.sign_variable)
+                .semantic_domain(site.mark_variable)
                 .is_singleton());
         }
     }
@@ -5469,10 +5928,11 @@ fn directional_ring_candidate_aborts_the_complete_choice_batch_as_incomplete() {
         vec![PreparedDirectionalRelation {
             double_bond: bonds[0],
             left_endpoint: atoms[0],
-            left_carriers: vec![bonds[2]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])].into_boxed_slice(),
             right_endpoint: atoms[1],
-            right_carriers: vec![bonds[1]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[1])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();
@@ -5525,10 +5985,11 @@ fn directional_ring_with_ordinary_siblings_fixture() -> (PreparedNonStereo, Vec<
         vec![PreparedDirectionalRelation {
             double_bond: bonds[5],
             left_endpoint: atoms[0],
-            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[0])].into_boxed_slice(),
             right_endpoint: atoms[4],
-            right_carriers: vec![bonds[6]].into_boxed_slice(),
-            outward_sign_xor: false,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[6])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
         }],
     )
     .unwrap();

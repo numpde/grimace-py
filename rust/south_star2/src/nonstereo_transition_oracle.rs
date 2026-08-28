@@ -506,7 +506,7 @@ enum OraclePending {
     ComponentAtom {
         root: usize,
     },
-    BranchBondOrAtom {
+    BranchTraversalEmission {
         parent: usize,
         child: usize,
         bond: usize,
@@ -848,7 +848,7 @@ impl<'a> OracleEngine<'a> {
             incidence.bond,
             OraclePlanDomain::singleton(OracleBondPlan::Traversal),
         )?;
-        successor.pending = Some(OraclePending::BranchBondOrAtom {
+        successor.pending = Some(OraclePending::BranchTraversalEmission {
             parent,
             child: incidence.atom,
             bond: incidence.bond,
@@ -886,7 +886,7 @@ impl<'a> OracleEngine<'a> {
                     successor,
                 ))
             }
-            OraclePending::BranchBondOrAtom {
+            OraclePending::BranchTraversalEmission {
                 parent,
                 child,
                 bond,
@@ -1316,7 +1316,7 @@ impl OracleEngine<'_> {
                     return Err("pending component atom lacks its entered root".to_owned());
                 }
             }
-            OraclePending::BranchBondOrAtom {
+            OraclePending::BranchTraversalEmission {
                 parent,
                 child,
                 bond,
@@ -1478,12 +1478,7 @@ enum PendingSnapshot {
     ComponentAtom {
         root: usize,
     },
-    BranchBondOrAtom {
-        parent: usize,
-        child: usize,
-        bond: usize,
-    },
-    BranchDirectionalSign {
+    BranchTraversalEmission {
         parent: usize,
         child: usize,
         bond: usize,
@@ -1612,20 +1607,11 @@ fn production_pending_snapshot(pending: &ObservedPending) -> PendingSnapshot {
         ObservedPending::ComponentAtom { root } => {
             PendingSnapshot::ComponentAtom { root: root.index() }
         }
-        ObservedPending::BranchBondOrAtom {
+        ObservedPending::BranchTraversalEmission {
             parent,
             child,
             bond,
-        } => PendingSnapshot::BranchBondOrAtom {
-            parent: parent.index(),
-            child: child.index(),
-            bond: bond.index(),
-        },
-        ObservedPending::BranchDirectionalSign {
-            parent,
-            child,
-            bond,
-        } => PendingSnapshot::BranchDirectionalSign {
+        } => PendingSnapshot::BranchTraversalEmission {
             parent: parent.index(),
             child: child.index(),
             bond: bond.index(),
@@ -1749,11 +1735,11 @@ fn oracle_snapshot(surface: &OracleSurface, state: &OracleState) -> SemanticSnap
 fn oracle_pending_snapshot(pending: OraclePending) -> PendingSnapshot {
     match pending {
         OraclePending::ComponentAtom { root } => PendingSnapshot::ComponentAtom { root },
-        OraclePending::BranchBondOrAtom {
+        OraclePending::BranchTraversalEmission {
             parent,
             child,
             bond,
-        } => PendingSnapshot::BranchBondOrAtom {
+        } => PendingSnapshot::BranchTraversalEmission {
             parent,
             child,
             bond,

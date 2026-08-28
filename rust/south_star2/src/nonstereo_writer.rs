@@ -154,29 +154,49 @@ impl NonStereoBondToken {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PreparedDirectionalCarrier {
+    pub(crate) bond: BondId,
+    pub(crate) side_flip: bool,
+}
+
+impl PreparedDirectionalCarrier {
+    const fn unflipped(bond: BondId) -> Self {
+        Self {
+            bond,
+            side_flip: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedDirectionalRelation {
     pub(crate) double_bond: BondId,
     pub(crate) left_endpoint: AtomId,
-    pub(crate) left_carriers: Box<[BondId]>,
+    pub(crate) left_carriers: Box<[PreparedDirectionalCarrier]>,
     pub(crate) right_endpoint: AtomId,
-    pub(crate) right_carriers: Box<[BondId]>,
-    pub(crate) outward_sign_xor: bool,
+    pub(crate) right_carriers: Box<[PreparedDirectionalCarrier]>,
+    pub(crate) side_phase_xor: bool,
 }
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum CarrierSign {
-    SlashAtFixedA = 0,
-    BackslashAtFixedA = 1,
+enum CarrierMark {
+    Plain = 0,
+    SlashAtFixedA = 1,
+    BackslashAtFixedA = 2,
 }
 
-impl CarrierSign {
+impl CarrierMark {
     const fn value_index(self) -> u8 {
         self as u8
     }
 
     const fn domain() -> Domain {
+        Domain::from_bits((1_u64 << 3) - 1)
+    }
+
+    const fn marked_domain() -> Domain {
         Domain::from_bits(
             (1_u64 << Self::SlashAtFixedA.value_index())
                 | (1_u64 << Self::BackslashAtFixedA.value_index()),
@@ -189,23 +209,48 @@ impl CarrierSign {
 
     const fn from_value(value: u8) -> Option<Self> {
         match value {
-            0 => Some(Self::SlashAtFixedA),
-            1 => Some(Self::BackslashAtFixedA),
+            0 => Some(Self::Plain),
+            1 => Some(Self::SlashAtFixedA),
+            2 => Some(Self::BackslashAtFixedA),
             _ => None,
         }
     }
 
-    const fn text(self, from_fixed_a: bool) -> &'static str {
+    const fn directional_text(self, from_fixed_a: bool) -> Option<&'static str> {
         match (self, from_fixed_a) {
-            (Self::SlashAtFixedA, true) | (Self::BackslashAtFixedA, false) => "/",
-            (Self::BackslashAtFixedA, true) | (Self::SlashAtFixedA, false) => "\\",
+            (Self::Plain, _) => None,
+            (Self::SlashAtFixedA, true) | (Self::BackslashAtFixedA, false) => Some("/"),
+            (Self::BackslashAtFixedA, true) | (Self::SlashAtFixedA, false) => Some("\\"),
+        }
+    }
+
+    const fn canonical_sign(self) -> Option<bool> {
+        match self {
+            Self::Plain => None,
+            Self::SlashAtFixedA => Some(false),
+            Self::BackslashAtFixedA => Some(true),
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct PreparedDirectionalSite {
-    sign_variable: VariableId,
+    mark_variable: VariableId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DirectionalSidePattern {
+    marks: Box<[CarrierMark]>,
+    phase: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PreparedDirectionalSide {
+    double_bond: BondId,
+    endpoint: AtomId,
+    pattern_variable: VariableId,
+    carriers: Box<[PreparedDirectionalCarrier]>,
+    patterns: Box<[DirectionalSidePattern]>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -222,14 +267,9 @@ enum PreparedDirectionalBondStatus {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum TraversalBondEmission {
-    Elided,
-    Fixed(&'static str),
-    Directional {
-        site: PreparedDirectionalSite,
-        from_fixed_a: bool,
-    },
-    IncompleteSelection(IncompleteDirectionalSelection),
+struct TraversalEmissionSpec {
+    text: &'static str,
+    mark_restriction: Option<(VariableId, Domain)>,
 }
 
 #[derive(Clone, Debug)]
@@ -238,6 +278,7 @@ pub(crate) struct PreparedNonStereo {
     atoms: Arc<[PreparedAtom]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
     directional_bonds: Arc<[PreparedDirectionalBondStatus]>,
+    directional_sides: Arc<[PreparedDirectionalSide]>,
     #[cfg(test)]
     work_counters: Arc<WriterWorkCounters>,
 }
@@ -401,7 +442,7 @@ impl PreparedNonStereo {
                 )),
             })
             .collect::<Vec<_>>();
-        let directional_bonds =
+        let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
         let molecule = assembly.finish();
 
@@ -410,6 +451,7 @@ impl PreparedNonStereo {
             atoms: Arc::from(atoms.into_boxed_slice()),
             bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
             directional_bonds: Arc::from(directional_bonds.into_boxed_slice()),
+            directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             #[cfg(test)]
             work_counters: Arc::new(WriterWorkCounters::default()),
         })
@@ -457,39 +499,6 @@ impl PreparedNonStereo {
             .directional_bonds
             .get(bond.index())
             .expect("prepared directional status must match the bound molecule")
-    }
-
-    fn traversal_bond_emission(&self, bond: BondId, from: AtomId) -> TraversalBondEmission {
-        match self.directional_status(bond) {
-            PreparedDirectionalBondStatus::Ordinary => {
-                let text = self.bond_text(bond, from);
-                if text.is_empty() {
-                    TraversalBondEmission::Elided
-                } else {
-                    TraversalBondEmission::Fixed(text)
-                }
-            }
-            PreparedDirectionalBondStatus::CompiledSite(site) => {
-                let topology = self
-                    .molecule
-                    .graph()
-                    .bond(bond)
-                    .expect("prepared directional carrier must belong to the graph");
-                TraversalBondEmission::Directional {
-                    site,
-                    from_fixed_a: if topology.a() == from {
-                        true
-                    } else if topology.b() == from {
-                        false
-                    } else {
-                        panic!("directional emission requires one carrier endpoint")
-                    },
-                }
-            }
-            PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => {
-                TraversalBondEmission::IncompleteSelection(incomplete)
-            }
-        }
     }
 
     fn fixed_endpoint(&self, bond: BondId, atom: AtomId) -> FixedBondEndpoint {
@@ -586,8 +595,15 @@ fn prepare_directional_bonds(
     graph: &crate::prepared::PreparedGraph,
     bond_tokens: &[NonStereoBondToken],
     relations: &[PreparedDirectionalRelation],
-) -> Result<Vec<PreparedDirectionalBondStatus>, PreparedNonStereoError> {
+) -> Result<
+    (
+        Vec<PreparedDirectionalBondStatus>,
+        Vec<PreparedDirectionalSide>,
+    ),
+    PreparedNonStereoError,
+> {
     let mut statuses = vec![PreparedDirectionalBondStatus::Ordinary; graph.bond_count()];
+    let mut directional_sides = Vec::with_capacity(relations.len() * 2);
     let mut relations_by_carrier = BTreeMap::<BondId, Vec<usize>>::new();
     let mut configured_double_bonds = BTreeSet::new();
 
@@ -634,34 +650,34 @@ fn prepare_directional_bonds(
         ] {
             let mut seen = BTreeSet::new();
             for carrier in carriers {
-                if !seen.insert(*carrier) {
+                if !seen.insert(carrier.bond) {
                     return Err(PreparedNonStereoError::RepeatedDirectionalCarrier {
                         double_bond: relation.double_bond,
                         endpoint,
-                        carrier: *carrier,
+                        carrier: carrier.bond,
                     });
                 }
-                if *carrier == relation.double_bond {
+                if carrier.bond == relation.double_bond {
                     return Err(PreparedNonStereoError::DirectionalCarrierIsDoubleBond(
-                        *carrier,
+                        carrier.bond,
                     ));
                 }
                 let topology = graph
-                    .bond(*carrier)
-                    .ok_or(PreparedNonStereoError::UnknownDirectionalBond(*carrier))?;
+                    .bond(carrier.bond)
+                    .ok_or(PreparedNonStereoError::UnknownDirectionalBond(carrier.bond))?;
                 if topology.other(endpoint).is_none() {
                     return Err(PreparedNonStereoError::DirectionalCarrierNotIncident {
-                        carrier: *carrier,
+                        carrier: carrier.bond,
                         endpoint,
                     });
                 }
-                if !bond_tokens[carrier.index()].is_directional_carrier_base() {
+                if !bond_tokens[carrier.bond.index()].is_directional_carrier_base() {
                     return Err(PreparedNonStereoError::InvalidDirectionalCarrierToken(
-                        *carrier,
+                        carrier.bond,
                     ));
                 }
                 relations_by_carrier
-                    .entry(*carrier)
+                    .entry(carrier.bond)
                     .or_default()
                     .push(index);
             }
@@ -679,7 +695,7 @@ fn prepare_directional_bonds(
                 .iter()
                 .chain(relation.right_carriers.iter())
             {
-                for adjacent in &relations_by_carrier[carrier] {
+                for adjacent in &relations_by_carrier[&carrier.bond] {
                     if unseen.remove(adjacent) {
                         component.push(*adjacent);
                         queue.push_back(*adjacent);
@@ -690,12 +706,12 @@ fn prepare_directional_bonds(
 
         let incomplete = component.iter().find_map(|index| {
             let relation = &relations[*index];
-            if relation.left_carriers.len() != 1 {
+            if relation.left_carriers.len() > 2 {
                 Some(IncompleteDirectionalSelection {
                     double_bond: relation.double_bond,
                     endpoint: relation.left_endpoint,
                 })
-            } else if relation.right_carriers.len() != 1 {
+            } else if relation.right_carriers.len() > 2 {
                 Some(IncompleteDirectionalSelection {
                     double_bond: relation.double_bond,
                     endpoint: relation.right_endpoint,
@@ -712,88 +728,221 @@ fn prepare_directional_bonds(
                     .iter()
                     .chain(relation.right_carriers.iter())
                 {
-                    statuses[carrier.index()] =
+                    statuses[carrier.bond.index()] =
                         PreparedDirectionalBondStatus::IncompleteSelection(incomplete);
                 }
             }
             continue;
         }
 
-        let mut parity_edges = Vec::with_capacity(component.len());
-        let mut carriers = BTreeSet::new();
-        for index in component {
-            let relation = &relations[index];
-            let left = relation.left_carriers[0];
-            let right = relation.right_carriers[0];
-            carriers.insert(left);
-            carriers.insert(right);
-            let parity = relation.outward_sign_xor
-                ^ endpoint_flip(graph, left, relation.left_endpoint)
-                ^ endpoint_flip(graph, right, relation.right_endpoint);
-            parity_edges.push((left, right, parity));
+        if !directional_component_is_satisfiable(graph, relations, &component) {
+            let carrier = relations[component[0]]
+                .left_carriers
+                .first()
+                .expect("validated directional side must have a carrier")
+                .bond;
+            return Err(PreparedNonStereoError::ContradictoryDirectionalParity { carrier });
         }
 
-        let root = *carriers
-            .first()
-            .expect("compiled relation component has carriers");
-        let offsets = directional_offsets(root, &parity_edges).map_err(|carrier| {
-            PreparedNonStereoError::ContradictoryDirectionalParity { carrier }
-        })?;
-
+        let carriers = component
+            .iter()
+            .flat_map(|index| {
+                relations[*index]
+                    .left_carriers
+                    .iter()
+                    .chain(relations[*index].right_carriers.iter())
+                    .map(|carrier| carrier.bond)
+            })
+            .collect::<BTreeSet<_>>();
         let variables = carriers
             .iter()
             .map(|carrier| {
-                let variable = assembly.add_isolated_variable(CarrierSign::domain());
-                (*carrier, variable)
+                (
+                    *carrier,
+                    assembly.add_isolated_variable(CarrierMark::domain()),
+                )
             })
             .collect::<BTreeMap<_, _>>();
-        let root_variable = variables[&root];
-        for carrier in carriers {
-            let variable = variables[&carrier];
+        for carrier in &carriers {
+            let variable = variables[carrier];
             statuses[carrier.index()] =
                 PreparedDirectionalBondStatus::CompiledSite(PreparedDirectionalSite {
-                    sign_variable: variable,
+                    mark_variable: variable,
                 });
-            if carrier != root {
-                let offset = u8::from(offsets[&carrier]);
-                assembly.add_binary_relation(
-                    root_variable,
-                    variable,
-                    [(0, offset), (1, 1 ^ offset)],
-                );
-            }
+        }
+
+        for index in component {
+            let relation = &relations[index];
+            let left = prepare_directional_side(
+                assembly,
+                graph,
+                relation.double_bond,
+                relation.left_endpoint,
+                &relation.left_carriers,
+                &variables,
+            );
+            let right = prepare_directional_side(
+                assembly,
+                graph,
+                relation.double_bond,
+                relation.right_endpoint,
+                &relation.right_carriers,
+                &variables,
+            );
+            let allowed_pairs = left
+                .patterns
+                .iter()
+                .enumerate()
+                .flat_map(|(left_value, left_pattern)| {
+                    right.patterns.iter().enumerate().filter_map(
+                        move |(right_value, right_pattern)| {
+                            (left_pattern.phase ^ right_pattern.phase == relation.side_phase_xor)
+                                .then_some((left_value as u8, right_value as u8))
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            assembly.add_binary_relation(
+                left.pattern_variable,
+                right.pattern_variable,
+                allowed_pairs,
+            );
+            directional_sides.push(left);
+            directional_sides.push(right);
         }
     }
 
-    Ok(statuses)
+    Ok((statuses, directional_sides))
 }
 
-fn directional_offsets(
-    root: BondId,
-    parity_edges: &[(BondId, BondId, bool)],
-) -> Result<BTreeMap<BondId, bool>, BondId> {
-    let mut adjacency = BTreeMap::<BondId, Vec<(BondId, bool)>>::new();
-    for (left, right, parity) in parity_edges {
-        adjacency.entry(*left).or_default().push((*right, *parity));
-        adjacency.entry(*right).or_default().push((*left, *parity));
+fn prepare_directional_side(
+    assembly: &mut PreparedConstraintAssembly,
+    graph: &crate::prepared::PreparedGraph,
+    double_bond: BondId,
+    endpoint: AtomId,
+    carriers: &[PreparedDirectionalCarrier],
+    mark_variables: &BTreeMap<BondId, VariableId>,
+) -> PreparedDirectionalSide {
+    let patterns = directional_side_patterns(graph, endpoint, carriers);
+    let pattern_domain = Domain::from_bits((1_u64 << patterns.len()) - 1);
+    let pattern_variable = assembly.add_isolated_variable(pattern_domain);
+    for (carrier_index, carrier) in carriers.iter().enumerate() {
+        assembly.add_binary_relation(
+            pattern_variable,
+            mark_variables[&carrier.bond],
+            patterns
+                .iter()
+                .enumerate()
+                .map(|(value, pattern)| (value as u8, pattern.marks[carrier_index].value_index())),
+        );
     }
-    let mut offsets = BTreeMap::from([(root, false)]);
-    let mut queue = VecDeque::from([root]);
-    while let Some(carrier) = queue.pop_front() {
-        let source_offset = offsets[&carrier];
-        for (other, parity) in adjacency.get(&carrier).into_iter().flatten() {
-            let expected = source_offset ^ parity;
-            match offsets.get(other) {
-                Some(existing) if *existing != expected => return Err(*other),
-                Some(_) => {}
-                None => {
-                    offsets.insert(*other, expected);
-                    queue.push_back(*other);
+    PreparedDirectionalSide {
+        double_bond,
+        endpoint,
+        pattern_variable,
+        carriers: carriers.into(),
+        patterns: patterns.into_boxed_slice(),
+    }
+}
+
+fn directional_side_patterns(
+    graph: &crate::prepared::PreparedGraph,
+    endpoint: AtomId,
+    carriers: &[PreparedDirectionalCarrier],
+) -> Vec<DirectionalSidePattern> {
+    assert!((1..=2).contains(&carriers.len()));
+    let assignment_count = 3_usize.pow(carriers.len() as u32);
+    (0..assignment_count)
+        .filter_map(|mut encoded| {
+            let marks = (0..carriers.len())
+                .map(|_| {
+                    let mark = CarrierMark::from_value((encoded % 3) as u8).unwrap();
+                    encoded /= 3;
+                    mark
+                })
+                .collect::<Vec<_>>();
+            let mut phase = None;
+            for (carrier, mark) in carriers.iter().zip(&marks) {
+                let Some(sign) = mark.canonical_sign() else {
+                    continue;
+                };
+                let candidate_phase =
+                    sign ^ endpoint_flip(graph, carrier.bond, endpoint) ^ carrier.side_flip;
+                match phase {
+                    Some(existing) if existing != candidate_phase => return None,
+                    Some(_) => {}
+                    None => phase = Some(candidate_phase),
                 }
             }
+            Some(DirectionalSidePattern {
+                marks: marks.into_boxed_slice(),
+                phase: phase?,
+            })
+        })
+        .collect()
+}
+
+fn directional_component_is_satisfiable(
+    graph: &crate::prepared::PreparedGraph,
+    relations: &[PreparedDirectionalRelation],
+    component: &[usize],
+) -> bool {
+    fn search(
+        relation_pairs: &[Vec<Vec<(BondId, CarrierMark)>>],
+        index: usize,
+        assigned: &BTreeMap<BondId, CarrierMark>,
+    ) -> bool {
+        if index == relation_pairs.len() {
+            return true;
         }
+        relation_pairs[index].iter().any(|pair| {
+            let mut next = assigned.clone();
+            for (bond, mark) in pair {
+                match next.get(bond) {
+                    Some(existing) if existing != mark => return false,
+                    Some(_) => {}
+                    None => {
+                        next.insert(*bond, *mark);
+                    }
+                }
+            }
+            search(relation_pairs, index + 1, &next)
+        })
     }
-    Ok(offsets)
+
+    let relation_pairs = component
+        .iter()
+        .map(|index| {
+            let relation = &relations[*index];
+            let left =
+                directional_side_patterns(graph, relation.left_endpoint, &relation.left_carriers);
+            let right =
+                directional_side_patterns(graph, relation.right_endpoint, &relation.right_carriers);
+            left.iter()
+                .flat_map(|left_pattern| {
+                    right.iter().filter_map(move |right_pattern| {
+                        if left_pattern.phase ^ right_pattern.phase != relation.side_phase_xor {
+                            return None;
+                        }
+                        let assignments = relation
+                            .left_carriers
+                            .iter()
+                            .zip(left_pattern.marks.iter())
+                            .chain(
+                                relation
+                                    .right_carriers
+                                    .iter()
+                                    .zip(right_pattern.marks.iter()),
+                            )
+                            .map(|(carrier, mark)| (carrier.bond, *mark))
+                            .collect::<Vec<_>>();
+                        Some(assignments)
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    search(&relation_pairs, 0, &BTreeMap::new())
 }
 
 fn endpoint_flip(
@@ -1092,8 +1241,7 @@ impl RingLabels {
 enum PendingEmission {
     ComponentRootAtom(AtomId),
     InlineAtom(AdjacentBond),
-    BranchBondOrAtom(AdjacentBond),
-    BranchDirectionalSign(AdjacentBond),
+    BranchTraversalEmission(AdjacentBond),
     BranchAtom(AdjacentBond),
     RingOpeningLabel {
         incident: AdjacentBond,
@@ -1118,12 +1266,7 @@ pub(crate) enum ObservedPending {
     ComponentAtom {
         root: AtomId,
     },
-    BranchBondOrAtom {
-        parent: AtomId,
-        child: AtomId,
-        bond: BondId,
-    },
-    BranchDirectionalSign {
+    BranchTraversalEmission {
         parent: AtomId,
         child: AtomId,
         bond: BondId,
@@ -1156,7 +1299,8 @@ pub(crate) struct ObservedNonStereoState {
     pub(crate) structural: ObservedWriterState,
     pub(crate) tetrahedral_order_domains: Vec<(AtomId, Domain)>,
     pub(crate) tetrahedral_role_pattern_domains: Vec<(AtomId, Domain)>,
-    pub(crate) directional_sign_domains: Vec<(BondId, Domain)>,
+    pub(crate) directional_mark_domains: Vec<(BondId, Domain)>,
+    pub(crate) directional_side_pattern_domains: Vec<(BondId, AtomId, Domain)>,
     pub(crate) labels_by_bond: Vec<(BondId, usize)>,
     pub(crate) pending: Option<ObservedPending>,
     pub(crate) maximum_spelling_label: usize,
@@ -1257,9 +1401,19 @@ pub(crate) enum WriterInvariantFailure {
     StructuralContradiction,
     NoStructuralCandidates,
     PendingEmissionRejected,
-    AllCandidatesSemanticallyRejected { candidate_count: usize },
-    UnresolvedTetrahedralFrame { atom: AtomId },
-    UnresolvedDirectionalCarrier { bond: BondId },
+    AllCandidatesSemanticallyRejected {
+        candidate_count: usize,
+    },
+    UnresolvedTetrahedralFrame {
+        atom: AtomId,
+    },
+    UnresolvedDirectionalCarrier {
+        bond: BondId,
+    },
+    UnresolvedDirectionalSide {
+        double_bond: BondId,
+        endpoint: AtomId,
+    },
 }
 
 impl fmt::Display for WriterInvariantFailure {
@@ -1284,7 +1438,14 @@ impl fmt::Display for WriterInvariantFailure {
             ),
             Self::UnresolvedDirectionalCarrier { bond } => write!(
                 formatter,
-                "directional carrier {bond:?} completed without one canonical sign"
+                "directional carrier {bond:?} completed without one physical mark"
+            ),
+            Self::UnresolvedDirectionalSide {
+                double_bond,
+                endpoint,
+            } => write!(
+                formatter,
+                "directional side of {double_bond:?} at {endpoint:?} completed without one pattern"
             ),
         }
     }
@@ -1406,13 +1567,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 child: incident.atom(),
                 bond: incident.bond(),
             },
-            PendingEmission::BranchBondOrAtom(incident) => ObservedPending::BranchBondOrAtom {
-                parent: active_endpoint(),
-                child: incident.atom(),
-                bond: incident.bond(),
-            },
-            PendingEmission::BranchDirectionalSign(incident) => {
-                ObservedPending::BranchDirectionalSign {
+            PendingEmission::BranchTraversalEmission(incident) => {
+                ObservedPending::BranchTraversalEmission {
                     parent: active_endpoint(),
                     child: incident.atom(),
                     bond: incident.bond(),
@@ -1472,24 +1628,37 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 })
             })
             .collect();
-        let directional_sign_domains = self
+        let directional_mark_domains = self
             .surface
             .molecule()
             .graph()
             .bond_ids()
             .filter_map(|bond| match self.surface.directional_status(bond) {
                 PreparedDirectionalBondStatus::CompiledSite(site) => {
-                    Some((bond, self.structural.semantic_domain(site.sign_variable)))
+                    Some((bond, self.structural.semantic_domain(site.mark_variable)))
                 }
                 PreparedDirectionalBondStatus::Ordinary
                 | PreparedDirectionalBondStatus::IncompleteSelection(_) => None,
+            })
+            .collect();
+        let directional_side_pattern_domains = self
+            .surface
+            .directional_sides
+            .iter()
+            .map(|side| {
+                (
+                    side.double_bond,
+                    side.endpoint,
+                    self.structural.semantic_domain(side.pattern_variable),
+                )
             })
             .collect();
         ObservedNonStereoState {
             structural,
             tetrahedral_order_domains,
             tetrahedral_role_pattern_domains,
-            directional_sign_domains,
+            directional_mark_domains,
+            directional_side_pattern_domains,
             labels_by_bond,
             pending,
             maximum_spelling_label: self.labels.maximum_spelling_label(),
@@ -1572,14 +1741,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 StructuralCandidate::RingOpen { incident }
                 | StructuralCandidate::RingClose { incident, .. } => {
                     match self.surface.directional_status(incident.bond()) {
-                        PreparedDirectionalBondStatus::CompiledSite(_) => self
-                            .attempt_incomplete_ring_candidate(
-                                candidate,
-                                incident,
-                                WriterIncompleteness::DirectionalRingEndpoint {
-                                    carrier_bond: incident.bond(),
-                                },
-                            ),
+                        PreparedDirectionalBondStatus::CompiledSite(_) => {
+                            self.attempt_directional_ring_candidate(candidate, incident)
+                        }
                         PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => self
                             .attempt_incomplete_ring_candidate(
                                 candidate,
@@ -1588,10 +1752,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             ),
                         PreparedDirectionalBondStatus::Ordinary => match candidate {
                             StructuralCandidate::RingOpen { .. } => self
-                                .attempt_ring_openings(candidate, incident)
+                                .attempt_ring_openings(candidate, incident, &[])
                                 .map_err(ChoiceFailure::Backend)?,
                             StructuralCandidate::RingClose { .. } => self
-                                .attempt_ring_closures(candidate, incident)
+                                .attempt_ring_closures(candidate, incident, &[])
                                 .map_err(ChoiceFailure::Backend)?,
                             _ => unreachable!(),
                         },
@@ -1658,13 +1822,15 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         &self,
         candidate: StructuralCandidate,
         incident: AdjacentBond,
+        semantic_restrictions: &[(VariableId, Domain)],
     ) -> Result<Vec<CandidateAttempt<Self, S::Failure>>, S::Failure> {
         let active = self
             .structural
             .active_atom()
             .expect("ring opening spelling requires an active endpoint");
         let current = self.structural.bond_decision_domain(incident.bond());
-        let order_restriction = self.parent_prefix_restriction(incident);
+        let mut restrictions = self.parent_prefix_restriction(incident);
+        restrictions.extend_from_slice(semantic_restrictions);
         let mut attempts = Vec::new();
         for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
             let allowed = current.intersect(self.surface.ring_endpoint_domain(
@@ -1678,7 +1844,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let structural = match self.attempt_candidate_with_transition(
                 candidate,
                 Some(allowed),
-                &order_restriction,
+                &restrictions,
                 &[],
             )? {
                 Consistency::Consistent(structural) => structural,
@@ -1797,17 +1963,101 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
     }
 
+    fn attempt_directional_ring_candidate(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+    ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        let PreparedDirectionalBondStatus::CompiledSite(site) =
+            self.surface.directional_status(incident.bond())
+        else {
+            panic!("directional ring attempt requires one compiled physical mark")
+        };
+        let mut attempts = Vec::new();
+        let mut directional_viable = false;
+        for value in self.structural.semantic_domain(site.mark_variable).iter() {
+            let mark = CarrierMark::from_value(value)
+                .expect("prepared directional mark domain contains only mark values");
+            let mark_restriction = (site.mark_variable, mark.singleton_domain());
+            if mark == CarrierMark::Plain {
+                let plain = match candidate {
+                    StructuralCandidate::RingOpen { .. } => {
+                        self.attempt_ring_openings(candidate, incident, &[mark_restriction])
+                    }
+                    StructuralCandidate::RingClose { .. } => {
+                        self.attempt_ring_closures(candidate, incident, &[mark_restriction])
+                    }
+                    _ => unreachable!(),
+                };
+                match plain {
+                    Ok(plain) => attempts.extend(plain),
+                    Err(failure) => {
+                        attempts.push(CandidateAttempt::Failed(failure));
+                        return attempts;
+                    }
+                }
+                continue;
+            }
+
+            let active = self
+                .structural
+                .active_atom()
+                .expect("ring spelling requires an active endpoint");
+            let current = self.structural.bond_decision_domain(incident.bond());
+            let mut restrictions = self.parent_prefix_restriction(incident);
+            restrictions.push(mark_restriction);
+            for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
+                let allowed = current.intersect(self.surface.ring_endpoint_domain(
+                    incident.bond(),
+                    active,
+                    spelling,
+                ));
+                if allowed.is_empty() {
+                    continue;
+                }
+                match self.attempt_candidate_with_transition(
+                    candidate,
+                    Some(allowed),
+                    &restrictions,
+                    &[],
+                ) {
+                    Ok(Consistency::Consistent(_)) => directional_viable = true,
+                    Ok(Consistency::Contradiction) => {}
+                    Err(failure) => {
+                        attempts.push(CandidateAttempt::Failed(failure));
+                        return attempts;
+                    }
+                }
+            }
+        }
+        if directional_viable {
+            attempts.push(CandidateAttempt::Incomplete(
+                WriterIncompleteness::DirectionalRingEndpoint {
+                    carrier_bond: incident.bond(),
+                },
+            ));
+        }
+        if attempts.is_empty() {
+            attempts.push(CandidateAttempt::Rejected {
+                reason: CandidateRejection::Contradiction,
+            });
+        }
+        attempts
+    }
+
     fn attempt_ring_closures(
         &self,
         candidate: StructuralCandidate,
         incident: AdjacentBond,
+        semantic_restrictions: &[(VariableId, Domain)],
     ) -> Result<Vec<CandidateAttempt<Self, S::Failure>>, S::Failure> {
         let active = self
             .structural
             .active_atom()
             .expect("ring closure spelling requires an active endpoint");
         let current = self.structural.bond_decision_domain(incident.bond());
-        let order_restriction = self.parent_prefix_restriction(incident);
+        let mut restrictions = self.parent_prefix_restriction(incident);
+        restrictions.extend_from_slice(semantic_restrictions);
         let label_slot = self.labels.slot_for_bond(incident.bond());
         let mut attempts = Vec::new();
         for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
@@ -1826,7 +2076,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let structural = match self.attempt_candidate_with_transition(
                 candidate,
                 Some(allowed),
-                &order_restriction,
+                &restrictions,
                 &[],
             )? {
                 Consistency::Consistent(structural) => structural,
@@ -2007,23 +2257,49 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         )]
     }
 
-    fn directional_sign_specs(
+    fn traversal_emission_specs(
         &self,
-        site: PreparedDirectionalSite,
-        from_fixed_a: bool,
-    ) -> Vec<(String, (VariableId, Domain))> {
-        self.structural
-            .semantic_domain(site.sign_variable)
-            .iter()
-            .map(|value| {
-                let sign = CarrierSign::from_value(value)
-                    .expect("prepared directional sign domain has only canonical sign values");
-                (
-                    sign.text(from_fixed_a).to_owned(),
-                    (site.sign_variable, sign.singleton_domain()),
-                )
-            })
-            .collect()
+        bond: BondId,
+        from: AtomId,
+    ) -> Result<Vec<TraversalEmissionSpec>, IncompleteDirectionalSelection> {
+        match self.surface.directional_status(bond) {
+            PreparedDirectionalBondStatus::Ordinary => Ok(vec![TraversalEmissionSpec {
+                text: self.surface.bond_text(bond, from),
+                mark_restriction: None,
+            }]),
+            PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => Err(incomplete),
+            PreparedDirectionalBondStatus::CompiledSite(site) => {
+                let topology = self
+                    .surface
+                    .molecule()
+                    .graph()
+                    .bond(bond)
+                    .expect("prepared directional carrier must belong to the graph");
+                let from_fixed_a = if topology.a() == from {
+                    true
+                } else if topology.b() == from {
+                    false
+                } else {
+                    panic!("directional emission requires one carrier endpoint")
+                };
+                Ok(self
+                    .structural
+                    .semantic_domain(site.mark_variable)
+                    .iter()
+                    .map(|value| {
+                        let mark = CarrierMark::from_value(value).expect(
+                            "prepared directional mark domain has only carrier-mark values",
+                        );
+                        TraversalEmissionSpec {
+                            text: mark
+                                .directional_text(from_fixed_a)
+                                .unwrap_or_else(|| self.surface.bond_text(bond, from)),
+                            mark_restriction: Some((site.mark_variable, mark.singleton_domain())),
+                        }
+                    })
+                    .collect())
+            }
+        }
     }
 
     const fn incomplete_selection(
@@ -2136,10 +2412,55 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 self.surface.directional_status(bond)
             {
                 if !structural
-                    .semantic_domain(site.sign_variable)
+                    .semantic_domain(site.mark_variable)
                     .is_singleton()
                 {
                     return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier { bond });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_directional_component_completion(
+        &self,
+        structural: &WriterState<S>,
+    ) -> Result<(), WriterInvariantFailure> {
+        let active = structural
+            .active_atom()
+            .expect("component completion requires one active frame");
+        let graph = self.surface.molecule().graph();
+        let component = graph
+            .component_of_atom(active)
+            .expect("active atom must belong to one prepared component");
+        for side in self
+            .surface
+            .directional_sides
+            .iter()
+            .filter(|side| graph.component_of_atom(side.endpoint) == Some(component))
+        {
+            if !structural
+                .semantic_domain(side.pattern_variable)
+                .is_singleton()
+            {
+                return Err(WriterInvariantFailure::UnresolvedDirectionalSide {
+                    double_bond: side.double_bond,
+                    endpoint: side.endpoint,
+                });
+            }
+            for carrier in &side.carriers {
+                let PreparedDirectionalBondStatus::CompiledSite(site) =
+                    self.surface.directional_status(carrier.bond)
+                else {
+                    panic!("compiled directional side must retain physical mark variables")
+                };
+                if !structural
+                    .semantic_domain(site.mark_variable)
+                    .is_singleton()
+                {
+                    return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier {
+                        bond: carrier.bond,
+                    });
                 }
             }
         }
@@ -2219,18 +2540,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .structural
                     .active_atom()
                     .expect("branch emission requires an active atom");
-                let emission = self
-                    .surface
-                    .traversal_bond_emission(incident.bond(), parent);
-                let pending = match emission {
-                    TraversalBondEmission::IncompleteSelection(_) => None,
-                    TraversalBondEmission::Directional { .. } => {
-                        Some(PendingEmission::BranchDirectionalSign(incident))
-                    }
-                    TraversalBondEmission::Elided | TraversalBondEmission::Fixed(_) => {
-                        Some(PendingEmission::BranchBondOrAtom(incident))
-                    }
-                };
+                let incomplete = self.traversal_emission_specs(incident.bond(), parent).err();
                 let restrictions = self.parent_prefix_restriction(incident);
                 let structural = match self.attempt_candidate_with_transition(
                     candidate,
@@ -2246,7 +2556,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                     Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                 };
-                if let TraversalBondEmission::IncompleteSelection(incomplete) = emission {
+                if let Some(incomplete) = incomplete {
                     return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
                         incomplete,
                     ))];
@@ -2258,7 +2568,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         surface: self.surface.clone(),
                         structural,
                         labels,
-                        pending,
+                        pending: Some(PendingEmission::BranchTraversalEmission(incident)),
                     },
                 )]
             }
@@ -2268,11 +2578,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .active_atom()
                     .expect("inline emission requires an active atom");
                 let parent_restriction = self.parent_prefix_restriction(incident);
-                match self
-                    .surface
-                    .traversal_bond_emission(incident.bond(), parent)
-                {
-                    TraversalBondEmission::IncompleteSelection(incomplete) => {
+                let emissions = match self.traversal_emission_specs(incident.bond(), parent) {
+                    Ok(emissions) => emissions,
+                    Err(incomplete) => {
                         let structural = match self.attempt_candidate_with_transition(
                             candidate,
                             None,
@@ -2291,57 +2599,78 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         {
                             return vec![CandidateAttempt::Invariant(failure)];
                         }
-                        vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
+                        return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
                             incomplete,
-                        ))]
+                        ))];
                     }
-                    TraversalBondEmission::Elided => {
+                };
+                let mut attempts = Vec::new();
+                for emission in emissions {
+                    if emission.text.is_empty() {
                         let context = self
                             .structural
                             .prospective_inline_child_layout_context(incident);
-                        collect_attempts_fail_fast(
+                        for (text, mut child_restriction, activate) in
                             self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
-                                .into_iter()
-                                .map(|(text, mut child_restriction, activate)| {
-                                    let mut restrictions = parent_restriction.clone();
-                                    restrictions.append(&mut child_restriction);
-                                    let structural = match self.attempt_candidate_with_transition(
-                                        candidate,
-                                        None,
-                                        restrictions.as_slice(),
-                                        activate.as_slice(),
-                                    ) {
-                                        Ok(Consistency::Consistent(structural)) => structural,
-                                        Ok(Consistency::Contradiction) => {
-                                            return CandidateAttempt::Rejected {
-                                                reason: CandidateRejection::Contradiction,
-                                            };
-                                        }
-                                        Err(failure) => return CandidateAttempt::Failed(failure),
-                                    };
-                                    if let Err(failure) =
-                                        self.validate_active_semantic_completion(&structural)
-                                    {
-                                        return CandidateAttempt::Invariant(failure);
-                                    }
-                                    self.finish_attempt(
-                                        text,
-                                        Self {
-                                            surface: self.surface.clone(),
-                                            structural: structural
-                                                .enter_committed_inline_child(incident),
-                                            labels: self.labels.clone(),
-                                            pending: None,
-                                        },
-                                    )
-                                }),
-                        )
-                    }
-                    TraversalBondEmission::Fixed(bond_text) => {
+                        {
+                            let mut restrictions = parent_restriction.clone();
+                            if let Some(mark) = emission.mark_restriction {
+                                restrictions.push(mark);
+                            }
+                            restrictions.append(&mut child_restriction);
+                            let structural = match self.attempt_candidate_with_transition(
+                                candidate,
+                                None,
+                                restrictions.as_slice(),
+                                activate.as_slice(),
+                            ) {
+                                Ok(Consistency::Consistent(structural)) => structural,
+                                Ok(Consistency::Contradiction) => {
+                                    attempts.push(CandidateAttempt::Rejected {
+                                        reason: CandidateRejection::Contradiction,
+                                    });
+                                    continue;
+                                }
+                                Err(failure) => {
+                                    attempts.push(CandidateAttempt::Failed(failure));
+                                    return attempts;
+                                }
+                            };
+                            if let Err(failure) =
+                                self.validate_active_semantic_completion(&structural)
+                            {
+                                attempts.push(CandidateAttempt::Invariant(failure));
+                                return attempts;
+                            }
+                            let attempt = self.finish_attempt(
+                                text,
+                                Self {
+                                    surface: self.surface.clone(),
+                                    structural: structural.enter_committed_inline_child(incident),
+                                    labels: self.labels.clone(),
+                                    pending: None,
+                                },
+                            );
+                            let stop = matches!(
+                                attempt,
+                                CandidateAttempt::Incomplete(_)
+                                    | CandidateAttempt::Invariant(_)
+                                    | CandidateAttempt::Failed(_)
+                            );
+                            attempts.push(attempt);
+                            if stop {
+                                return attempts;
+                            }
+                        }
+                    } else {
+                        let mut restrictions = parent_restriction.clone();
+                        if let Some(mark) = emission.mark_restriction {
+                            restrictions.push(mark);
+                        }
                         let structural = match self.attempt_candidate_with_transition(
                             candidate,
                             None,
-                            parent_restriction.as_slice(),
+                            restrictions.as_slice(),
                             &[],
                         ) {
                             Ok(Consistency::Consistent(structural)) => structural,
@@ -2350,61 +2679,38 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                     reason: CandidateRejection::Contradiction,
                                 }];
                             }
-                            Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+                            Err(failure) => {
+                                attempts.push(CandidateAttempt::Failed(failure));
+                                return attempts;
+                            }
                         };
                         if let Err(failure) = self.validate_active_semantic_completion(&structural)
                         {
-                            return vec![CandidateAttempt::Invariant(failure)];
+                            attempts.push(CandidateAttempt::Invariant(failure));
+                            return attempts;
                         }
-                        vec![self.finish_attempt(
-                            bond_text.to_owned(),
+                        let attempt = self.finish_attempt(
+                            emission.text.to_owned(),
                             Self {
                                 surface: self.surface.clone(),
                                 structural,
                                 labels: self.labels.clone(),
                                 pending: Some(PendingEmission::InlineAtom(incident)),
                             },
-                        )]
-                    }
-                    TraversalBondEmission::Directional { site, from_fixed_a } => {
-                        collect_attempts_fail_fast(
-                            self.directional_sign_specs(site, from_fixed_a)
-                                .into_iter()
-                                .map(|(text, sign_restriction)| {
-                                    let mut restrictions = parent_restriction.clone();
-                                    restrictions.push(sign_restriction);
-                                    let structural = match self.attempt_candidate_with_transition(
-                                        candidate,
-                                        None,
-                                        restrictions.as_slice(),
-                                        &[],
-                                    ) {
-                                        Ok(Consistency::Consistent(structural)) => structural,
-                                        Ok(Consistency::Contradiction) => {
-                                            return CandidateAttempt::Rejected {
-                                                reason: CandidateRejection::Contradiction,
-                                            };
-                                        }
-                                        Err(failure) => return CandidateAttempt::Failed(failure),
-                                    };
-                                    if let Err(failure) =
-                                        self.validate_active_semantic_completion(&structural)
-                                    {
-                                        return CandidateAttempt::Invariant(failure);
-                                    }
-                                    self.finish_attempt(
-                                        text,
-                                        Self {
-                                            surface: self.surface.clone(),
-                                            structural,
-                                            labels: self.labels.clone(),
-                                            pending: Some(PendingEmission::InlineAtom(incident)),
-                                        },
-                                    )
-                                }),
-                        )
+                        );
+                        let stop = matches!(
+                            attempt,
+                            CandidateAttempt::Incomplete(_)
+                                | CandidateAttempt::Invariant(_)
+                                | CandidateAttempt::Failed(_)
+                        );
+                        attempts.push(attempt);
+                        if stop {
+                            return attempts;
+                        }
                     }
                 }
+                attempts
             }
             StructuralCandidate::CloseBranch => {
                 if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
@@ -2442,76 +2748,86 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         match pending {
             PendingEmission::ComponentRootAtom(atom) => {
-                self.pending_atom_attempts(atom, None, PendingAtomEntry::AlreadyEntered)
+                self.pending_atom_attempts(atom, None, PendingAtomEntry::AlreadyEntered, &[])
             }
             PendingEmission::InlineAtom(incident) => self.pending_atom_attempts(
                 incident.atom(),
                 Some(incident.bond()),
                 PendingAtomEntry::Inline(incident),
+                &[],
             ),
-            PendingEmission::BranchBondOrAtom(incident) => {
+            PendingEmission::BranchTraversalEmission(incident) => {
                 let parent = self
                     .structural
                     .active_atom()
                     .expect("a committed branch child requires its active parent");
-                if self.surface.bond_text(incident.bond(), parent).is_empty() {
-                    self.pending_atom_attempts(
-                        incident.atom(),
-                        Some(incident.bond()),
-                        PendingAtomEntry::Branch(incident),
-                    )
-                } else {
-                    vec![self.finish_attempt(
-                        self.surface.bond_text(incident.bond(), parent).to_owned(),
-                        Self {
-                            surface: self.surface.clone(),
-                            structural: self.structural.clone(),
-                            labels: self.labels.clone(),
-                            pending: Some(PendingEmission::BranchAtom(incident)),
-                        },
-                    )]
-                }
-            }
-            PendingEmission::BranchDirectionalSign(incident) => {
-                let parent = self
-                    .structural
-                    .active_atom()
-                    .expect("a pending directional branch requires its active parent");
-                let TraversalBondEmission::Directional { site, from_fixed_a } = self
-                    .surface
-                    .traversal_bond_emission(incident.bond(), parent)
-                else {
-                    panic!("a pending directional branch must retain a compiled carrier")
-                };
-                collect_attempts_fail_fast(
-                    self.directional_sign_specs(site, from_fixed_a)
-                        .into_iter()
-                        .map(|(text, restriction)| {
-                            let structural = match self.restrict_semantics(&[restriction], &[]) {
-                                Ok(Consistency::Consistent(structural)) => structural,
-                                Ok(Consistency::Contradiction) => {
-                                    return CandidateAttempt::Rejected {
-                                        reason: CandidateRejection::Contradiction,
-                                    };
-                                }
-                                Err(failure) => return CandidateAttempt::Failed(failure),
-                            };
-                            self.finish_attempt(
-                                text,
-                                Self {
-                                    surface: self.surface.clone(),
-                                    structural,
-                                    labels: self.labels.clone(),
-                                    pending: Some(PendingEmission::BranchAtom(incident)),
-                                },
+                let emissions = self
+                    .traversal_emission_specs(incident.bond(), parent)
+                    .expect("a published branch must have a complete traversal-emission frontier");
+                let mut attempts = Vec::new();
+                for emission in emissions {
+                    let restrictions = emission.mark_restriction.into_iter().collect::<Vec<_>>();
+                    if emission.text.is_empty() {
+                        let pending = self.pending_atom_attempts(
+                            incident.atom(),
+                            Some(incident.bond()),
+                            PendingAtomEntry::Branch(incident),
+                            &restrictions,
+                        );
+                        let stop = pending.iter().any(|attempt| {
+                            matches!(
+                                attempt,
+                                CandidateAttempt::Incomplete(_)
+                                    | CandidateAttempt::Invariant(_)
+                                    | CandidateAttempt::Failed(_)
                             )
-                        }),
-                )
+                        });
+                        attempts.extend(pending);
+                        if stop {
+                            return attempts;
+                        }
+                    } else {
+                        let structural = match self.restrict_semantics(&restrictions, &[]) {
+                            Ok(Consistency::Consistent(structural)) => structural,
+                            Ok(Consistency::Contradiction) => {
+                                attempts.push(CandidateAttempt::Rejected {
+                                    reason: CandidateRejection::Contradiction,
+                                });
+                                continue;
+                            }
+                            Err(failure) => {
+                                attempts.push(CandidateAttempt::Failed(failure));
+                                return attempts;
+                            }
+                        };
+                        let attempt = self.finish_attempt(
+                            emission.text.to_owned(),
+                            Self {
+                                surface: self.surface.clone(),
+                                structural,
+                                labels: self.labels.clone(),
+                                pending: Some(PendingEmission::BranchAtom(incident)),
+                            },
+                        );
+                        let stop = matches!(
+                            attempt,
+                            CandidateAttempt::Incomplete(_)
+                                | CandidateAttempt::Invariant(_)
+                                | CandidateAttempt::Failed(_)
+                        );
+                        attempts.push(attempt);
+                        if stop {
+                            return attempts;
+                        }
+                    }
+                }
+                attempts
             }
             PendingEmission::BranchAtom(incident) => self.pending_atom_attempts(
                 incident.atom(),
                 Some(incident.bond()),
                 PendingAtomEntry::Branch(incident),
+                &[],
             ),
             PendingEmission::RingOpeningLabel {
                 incident,
@@ -2561,6 +2877,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         atom: AtomId,
         entry_bond: Option<BondId>,
         entry: PendingAtomEntry,
+        semantic_restrictions: &[(VariableId, Domain)],
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         #[cfg(test)]
         self.surface
@@ -2579,7 +2896,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         collect_attempts_fail_fast(
             self.atom_token_specs(atom, entry_bond, &context)
                 .into_iter()
-                .map(|(text, restrictions, activate)| {
+                .map(|(text, mut restrictions, activate)| {
+                    restrictions.extend_from_slice(semantic_restrictions);
                     let structural = match self.restrict_semantics(&restrictions, &activate) {
                         Ok(Consistency::Consistent(structural)) => structural,
                         Ok(Consistency::Contradiction) => {
@@ -2711,6 +3029,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 "a component cannot finish with open visible ring labels"
             );
             if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
+                return SuccessorAttempt::Invariant(failure);
+            }
+            if let Err(failure) = self.validate_directional_component_completion(&self.structural) {
                 return SuccessorAttempt::Invariant(failure);
             }
             self.structural = match self

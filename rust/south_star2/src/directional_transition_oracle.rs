@@ -633,6 +633,7 @@ struct SelectableSuccessor {
     active_atom: usize,
     visited_atoms: Vec<usize>,
     mark_domains: Vec<(usize, Vec<OracleMark>)>,
+    carrier_role: RoleDomain,
     pending_atom: Option<(usize, usize, usize)>,
 }
 
@@ -714,6 +715,7 @@ fn selectable_production_fixture() -> ProductionFixture {
 
 fn observed_selectable_choice(
     production: &ProductionFixture,
+    carrier: usize,
     choice: &Choice<State>,
 ) -> SelectableChoice {
     let observed = choice.successor().observe_raw();
@@ -762,24 +764,31 @@ fn observed_selectable_choice(
                     )
                 })
                 .collect(),
+            carrier_role: observed_role_domain(
+                observed.structural.bond_plan_domains[production.bonds[carrier].index()],
+            ),
             pending_atom,
         },
     }
 }
 
-#[test]
-fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
-    let production = selectable_production_fixture();
-    let source = rooted_state(&production, 0);
-    let source_before = source.observe_raw();
+fn expected_selectable_inline_choices(
+    selected_index: usize,
+    carrier: usize,
+    from: usize,
+    child: usize,
+    from_fixed_a: bool,
+    plain_text: &'static str,
+    plain_is_elided: bool,
+) -> BTreeSet<SelectableChoice> {
     let assignments = selectable_assignments();
-    let expected = OracleMark::ALL
+    OracleMark::ALL
         .into_iter()
         .filter_map(|selected| {
             let survivors = assignments
                 .iter()
                 .copied()
-                .filter(|assignment| assignment[0] == selected)
+                .filter(|assignment| assignment[selected_index] == selected)
                 .collect::<Vec<_>>();
             if survivors.is_empty() {
                 return None;
@@ -797,8 +806,16 @@ fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
                 })
                 .collect::<Vec<_>>();
             let (text, active_atom, visited_atoms, pending_atom) = match selected {
-                OracleMark::Plain => ("L", 1, vec![0, 1], None),
-                mark => (mark.text(true).unwrap(), 0, vec![0], Some((0, 1, 0))),
+                OracleMark::Plain if plain_is_elided => {
+                    (plain_text, child, vec![from, child], None)
+                }
+                OracleMark::Plain => (plain_text, from, vec![from], Some((from, child, carrier))),
+                mark => (
+                    mark.text(from_fixed_a).unwrap(),
+                    from,
+                    vec![from],
+                    Some((from, child, carrier)),
+                ),
             };
             Some(SelectableChoice {
                 text: text.to_owned(),
@@ -806,16 +823,48 @@ fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
                     active_atom,
                     visited_atoms,
                     mark_domains,
+                    carrier_role: RoleDomain {
+                        traversal: true,
+                        ring: false,
+                    },
                     pending_atom,
                 },
             })
         })
-        .collect::<BTreeSet<_>>();
+        .collect()
+}
+
+#[test]
+fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
+    let production = selectable_production_fixture();
+    let source = rooted_state(&production, 0);
+    let source_before = source.observe_raw();
+    let expected = expected_selectable_inline_choices(0, 0, 0, 1, true, "L", true);
     let actual = source
         .choices()
         .unwrap()
         .iter()
-        .map(|choice| observed_selectable_choice(&production, choice))
+        .map(|choice| observed_selectable_choice(&production, 0, choice))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        source.observe_raw(),
+        source_before,
+        "choices mutated source"
+    );
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn selectable_explicit_reverse_inline_matches_independent_side_phase_assignments() {
+    let production = selectable_production_fixture();
+    let source = rooted_state(&production, 4);
+    let source_before = source.observe_raw();
+    let expected = expected_selectable_inline_choices(1, 3, 4, 1, false, "-", false);
+    let actual = source
+        .choices()
+        .unwrap()
+        .iter()
+        .map(|choice| observed_selectable_choice(&production, 3, choice))
         .collect::<BTreeSet<_>>();
     assert_eq!(
         source.observe_raw(),

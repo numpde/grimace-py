@@ -1572,28 +1572,29 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 StructuralCandidate::RingOpen { incident }
                 | StructuralCandidate::RingClose { incident, .. } => {
                     match self.surface.directional_status(incident.bond()) {
-                        PreparedDirectionalBondStatus::CompiledSite(_) => {
-                            return Err(ChoiceFailure::Incomplete(
+                        PreparedDirectionalBondStatus::CompiledSite(_) => self
+                            .attempt_incomplete_ring_candidate(
+                                candidate,
+                                incident,
                                 WriterIncompleteness::DirectionalRingEndpoint {
                                     carrier_bond: incident.bond(),
                                 },
-                            ));
-                        }
-                        PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => {
-                            return Err(ChoiceFailure::Incomplete(Self::incomplete_selection(
-                                incomplete,
-                            )));
-                        }
-                        PreparedDirectionalBondStatus::Ordinary => {}
-                    }
-                    match candidate {
-                        StructuralCandidate::RingOpen { .. } => self
-                            .attempt_ring_openings(candidate, incident)
-                            .map_err(ChoiceFailure::Backend)?,
-                        StructuralCandidate::RingClose { .. } => self
-                            .attempt_ring_closures(candidate, incident)
-                            .map_err(ChoiceFailure::Backend)?,
-                        _ => unreachable!(),
+                            ),
+                        PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => self
+                            .attempt_incomplete_ring_candidate(
+                                candidate,
+                                incident,
+                                Self::incomplete_selection(incomplete),
+                            ),
+                        PreparedDirectionalBondStatus::Ordinary => match candidate {
+                            StructuralCandidate::RingOpen { .. } => self
+                                .attempt_ring_openings(candidate, incident)
+                                .map_err(ChoiceFailure::Backend)?,
+                            StructuralCandidate::RingClose { .. } => self
+                                .attempt_ring_closures(candidate, incident)
+                                .map_err(ChoiceFailure::Backend)?,
+                            _ => unreachable!(),
+                        },
                     }
                 }
                 _ => self.attempt_structural(candidate),
@@ -1746,6 +1747,54 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             }
         }
         Ok(attempts)
+    }
+
+    fn attempt_incomplete_ring_candidate(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+        incomplete: WriterIncompleteness,
+    ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        let active = self
+            .structural
+            .active_atom()
+            .expect("ring spelling requires an active endpoint");
+        let current = self.structural.bond_decision_domain(incident.bond());
+        let order_restriction = self.parent_prefix_restriction(incident);
+        let mut attempted = 0;
+        let mut viable = false;
+        for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
+            let allowed = current.intersect(self.surface.ring_endpoint_domain(
+                incident.bond(),
+                active,
+                spelling,
+            ));
+            if allowed.is_empty() {
+                continue;
+            }
+            attempted += 1;
+            match self.attempt_candidate_with_transition(
+                candidate,
+                Some(allowed),
+                &order_restriction,
+                &[],
+            ) {
+                Ok(Consistency::Consistent(_)) => viable = true,
+                Ok(Consistency::Contradiction) => {}
+                Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+            }
+        }
+        assert!(
+            attempted > 0,
+            "a directional ring candidate must retain one prepared endpoint placement"
+        );
+        if viable {
+            vec![CandidateAttempt::Incomplete(incomplete)]
+        } else {
+            vec![CandidateAttempt::Rejected {
+                reason: CandidateRejection::Contradiction,
+            }]
+        }
     }
 
     fn attempt_ring_closures(
@@ -2170,20 +2219,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .structural
                     .active_atom()
                     .expect("branch emission requires an active atom");
-                let pending = match self
+                let emission = self
                     .surface
-                    .traversal_bond_emission(incident.bond(), parent)
-                {
-                    TraversalBondEmission::IncompleteSelection(incomplete) => {
-                        return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
-                            incomplete,
-                        ))];
-                    }
+                    .traversal_bond_emission(incident.bond(), parent);
+                let pending = match emission {
+                    TraversalBondEmission::IncompleteSelection(_) => None,
                     TraversalBondEmission::Directional { .. } => {
-                        PendingEmission::BranchDirectionalSign(incident)
+                        Some(PendingEmission::BranchDirectionalSign(incident))
                     }
                     TraversalBondEmission::Elided | TraversalBondEmission::Fixed(_) => {
-                        PendingEmission::BranchBondOrAtom(incident)
+                        Some(PendingEmission::BranchBondOrAtom(incident))
                     }
                 };
                 let restrictions = self.parent_prefix_restriction(incident);
@@ -2201,6 +2246,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                     Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                 };
+                if let TraversalBondEmission::IncompleteSelection(incomplete) = emission {
+                    return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
+                        incomplete,
+                    ))];
+                }
                 let labels = self.labels.clone();
                 vec![self.finish_attempt(
                     "(".to_owned(),
@@ -2208,7 +2258,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         surface: self.surface.clone(),
                         structural,
                         labels,
-                        pending: Some(pending),
+                        pending,
                     },
                 )]
             }
@@ -2223,6 +2273,24 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .traversal_bond_emission(incident.bond(), parent)
                 {
                     TraversalBondEmission::IncompleteSelection(incomplete) => {
+                        let structural = match self.attempt_candidate_with_transition(
+                            candidate,
+                            None,
+                            parent_restriction.as_slice(),
+                            &[],
+                        ) {
+                            Ok(Consistency::Consistent(structural)) => structural,
+                            Ok(Consistency::Contradiction) => {
+                                return vec![CandidateAttempt::Rejected {
+                                    reason: CandidateRejection::Contradiction,
+                                }];
+                            }
+                            Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+                        };
+                        if let Err(failure) = self.validate_active_semantic_completion(&structural)
+                        {
+                            return vec![CandidateAttempt::Invariant(failure)];
+                        }
                         vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
                             incomplete,
                         ))]

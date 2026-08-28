@@ -5492,3 +5492,85 @@ fn directional_ring_candidate_aborts_the_complete_choice_batch_as_incomplete() {
     ));
     assert_eq!(rooted.observe_raw(), before);
 }
+
+fn directional_ring_with_ordinary_siblings_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>)
+{
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[0], atoms[4]).unwrap(),
+        graph.add_bond(atoms[4], atoms[5]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["A", "B", "C", "D", "E", "F"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[5],
+            left_endpoint: atoms[0],
+            left_carriers: vec![bonds[0]].into_boxed_slice(),
+            right_endpoint: atoms[4],
+            right_carriers: vec![bonds[6]].into_boxed_slice(),
+            outward_sign_xor: false,
+        }],
+    )
+    .unwrap();
+    (surface, atoms, bonds.into())
+}
+
+#[test]
+fn contradictory_incomplete_ring_candidate_does_not_suppress_valid_siblings() {
+    let (surface, atoms, _) = directional_ring_with_ordinary_siblings_fixture();
+    let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+
+    let choices = rooted.choices().unwrap();
+
+    assert!(!choices.is_empty());
+    assert!(choices.iter().all(|choice| choice.text() == "1"));
+}
+
+#[test]
+fn backend_failure_while_filtering_incomplete_ring_candidate_aborts_the_batch() {
+    let (surface, atoms, _) = directional_ring_with_ordinary_siblings_fixture();
+    let initial = NonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+
+    assert!(matches!(
+        rooted.choices(),
+        Err(ChoiceFailure::Backend(InjectedSolverFailure::Restriction))
+    ));
+}

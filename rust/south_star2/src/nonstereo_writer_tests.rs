@@ -5391,6 +5391,61 @@ fn selectable_directional_fixture(
     (surface, atoms, bonds.into())
 }
 
+fn selectable_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Fixed("F".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::VirtualHydrogen,
+                    TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[3]),
+                ],
+                text_by_parity: ["[L@H]".to_owned(), "[L@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("R".to_owned()),
+            PreparedAtomToken::Fixed("Cl".to_owned()),
+            PreparedAtomToken::Fixed("Br".to_owned()),
+        ],
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Single,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+    (surface, atoms, bonds.into())
+}
+
 fn selectable_directional_ring_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..5)
@@ -5583,6 +5638,45 @@ fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
             .semantic_domain(site.mark_variable),
         CarrierMark::Plain.singleton_domain()
     );
+}
+
+#[test]
+fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
+    let (surface, atoms, _) = selectable_tetrahedral_child_fixture();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
+        .unwrap()
+        .into_successor();
+    assert_eq!(
+        rooted
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["[L@H]", "[L@@H]", "/", "\\"])
+    );
+    for token in ["/", "\\"] {
+        let pending = rooted
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| choice.text() == token)
+            .unwrap()
+            .into_successor();
+        assert_eq!(
+            pending
+                .choices()
+                .unwrap()
+                .iter()
+                .map(Choice::text)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["[L@H]", "[L@@H]"])
+        );
+    }
 }
 
 #[test]

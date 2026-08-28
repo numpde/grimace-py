@@ -2675,9 +2675,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         ) {
                             Ok(Consistency::Consistent(structural)) => structural,
                             Ok(Consistency::Contradiction) => {
-                                return vec![CandidateAttempt::Rejected {
+                                attempts.push(CandidateAttempt::Rejected {
                                     reason: CandidateRejection::Contradiction,
-                                }];
+                                });
+                                continue;
                             }
                             Err(failure) => {
                                 attempts.push(CandidateAttempt::Failed(failure));

@@ -789,6 +789,57 @@ impl ConstraintSolver for FailSecondDirectionalMarkSolver {
     }
 }
 
+static REJECT_DIRECTIONAL_MARK_VARIABLE: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+/// Nonconforming fault injector used only to verify candidate-local mark rejection.
+#[derive(Clone, Debug)]
+struct RejectPlainDirectionalMarkSolver(NativeSolverState);
+
+impl ConstraintSolver for RejectPlainDirectionalMarkSolver {
+    type Failure = InjectedSolverFailure;
+
+    fn initial(
+        model: Arc<crate::model::ConstraintModel>,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::initial(model)
+            .map_err(InjectedSolverFailure::Native)?
+            .map(Self))
+    }
+
+    fn restricted(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(restrictions, &[])
+    }
+
+    fn transitioned(
+        &self,
+        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
+        activate: &[crate::ids::FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        let rejected = REJECT_DIRECTIONAL_MARK_VARIABLE.load(Ordering::Relaxed);
+        if restrictions.iter().any(|(variable, domain)| {
+            variable.index() == rejected && *domain == CarrierMark::Plain.singleton_domain()
+        }) {
+            return Ok(Consistency::Contradiction);
+        }
+        Ok(
+            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)
+                .map_err(InjectedSolverFailure::Native)?
+                .map(Self),
+        )
+    }
+
+    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain(variable)
+    }
+
+    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
+        self.0.factor_is_active(factor)
+    }
+}
+
 static DIRECTIONAL_RESTRICTION_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Debug)]
@@ -5450,6 +5501,38 @@ fn selectable_explicit_plain_and_directional_tokens_share_one_inline_frontier() 
                 &surface, atoms[4], bonds[3],
             )))
     }));
+}
+
+#[test]
+fn contradictory_explicit_plain_mark_does_not_suppress_directional_siblings() {
+    let (surface, atoms, bonds) =
+        selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
+    let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[3])
+    else {
+        panic!("selectable carrier must compile");
+    };
+    REJECT_DIRECTIONAL_MARK_VARIABLE.store(site.mark_variable.index(), Ordering::Relaxed);
+    let initial = NonStereoWriterState::<RejectPlainDirectionalMarkSolver>::initial(&surface)
+        .unwrap()
+        .unwrap_consistent();
+    let rooted = initial
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[4]))
+        .unwrap()
+        .into_successor();
+    let before = rooted.observe_raw();
+    assert_eq!(
+        rooted
+            .choices()
+            .unwrap()
+            .iter()
+            .map(Choice::text)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["/", "\\"])
+    );
+    assert_eq!(rooted.observe_raw(), before);
 }
 
 #[test]

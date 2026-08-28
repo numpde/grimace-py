@@ -1,4 +1,4 @@
-//! Independent one-step qualification for fixed-carrier directional transitions.
+//! Independent one-step qualification for fixed and selectable directional transitions.
 //!
 //! Expected sign projections are enumerated from primitive fixed-endpoint XOR facts. This module
 //! deliberately does not inspect prepared directional metadata, production sign values, solver
@@ -205,10 +205,16 @@ fn production_fixture(spec: &PrimitiveFixture) -> ProductionFixture {
         .map(|relation| PreparedDirectionalRelation {
             double_bond: bonds[relation.double_bond],
             left_endpoint: atoms[relation.left_endpoint],
-            left_carriers: vec![bonds[relation.left_carrier]].into_boxed_slice(),
+            left_carriers: vec![PreparedDirectionalCarrier::unflipped(
+                bonds[relation.left_carrier],
+            )]
+            .into_boxed_slice(),
             right_endpoint: atoms[relation.right_endpoint],
-            right_carriers: vec![bonds[relation.right_carrier]].into_boxed_slice(),
-            outward_sign_xor: relation.outward_xor,
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(
+                bonds[relation.right_carrier],
+            )]
+            .into_boxed_slice(),
+            side_phase_xor: relation.outward_xor,
         })
         .collect();
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
@@ -299,7 +305,7 @@ fn projected_sign_domains(
         .map(|carrier| {
             let values = assignments
                 .iter()
-                .map(|assignment| assignment[&carrier])
+                .map(|assignment| assignment[&carrier] + 1)
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect();
@@ -396,7 +402,7 @@ fn observed_sign_domains(
     observed: &ObservedNonStereoState,
 ) -> Vec<(usize, Vec<u8>)> {
     observed
-        .directional_sign_domains
+        .directional_mark_domains
         .iter()
         .map(|(bond, domain)| {
             (
@@ -475,7 +481,7 @@ fn observed_choice(
                 observed
                     .pending
                     .as_ref()
-                    .expect("directional sign token must leave its atom pending"),
+                    .expect("directional mark token must leave its atom pending"),
             ),
         },
     }
@@ -525,7 +531,7 @@ fn directional_source(
                     }
                     matches!(
                         choice.successor().observe_raw().pending,
-                        Some(ObservedPending::BranchDirectionalSign { bond, .. })
+                        Some(ObservedPending::BranchTraversalEmission { bond, .. })
                             if bond == production.bonds[carrier]
                     )
                 })
@@ -584,4 +590,237 @@ fn isolated_fixed_carrier_chain_matches_forward_and_reverse_one_step_projections
 fn shared_site_chain_matches_forward_and_reverse_one_step_projections() {
     assert_one_step(&SHARED, 2, 2, SourceStage::BranchSign);
     assert_one_step(&SHARED, 3, 2, SourceStage::BranchSign);
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum OracleMark {
+    Plain,
+    SlashAtFixedA,
+    BackslashAtFixedA,
+}
+
+impl OracleMark {
+    const ALL: [Self; 3] = [Self::Plain, Self::SlashAtFixedA, Self::BackslashAtFixedA];
+
+    const fn sign(self) -> Option<bool> {
+        match self {
+            Self::Plain => None,
+            Self::SlashAtFixedA => Some(false),
+            Self::BackslashAtFixedA => Some(true),
+        }
+    }
+
+    const fn from_observed(value: u8) -> Self {
+        match value {
+            0 => Self::Plain,
+            1 => Self::SlashAtFixedA,
+            2 => Self::BackslashAtFixedA,
+            _ => panic!("observed an unknown carrier-mark value"),
+        }
+    }
+
+    const fn text(self, from_fixed_a: bool) -> Option<&'static str> {
+        match (self, from_fixed_a) {
+            (Self::Plain, _) => None,
+            (Self::SlashAtFixedA, true) | (Self::BackslashAtFixedA, false) => Some("/"),
+            (Self::BackslashAtFixedA, true) | (Self::SlashAtFixedA, false) => Some("\\"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct SelectableSuccessor {
+    active_atom: usize,
+    visited_atoms: Vec<usize>,
+    mark_domains: Vec<(usize, Vec<OracleMark>)>,
+    pending_atom: Option<(usize, usize, usize)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct SelectableChoice {
+    text: String,
+    successor: SelectableSuccessor,
+}
+
+fn selectable_assignments() -> Vec<[OracleMark; 3]> {
+    let mut assignments = Vec::new();
+    for first in OracleMark::ALL {
+        for second in OracleMark::ALL {
+            for right in OracleMark::ALL {
+                let left_phases = [(first, true), (second, true)]
+                    .into_iter()
+                    .filter_map(|(mark, prepared_flip)| {
+                        mark.sign().map(|sign| sign ^ prepared_flip)
+                    })
+                    .collect::<BTreeSet<_>>();
+                let Some(right_phase) = right.sign() else {
+                    continue;
+                };
+                if left_phases.len() == 1 && left_phases.contains(&right_phase) {
+                    assignments.push([first, second, right]);
+                }
+            }
+        }
+    }
+    assignments
+}
+
+fn selectable_production_fixture() -> ProductionFixture {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = vec![
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["F", "L", "R", "Cl", "Br"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Single,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+    ProductionFixture {
+        surface,
+        atoms,
+        bonds,
+    }
+}
+
+fn observed_selectable_choice(
+    production: &ProductionFixture,
+    choice: &Choice<State>,
+) -> SelectableChoice {
+    let observed = choice.successor().observe_raw();
+    let pending_atom = observed.pending.as_ref().map(|pending| match pending {
+        ObservedPending::InlineAtom {
+            parent,
+            child,
+            bond,
+        } => (
+            atom_index(production, *parent),
+            atom_index(production, *child),
+            bond_index(production, *bond),
+        ),
+        other => panic!("unexpected selectable pending stage: {other:?}"),
+    });
+    SelectableChoice {
+        text: choice.text().to_owned(),
+        successor: SelectableSuccessor {
+            active_atom: atom_index(
+                production,
+                observed
+                    .structural
+                    .traversal
+                    .active_frame
+                    .as_ref()
+                    .expect("selectable successor must have an active frame")
+                    .atom,
+            ),
+            visited_atoms: observed
+                .structural
+                .traversal
+                .visited_atoms
+                .iter()
+                .map(|atom| atom_index(production, *atom))
+                .collect(),
+            mark_domains: observed
+                .directional_mark_domains
+                .iter()
+                .map(|(bond, domain)| {
+                    (
+                        bond_index(production, *bond),
+                        domain
+                            .iter()
+                            .map(OracleMark::from_observed)
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect(),
+            pending_atom,
+        },
+    }
+}
+
+#[test]
+fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
+    let production = selectable_production_fixture();
+    let source = rooted_state(&production, 0);
+    let source_before = source.observe_raw();
+    let assignments = selectable_assignments();
+    let expected = OracleMark::ALL
+        .into_iter()
+        .filter_map(|selected| {
+            let survivors = assignments
+                .iter()
+                .copied()
+                .filter(|assignment| assignment[0] == selected)
+                .collect::<Vec<_>>();
+            if survivors.is_empty() {
+                return None;
+            }
+            let mark_domains = [(0, 0), (2, 2), (3, 1)]
+                .into_iter()
+                .map(|(bond, index)| {
+                    let domain = survivors
+                        .iter()
+                        .map(|assignment| assignment[index])
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    (bond, domain)
+                })
+                .collect::<Vec<_>>();
+            let (text, active_atom, visited_atoms, pending_atom) = match selected {
+                OracleMark::Plain => ("L", 1, vec![0, 1], None),
+                mark => (mark.text(true).unwrap(), 0, vec![0], Some((0, 1, 0))),
+            };
+            Some(SelectableChoice {
+                text: text.to_owned(),
+                successor: SelectableSuccessor {
+                    active_atom,
+                    visited_atoms,
+                    mark_domains,
+                    pending_atom,
+                },
+            })
+        })
+        .collect::<BTreeSet<_>>();
+    let actual = source
+        .choices()
+        .unwrap()
+        .iter()
+        .map(|choice| observed_selectable_choice(&production, choice))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        source.observe_raw(),
+        source_before,
+        "choices mutated source"
+    );
+    assert_eq!(actual, expected);
 }

@@ -25,7 +25,8 @@ pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, VariableId};
 pub use model::{
     BinaryRelationFactor, BondRole, ConstraintModel, ConstraintModelBuilder, ConstraintModelError,
-    EdgeRolePartition, FactorDefinition, SpanningTreeEdge, SpanningTreeFactor, VariableDefinition,
+    DirectionalRingPlacementFactor, EdgeRolePartition, FactorDefinition, SpanningTreeEdge,
+    SpanningTreeFactor, VariableDefinition,
 };
 pub use prepared::{
     AdjacentBond, PreparedBond, PreparedGraph, PreparedGraphBuilder, PreparedGraphError,

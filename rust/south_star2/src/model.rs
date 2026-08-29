@@ -109,6 +109,45 @@ impl BinaryRelationFactor {
     }
 }
 
+/// A latent local relation between one physical directional mark and its ring plan.
+///
+/// This is deliberately distinct from an always-active binary relation: its plan has
+/// no semantic meaning until the writer commits the physical carrier to `Ring`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectionalRingPlacementFactor {
+    variables: [VariableId; 2],
+    allowed_plans_by_mark: Box<[Domain]>,
+    allowed_marks_by_plan: Box<[Domain]>,
+}
+
+impl DirectionalRingPlacementFactor {
+    pub const fn mark_variable(&self) -> VariableId {
+        self.variables[0]
+    }
+
+    pub const fn plan_variable(&self) -> VariableId {
+        self.variables[1]
+    }
+
+    pub const fn variables(&self) -> &[VariableId; 2] {
+        &self.variables
+    }
+
+    pub fn allowed_plans(&self, mark: u8) -> Domain {
+        self.allowed_plans_by_mark
+            .get(mark as usize)
+            .copied()
+            .unwrap_or_else(Domain::empty)
+    }
+
+    pub fn allowed_marks(&self, plan: u8) -> Domain {
+        self.allowed_marks_by_plan
+            .get(plan as usize)
+            .copied()
+            .unwrap_or_else(Domain::empty)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SpanningTreeEdge {
     decision_variable: VariableId,
@@ -244,6 +283,7 @@ impl TetrahedralLayoutFactor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FactorDefinition {
     BinaryRelation(BinaryRelationFactor),
+    DirectionalRingPlacement(DirectionalRingPlacementFactor),
     SpanningTree(SpanningTreeFactor),
     TetrahedralLayout(TetrahedralLayoutFactor),
 }
@@ -252,6 +292,7 @@ impl FactorDefinition {
     pub fn variables(&self) -> &[VariableId] {
         match self {
             Self::BinaryRelation(factor) => factor.variables(),
+            Self::DirectionalRingPlacement(factor) => factor.variables(),
             Self::SpanningTree(factor) => factor.variables(),
             Self::TetrahedralLayout(factor) => factor.variables(),
         }
@@ -413,6 +454,57 @@ impl ConstraintModelBuilder {
                 allowed_left_by_right: allowed_left_by_right.into_boxed_slice(),
             }),
             FactorActivation::Always,
+        )
+    }
+
+    pub fn add_latent_directional_ring_placement(
+        &mut self,
+        mark_variable: VariableId,
+        plan_variable: VariableId,
+        allowed_pairs: impl IntoIterator<Item = (u8, u8)>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let mark_domain = self
+            .variables
+            .get(mark_variable.index())
+            .ok_or(ConstraintModelError::UnknownVariable(mark_variable))?
+            .initial_domain;
+        let plan_domain = self
+            .variables
+            .get(plan_variable.index())
+            .ok_or(ConstraintModelError::UnknownVariable(plan_variable))?
+            .initial_domain;
+        if mark_variable == plan_variable {
+            return Err(ConstraintModelError::RepeatedVariableInFactor(
+                mark_variable,
+            ));
+        }
+        let mut allowed_plans_by_mark = vec![Domain::empty(); mark_domain.value_span()];
+        let mut allowed_marks_by_plan = vec![Domain::empty(); plan_domain.value_span()];
+        for (mark, plan) in allowed_pairs {
+            if !mark_domain.contains(mark) {
+                return Err(ConstraintModelError::RelationValueOutsideInitialDomain {
+                    variable: mark_variable,
+                    value_index: mark,
+                });
+            }
+            if !plan_domain.contains(plan) {
+                return Err(ConstraintModelError::RelationValueOutsideInitialDomain {
+                    variable: plan_variable,
+                    value_index: plan,
+                });
+            }
+            allowed_plans_by_mark[mark as usize] =
+                allowed_plans_by_mark[mark as usize].union(Domain::from_bits(1_u64 << plan));
+            allowed_marks_by_plan[plan as usize] =
+                allowed_marks_by_plan[plan as usize].union(Domain::from_bits(1_u64 << mark));
+        }
+        self.push_factor(
+            FactorDefinition::DirectionalRingPlacement(DirectionalRingPlacementFactor {
+                variables: [mark_variable, plan_variable],
+                allowed_plans_by_mark: allowed_plans_by_mark.into_boxed_slice(),
+                allowed_marks_by_plan: allowed_marks_by_plan.into_boxed_slice(),
+            }),
+            FactorActivation::Latent,
         )
     }
 
@@ -671,7 +763,8 @@ impl ConstraintModelBuilder {
         self.factors_by_variable[variable.index()]
             .iter()
             .find_map(|factor| match &self.factors[factor.index()] {
-                FactorDefinition::BinaryRelation(_) => None,
+                FactorDefinition::BinaryRelation(_)
+                | FactorDefinition::DirectionalRingPlacement(_) => None,
                 FactorDefinition::SpanningTree(spanning) => spanning
                     .edges()
                     .iter()

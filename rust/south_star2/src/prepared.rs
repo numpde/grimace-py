@@ -237,6 +237,17 @@ impl PreparedConstraintAssembly {
             .expect("prepared binary relation must define a valid factor")
     }
 
+    pub(crate) fn add_latent_directional_ring_placement(
+        &mut self,
+        mark_variable: VariableId,
+        plan_variable: VariableId,
+        allowed_pairs: impl IntoIterator<Item = (u8, u8)>,
+    ) -> FactorId {
+        self.builder
+            .add_latent_directional_ring_placement(mark_variable, plan_variable, allowed_pairs)
+            .expect("prepared directional ring placement must define a valid latent factor")
+    }
+
     pub(crate) fn bond_decision_variable(&self, bond: BondId) -> VariableId {
         self.bond_decision_variables[bond.index()]
     }

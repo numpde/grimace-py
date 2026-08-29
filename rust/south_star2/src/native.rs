@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
 use crate::model::{
-    BinaryRelationFactor, ConstraintModel, EdgeRolePartition, FactorActivation, FactorDefinition,
-    SpanningTreeFactor, TetrahedralLayoutFactor,
+    BinaryRelationFactor, ConstraintModel, DirectionalRingPlacementFactor, EdgeRolePartition,
+    FactorActivation, FactorDefinition, SpanningTreeFactor, TetrahedralLayoutFactor,
 };
 use crate::persistent::PagedStore;
 
@@ -290,6 +290,12 @@ impl NativeSolverState {
                         .flatten()
                         .collect::<Vec<_>>()
                 }
+                FactorDefinition::DirectionalRingPlacement(placement) => {
+                    revise_directional_ring_placement(placement, &mut self.domains)?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                }
                 FactorDefinition::SpanningTree(spanning_tree) => {
                     revise_spanning_tree(spanning_tree, &mut self.domains)?
                 }
@@ -556,6 +562,7 @@ impl NativeExactPlan {
                 || matches!(
                     model.factor(seed).expect("prepared factor must exist"),
                     FactorDefinition::SpanningTree(_)
+                        | FactorDefinition::DirectionalRingPlacement(_)
                 )
             {
                 continue;
@@ -603,6 +610,9 @@ impl NativeExactPlan {
                         }
                         layout.variables()
                     }
+                    FactorDefinition::DirectionalRingPlacement(_) => {
+                        unreachable!("local directional ring factors are not exact-search seeds")
+                    }
                     FactorDefinition::SpanningTree(_) => {
                         unreachable!("semantic traversal cannot queue a spanning factor")
                     }
@@ -620,6 +630,7 @@ impl NativeExactPlan {
                                     pending.push_back(neighbour);
                                 }
                             }
+                            FactorDefinition::DirectionalRingPlacement(_) => {}
                             FactorDefinition::SpanningTree(spanning_tree) => {
                                 if !structural_factors.insert(neighbour) {
                                     continue;
@@ -947,6 +958,33 @@ fn revised_binary_domains(
     }
 
     Ok((new_left, new_right))
+}
+
+fn revise_directional_ring_placement(
+    factor: &DirectionalRingPlacementFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<[Option<VariableId>; 2], NativeSolverError> {
+    let mark = factor.mark_variable();
+    let plan = factor.plan_variable();
+    let old_mark = domains[mark.index()];
+    let old_plan = domains[plan.index()];
+    let new_mark = values_with_support(old_mark, old_plan, |value| factor.allowed_plans(value));
+    if new_mark.is_empty() {
+        return Err(NativeSolverError::Contradiction);
+    }
+    let new_plan = values_with_support(old_plan, new_mark, |value| factor.allowed_marks(value));
+    if new_plan.is_empty() {
+        return Err(NativeSolverError::Contradiction);
+    }
+    let mark_reduced = (new_mark != old_mark).then_some(mark);
+    let plan_reduced = (new_plan != old_plan).then_some(plan);
+    if mark_reduced.is_some() {
+        domains[mark.index()] = new_mark;
+    }
+    if plan_reduced.is_some() {
+        domains[plan.index()] = new_plan;
+    }
+    Ok([mark_reduced, plan_reduced])
 }
 
 fn values_with_support(

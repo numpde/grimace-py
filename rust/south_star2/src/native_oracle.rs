@@ -251,6 +251,9 @@ fn assignment_satisfies(
             FactorDefinition::BinaryRelation(relation) => relation
                 .allowed_right(assignment[relation.left().index()])
                 .contains(assignment[relation.right().index()]),
+            FactorDefinition::DirectionalRingPlacement(placement) => placement
+                .allowed_plans(assignment[placement.mark_variable().index()])
+                .contains(assignment[placement.plan_variable().index()]),
             FactorDefinition::SpanningTree(spanning_tree) => {
                 assignment_satisfies_spanning_tree(spanning_tree, assignment)
             }
@@ -380,6 +383,73 @@ fn latent_layout_fixture() -> (
             )
             .unwrap();
     (Arc::new(builder.build()), order, pattern, bonds, factor)
+}
+
+fn latent_directional_ring_fixture() -> (Arc<ConstraintModel>, VariableId, VariableId, FactorId) {
+    let mut builder = ConstraintModelBuilder::new();
+    let mark = builder
+        .add_variable(Domain::from_indices(0_u8..3).unwrap())
+        .unwrap();
+    let plan = builder
+        .add_variable(Domain::from_indices(0_u8..8).unwrap())
+        .unwrap();
+    let factor = builder
+        .add_latent_directional_ring_placement(
+            mark,
+            plan,
+            [
+                (0, 0),
+                (0, 1),
+                (0, 2),
+                (0, 3),
+                (1, 4),
+                (1, 5),
+                (2, 6),
+                (2, 7),
+            ],
+        )
+        .unwrap();
+    (Arc::new(builder.build()), mark, plan, factor)
+}
+
+#[test]
+fn latent_directional_ring_projection_matches_exhaustive_for_every_partial_domain() {
+    let (model, mark, plan, factor) = latent_directional_ring_fixture();
+    let native_initial = NativeSolverState::initial(Arc::clone(&model)).unwrap();
+    assert_eq!(native_initial.factor_is_active(factor), Some(false));
+    assert_eq!(native_initial.exact_run_counts(), (0, 0));
+
+    for mark_bits in 1_u64..8 {
+        for plan_bits in 1_u64..256 {
+            let restrictions = [
+                (mark, Domain::from_bits(mark_bits)),
+                (plan, Domain::from_bits(plan_bits)),
+            ];
+            let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+                .unwrap()
+                .unwrap_consistent()
+                .transitioned(&restrictions, &[factor])
+                .unwrap();
+            let exhaustive =
+                <ExhaustiveSolverState as ConstraintSolver>::initial(Arc::clone(&model))
+                    .unwrap()
+                    .unwrap_consistent()
+                    .transitioned(&restrictions, &[factor])
+                    .unwrap();
+            match (native, exhaustive) {
+                (Consistency::Contradiction, Consistency::Contradiction) => {}
+                (Consistency::Consistent(native), Consistency::Consistent(exhaustive)) => {
+                    assert_eq!(native.domain(mark), exhaustive.domain(mark));
+                    assert_eq!(native.domain(plan), exhaustive.domain(plan));
+                    assert_eq!(native.factor_is_active(factor), Some(true));
+                    assert_eq!(native.exact_run_counts(), (0, 0));
+                }
+                _ => panic!(
+                    "native and exhaustive ring placement disagree for {mark_bits:#x}/{plan_bits:#x}"
+                ),
+            }
+        }
+    }
 }
 
 fn projected_domains<S: ConstraintSolver>(state: &S, variables: &[VariableId]) -> Vec<Domain> {

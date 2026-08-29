@@ -4756,7 +4756,7 @@ fn preparation_rejects_contradictory_directional_cycles_and_flattens_consistent_
     let consistent = directional_hexagon_surface([true, false, false]).unwrap();
     assert_eq!(
         consistent.molecule().constraint_model().factor_count(),
-        10,
+        13,
         "three pattern-to-left, pattern-to-right, and cross-side relations plus one spanning factor"
     );
     let model = consistent.molecule().constraint_model_arc();
@@ -4881,7 +4881,7 @@ fn shared_directional_carrier_reuses_one_sign_variable() {
     assert_eq!(variables.into_iter().collect::<BTreeSet<_>>().len(), 3);
     assert_eq!(
         surface.molecule().constraint_model().factor_count(),
-        7,
+        10,
         "two side-pattern triples plus one molecular spanning factor"
     );
 }
@@ -5447,6 +5447,12 @@ fn selectable_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, Ve
 }
 
 fn selectable_directional_ring_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    selectable_directional_ring_fixture_with_token(NonStereoBondToken::Elided)
+}
+
+fn selectable_directional_ring_fixture_with_token(
+    carrier_token: NonStereoBondToken,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..5)
         .map(|_| graph.add_atom().unwrap())
@@ -5464,7 +5470,7 @@ fn selectable_directional_ring_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec
             .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
             .into(),
         vec![
-            NonStereoBondToken::Elided,
+            carrier_token,
             NonStereoBondToken::Double,
             NonStereoBondToken::Elided,
             NonStereoBondToken::Elided,
@@ -5489,6 +5495,114 @@ fn selectable_directional_ring_fixture() -> (PreparedNonStereo, Vec<AtomId>, Vec
     )
     .unwrap();
     (surface, atoms, bonds.into())
+}
+
+#[test]
+fn explicit_directional_ring_carriers_offer_plain_and_marked_endpoint_tokens() {
+    for (token, plain_text) in [
+        (NonStereoBondToken::Single, "-"),
+        (NonStereoBondToken::Aromatic, ":"),
+    ] {
+        let (surface, atoms, bonds) = selectable_directional_ring_fixture_with_token(token);
+        for (root, endpoint_is_a) in [(atoms[0], true), (atoms[1], false)] {
+            let rooted = initial(&surface)
+                .choices()
+                .unwrap()
+                .into_iter()
+                .find(|choice| choice.successor().active_atom() == Some(root))
+                .unwrap()
+                .into_successor();
+            let choices = rooted
+                .choices()
+                .unwrap()
+                .into_iter()
+                .filter(|choice| {
+                    matches!(
+                        choice.successor().observe_raw().structural.traversal.bond_progress[bonds[0].index()],
+                        ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == root
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+                BTreeSet::from(["1", plain_text, "/", "\\"])
+            );
+            let PreparedDirectionalBondStatus::CompiledSite(site) =
+                surface.directional_status(bonds[0])
+            else {
+                panic!("directional ring carrier must compile");
+            };
+            for choice in choices
+                .iter()
+                .filter(|choice| matches!(choice.text(), "/" | "\\"))
+            {
+                let expected_mark = if (choice.text() == "/") == endpoint_is_a {
+                    CarrierMark::SlashAtFixedA
+                } else {
+                    CarrierMark::BackslashAtFixedA
+                };
+                assert_eq!(
+                    choice
+                        .successor()
+                        .structural
+                        .semantic_domain(site.mark_variable),
+                    expected_mark.singleton_domain()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn explicit_plain_directional_ring_plans_render_at_either_or_both_endpoints() {
+    for (token, glyph) in [
+        (NonStereoBondToken::Single, '-'),
+        (NonStereoBondToken::Aromatic, ':'),
+    ] {
+        let (surface, _, bonds) = selectable_directional_ring_fixture_with_token(token);
+        let PreparedDirectionalBondStatus::CompiledSite(site) =
+            surface.directional_status(bonds[0])
+        else {
+            panic!("directional ring carrier must compile");
+        };
+        let mut pending = vec![(String::new(), initial(&surface))];
+        let mut observed = BTreeSet::new();
+        let mut explored = 0_usize;
+        while let Some((text, state)) = pending.pop() {
+            explored += 1;
+            assert!(
+                explored <= 100_000,
+                "explicit ring fixture exceeded its bound"
+            );
+            if state.is_accepted() {
+                let plan = state.structural.semantic_domain(site.ring_plan_variable);
+                for candidate in [
+                    DirectionalRingPlan::PlainAtA,
+                    DirectionalRingPlan::PlainAtB,
+                    DirectionalRingPlan::PlainAtBoth,
+                ] {
+                    if plan == candidate.singleton_domain() {
+                        let expected_count =
+                            usize::from(candidate == DirectionalRingPlan::PlainAtBoth) + 1;
+                        assert_eq!(text.matches(glyph).count(), expected_count);
+                        observed.insert(candidate.value_index());
+                    }
+                }
+                continue;
+            }
+            for choice in state.choices().unwrap() {
+                pending.push((format!("{text}{}", choice.text()), choice.into_successor()));
+            }
+        }
+        assert_eq!(
+            observed,
+            BTreeSet::from([
+                DirectionalRingPlan::PlainAtA.value_index(),
+                DirectionalRingPlan::PlainAtB.value_index(),
+                DirectionalRingPlan::PlainAtBoth.value_index(),
+            ])
+        );
+    }
 }
 
 #[test]
@@ -5680,7 +5794,7 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
 }
 
 #[test]
-fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_incomplete() {
+fn selectable_ring_opening_preserves_unresolved_future_mark_spelling() {
     let (surface, atoms, bonds) = selectable_directional_ring_fixture();
     let rooted = initial(&surface)
         .choices()
@@ -5689,7 +5803,7 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
         .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
         .unwrap()
         .into_successor();
-    let incident = incident(&surface, atoms[1], bonds[0]);
+    let opening_incident = incident(&surface, atoms[1], bonds[0]);
     let candidate = rooted
         .structural
         .derive_candidates()
@@ -5697,7 +5811,7 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
         .iter()
         .copied()
         .find(|candidate| {
-            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == incident)
+            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == opening_incident)
         })
         .unwrap();
     let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
@@ -5705,16 +5819,43 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
         panic!("selectable ring carrier must compile");
     };
 
-    let unrestricted = rooted.attempt_directional_ring_candidate(candidate, incident);
+    let unrestricted = rooted.attempt_directional_ring_candidate(candidate, opening_incident);
     assert!(unrestricted
         .iter()
-        .any(|attempt| matches!(attempt, CandidateAttempt::Accepted { .. })));
-    assert!(unrestricted.iter().any(|attempt| matches!(
-        attempt,
-        CandidateAttempt::Incomplete(WriterIncompleteness::DirectionalRingEndpoint {
-            carrier_bond
-        }) if *carrier_bond == bonds[0]
-    )));
+        .all(|attempt| !matches!(attempt, CandidateAttempt::Incomplete(_))));
+    assert_eq!(
+        unrestricted
+            .iter()
+            .filter_map(|attempt| match attempt {
+                CandidateAttempt::Accepted { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["1", "/", "\\"])
+    );
+    let label_only = unrestricted
+        .iter()
+        .find_map(|attempt| match attempt {
+            CandidateAttempt::Accepted { text, successor } if text == "1" => Some(successor),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        label_only.structural.semantic_domain(site.mark_variable),
+        CarrierMark::domain()
+    );
+    assert_eq!(
+        label_only
+            .structural
+            .semantic_domain(site.ring_plan_variable),
+        DirectionalRingPlan::PlainNone
+            .singleton_domain()
+            .union(DirectionalRingPlan::SlashAtA.singleton_domain())
+            .union(DirectionalRingPlan::BackslashAtA.singleton_domain())
+    );
+    assert!(label_only
+        .structural
+        .factor_is_active(site.ring_plan_factor));
 
     let mut plain_source = rooted.clone();
     plain_source.structural = plain_source
@@ -5725,7 +5866,7 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
         )
         .unwrap()
         .unwrap_consistent();
-    let plain = plain_source.attempt_directional_ring_candidate(candidate, incident);
+    let plain = plain_source.attempt_directional_ring_candidate(candidate, opening_incident);
     assert!(plain
         .iter()
         .all(|attempt| !matches!(attempt, CandidateAttempt::Incomplete(_))));
@@ -5735,6 +5876,116 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
             if successor.structural.semantic_domain(site.mark_variable)
                 == CarrierMark::Plain.singleton_domain()
     )));
+}
+
+#[test]
+fn label_only_directional_ring_opening_resolves_mark_at_the_closure_token() {
+    let (surface, atoms, bonds) = selectable_directional_ring_fixture();
+    let rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let opened = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "1"
+                && matches!(
+                    choice.successor().observe_raw().structural.traversal.bond_progress[bonds[0].index()],
+                    ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[1]
+                )
+        })
+        .unwrap()
+        .into_successor();
+    let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
+    else {
+        panic!("selectable ring carrier must compile");
+    };
+
+    let mut stack = vec![opened];
+    let closure_source = loop {
+        let state = stack
+            .pop()
+            .expect("opened ring must reach its other endpoint");
+        let observed = state.observe_raw();
+        if observed
+            .structural
+            .traversal
+            .active_frame
+            .as_ref()
+            .is_some_and(|frame| frame.atom == atoms[0])
+            && matches!(
+                observed.structural.traversal.bond_progress[bonds[0].index()],
+                ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[1]
+            )
+        {
+            break state;
+        }
+        stack.extend(
+            state
+                .choices()
+                .unwrap()
+                .into_iter()
+                .map(Choice::into_successor),
+        );
+    };
+
+    let before = closure_source.observe_raw();
+    let choices = closure_source.choices().unwrap();
+    assert_eq!(closure_source.observe_raw(), before);
+    let closure_choices = choices
+        .iter()
+        .filter(|choice| {
+            matches!(
+                choice
+                    .successor()
+                    .observe_raw()
+                    .structural
+                    .traversal
+                    .bond_progress[bonds[0].index()],
+                ObservedBondProgress::RingClosed { .. }
+            )
+        })
+        .collect::<Vec<_>>();
+    let source_marks = closure_source
+        .structural
+        .semantic_domain(site.mark_variable);
+    let mut expected_texts = BTreeSet::from(["1"]);
+    for mark in [CarrierMark::SlashAtFixedA, CarrierMark::BackslashAtFixedA] {
+        if source_marks.contains(mark.value_index()) {
+            expected_texts.insert(match mark {
+                CarrierMark::SlashAtFixedA => "/",
+                CarrierMark::BackslashAtFixedA => "\\",
+                CarrierMark::Plain => unreachable!(),
+            });
+        }
+    }
+    assert_eq!(
+        closure_choices
+            .iter()
+            .map(|choice| choice.text())
+            .collect::<BTreeSet<_>>(),
+        expected_texts
+    );
+    for choice in closure_choices {
+        let successor = choice.successor();
+        let mark = successor.structural.semantic_domain(site.mark_variable);
+        let plan = successor
+            .structural
+            .semantic_domain(site.ring_plan_variable);
+        assert!(mark.is_singleton());
+        assert!(plan.is_singleton());
+        let plan = DirectionalRingPlan::ALL
+            .into_iter()
+            .find(|candidate| plan.contains(candidate.value_index()))
+            .unwrap();
+        assert_eq!(mark, plan.mark().singleton_domain());
+        assert!(successor.structural.factor_is_active(site.ring_plan_factor));
+    }
 }
 
 #[test]
@@ -5748,7 +5999,7 @@ fn exhausted_marked_ring_labels_are_spelling_rejections_before_incompleteness() 
         .unwrap()
         .into_successor();
     rooted.labels.maximum_spelling_label = Some(0);
-    let incident = incident(&surface, atoms[1], bonds[0]);
+    let opening_incident = incident(&surface, atoms[1], bonds[0]);
     let candidate = rooted
         .structural
         .derive_candidates()
@@ -5756,11 +6007,11 @@ fn exhausted_marked_ring_labels_are_spelling_rejections_before_incompleteness() 
         .iter()
         .copied()
         .find(|candidate| {
-            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == incident)
+            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == opening_incident)
         })
         .unwrap();
     let before = rooted.observe_raw();
-    let attempts = rooted.attempt_directional_ring_candidate(candidate, incident);
+    let attempts = rooted.attempt_directional_ring_candidate(candidate, opening_incident);
     assert_eq!(rooted.observe_raw(), before);
     assert!(attempts.iter().all(|attempt| matches!(
         attempt,
@@ -5788,6 +6039,23 @@ fn every_complete_selectable_walk_resolves_physical_marks_and_side_patterns() {
                 .structural
                 .semantic_domain(site.mark_variable)
                 .is_singleton());
+            let role = terminal.structural.bond_decision_domain(bond);
+            if role == BondRole::Traversal.singleton_domain() {
+                assert!(!terminal.structural.factor_is_active(site.ring_plan_factor));
+            } else {
+                assert_eq!(role, BondRole::Ring.singleton_domain());
+                assert!(terminal.structural.factor_is_active(site.ring_plan_factor));
+                let plan = terminal.structural.semantic_domain(site.ring_plan_variable);
+                assert!(plan.is_singleton());
+                let plan = DirectionalRingPlan::ALL
+                    .into_iter()
+                    .find(|candidate| plan.contains(candidate.value_index()))
+                    .unwrap();
+                assert_eq!(
+                    terminal.structural.semantic_domain(site.mark_variable),
+                    plan.mark().singleton_domain()
+                );
+            }
         }
         assert!(surface.directional_sides.iter().all(|side| terminal
             .structural
@@ -6019,6 +6287,91 @@ fn each_directional_mark_choice_uses_one_solver_restriction_batch() {
 }
 
 #[test]
+fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative() {
+    type CountingState = NonStereoWriterState<CountDirectionalRestrictionsSolver>;
+
+    let (surface, atoms, bonds) = selectable_directional_ring_fixture();
+    let rooted = CountingState::initial(&surface)
+        .unwrap()
+        .unwrap_consistent()
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    let opening_incident = incident(&surface, atoms[1], bonds[0]);
+    let opening = rooted
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == opening_incident)
+        })
+        .unwrap();
+    DIRECTIONAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+    let opening_attempts = rooted.attempt_directional_ring_candidate(opening, opening_incident);
+    assert_eq!(
+        DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
+        opening_attempts.len()
+    );
+    let opened = opening_attempts
+        .into_iter()
+        .find_map(|attempt| match attempt {
+            CandidateAttempt::Accepted { text, successor } if text == "1" => Some(successor),
+            _ => None,
+        })
+        .unwrap();
+
+    let mut stack = vec![opened];
+    let closure_source = loop {
+        let state = stack
+            .pop()
+            .expect("opened ring must reach its closure endpoint");
+        let observed = state.observe_raw();
+        if observed
+            .structural
+            .traversal
+            .active_frame
+            .as_ref()
+            .is_some_and(|frame| frame.atom == atoms[0])
+            && matches!(
+                observed.structural.traversal.bond_progress[bonds[0].index()],
+                ObservedBondProgress::RingOpen { .. }
+            )
+        {
+            break state;
+        }
+        stack.extend(
+            state
+                .choices()
+                .unwrap()
+                .into_iter()
+                .map(Choice::into_successor),
+        );
+    };
+    let incident = incident(&surface, atoms[0], bonds[0]);
+    let closure = closure_source
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(candidate, StructuralCandidate::RingClose { incident: found, .. } if *found == incident)
+        })
+        .unwrap();
+    DIRECTIONAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+    let closure_attempts = closure_source.attempt_directional_ring_candidate(closure, incident);
+    assert_eq!(
+        DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
+        closure_attempts.len()
+    );
+}
+
+#[test]
 fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection() {
     let (surface, atoms, bonds) = directional_tetrahedral_parent_fixture();
     let rooted = initial(&surface)
@@ -6115,7 +6468,7 @@ fn every_complete_directional_walk_resolves_each_carrier_sign() {
 }
 
 #[test]
-fn directional_ring_candidate_aborts_the_complete_choice_batch_as_incomplete() {
+fn compiled_directional_ring_candidate_publishes_complete_endpoint_choices() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..3)
         .map(|_| graph.add_atom().unwrap())
@@ -6154,12 +6507,10 @@ fn directional_ring_candidate_aborts_the_complete_choice_batch_as_incomplete() {
         .unwrap()
         .into_successor();
     let before = rooted.observe_raw();
-    assert!(matches!(
-        rooted.choices(),
-        Err(ChoiceFailure::Incomplete(
-            WriterIncompleteness::DirectionalRingEndpoint { carrier_bond }
-        )) if carrier_bond == bonds[2]
-    ));
+    let choices = rooted.choices().unwrap();
+    assert!(choices
+        .iter()
+        .any(|choice| matches!(choice.text(), "1" | "/" | "\\")));
     assert_eq!(rooted.observe_raw(), before);
 }
 

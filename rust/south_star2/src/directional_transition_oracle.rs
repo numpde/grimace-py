@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 use crate::native::NativeSolverState;
 use crate::prepared::PreparedGraphBuilder;
+use crate::traversal::ObservedBondProgress;
 
 type State = NonStereoWriterState<NativeSolverState>;
 
@@ -590,6 +591,308 @@ fn isolated_fixed_carrier_chain_matches_forward_and_reverse_one_step_projections
 fn shared_site_chain_matches_forward_and_reverse_one_step_projections() {
     assert_one_step(&SHARED, 2, 2, SourceStage::BranchSign);
     assert_one_step(&SHARED, 3, 2, SourceStage::BranchSign);
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum OracleRingPlan {
+    PlainNone,
+    SlashAtA,
+    SlashAtB,
+    BackslashAtA,
+    BackslashAtB,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct RingOpeningSuccessor {
+    text: String,
+    mark_values: Vec<u8>,
+    plan_values: Vec<OracleRingPlan>,
+    factor_active: bool,
+    label_owner: Option<(usize, usize)>,
+    pending_label: bool,
+}
+
+fn ring_production_fixture() -> ProductionFixture {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5)
+        .map(|_| graph.add_atom().unwrap())
+        .collect::<Vec<_>>();
+    let bonds = vec![
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        graph.add_bond(atoms[1], atoms[4]).unwrap(),
+        graph.add_bond(atoms[0], atoms[4]).unwrap(),
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        PreparedMolecule::new(graph.build()),
+        ["A", "L", "R", "X", "B"]
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
+            .into(),
+        vec![
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Double,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+            NonStereoBondToken::Elided,
+        ],
+        vec![PreparedDirectionalRelation {
+            double_bond: bonds[1],
+            left_endpoint: atoms[1],
+            left_carriers: vec![
+                PreparedDirectionalCarrier::unflipped(bonds[0]),
+                PreparedDirectionalCarrier {
+                    bond: bonds[3],
+                    side_flip: true,
+                },
+            ]
+            .into_boxed_slice(),
+            right_endpoint: atoms[2],
+            right_carriers: vec![PreparedDirectionalCarrier::unflipped(bonds[2])]
+                .into_boxed_slice(),
+            side_phase_xor: false,
+        }],
+    )
+    .unwrap();
+    ProductionFixture {
+        surface,
+        atoms,
+        bonds,
+    }
+}
+
+fn observed_oracle_ring_plans(domain: Domain) -> Vec<OracleRingPlan> {
+    domain
+        .iter()
+        .map(|value| match value {
+            0 => OracleRingPlan::PlainNone,
+            4 => OracleRingPlan::SlashAtA,
+            5 => OracleRingPlan::SlashAtB,
+            6 => OracleRingPlan::BackslashAtA,
+            7 => OracleRingPlan::BackslashAtB,
+            _ => panic!("elided directional carrier exposed an inadmissible ring plan"),
+        })
+        .collect()
+}
+
+#[test]
+fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
+    let production = ring_production_fixture();
+    let source = rooted_state(&production, 1);
+    let before = source.observe_raw();
+    let choices = source.choices().unwrap();
+    assert_eq!(
+        source.observe_raw(),
+        before,
+        "ring choices mutated their source"
+    );
+
+    let actual = choices
+        .iter()
+        .filter_map(|choice| {
+            let observed = choice.successor().observe_raw();
+            matches!(
+                observed.structural.traversal.bond_progress[production.bonds[0].index()],
+                ObservedBondProgress::RingOpen { first_endpoint }
+                    if first_endpoint == production.atoms[1]
+            )
+            .then(|| {
+                let (_, mark_domain) = observed
+                    .directional_mark_domains
+                    .iter()
+                    .find(|(bond, _)| *bond == production.bonds[0])
+                    .unwrap();
+                let (_, plan_domain, factor_active) = observed
+                    .directional_ring_plan_domains
+                    .iter()
+                    .find(|(bond, _, _)| *bond == production.bonds[0])
+                    .unwrap();
+                RingOpeningSuccessor {
+                    text: choice.text().to_owned(),
+                    mark_values: mark_domain.iter().collect(),
+                    plan_values: observed_oracle_ring_plans(*plan_domain),
+                    factor_active: *factor_active,
+                    label_owner: observed
+                        .labels_by_bond
+                        .iter()
+                        .find(|(bond, _)| *bond == production.bonds[0])
+                        .map(|(bond, label)| (bond_index(&production, *bond), *label)),
+                    pending_label: matches!(
+                        observed.pending,
+                        Some(ObservedPending::RingOpeningLabel { bond, endpoint, label: 0 })
+                            if bond == production.bonds[0] && endpoint == production.atoms[1]
+                    ),
+                }
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::from([
+        RingOpeningSuccessor {
+            text: "1".to_owned(),
+            mark_values: vec![0, 1, 2],
+            plan_values: vec![
+                OracleRingPlan::PlainNone,
+                OracleRingPlan::SlashAtA,
+                OracleRingPlan::BackslashAtA,
+            ],
+            factor_active: true,
+            label_owner: Some((0, 0)),
+            pending_label: false,
+        },
+        RingOpeningSuccessor {
+            text: "/".to_owned(),
+            mark_values: vec![2],
+            plan_values: vec![OracleRingPlan::BackslashAtB],
+            factor_active: true,
+            label_owner: Some((0, 0)),
+            pending_label: true,
+        },
+        RingOpeningSuccessor {
+            text: "\\".to_owned(),
+            mark_values: vec![1],
+            plan_values: vec![OracleRingPlan::SlashAtB],
+            factor_active: true,
+            label_owner: Some((0, 0)),
+            pending_label: true,
+        },
+    ]);
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn label_only_ring_opening_resolves_by_the_independent_closure_law() {
+    let production = ring_production_fixture();
+    let rooted = rooted_state(&production, 1);
+    let opened = rooted
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| {
+            choice.text() == "1"
+                && matches!(
+                    choice.successor().observe_raw().structural.traversal.bond_progress
+                        [production.bonds[0].index()],
+                    ObservedBondProgress::RingOpen { first_endpoint }
+                        if first_endpoint == production.atoms[1]
+                )
+        })
+        .unwrap()
+        .into_successor();
+    let mut pending = vec![opened];
+    let source = loop {
+        let state = pending
+            .pop()
+            .expect("ring opening must reach its closure endpoint");
+        let observed = state.observe_raw();
+        if observed
+            .structural
+            .traversal
+            .active_frame
+            .as_ref()
+            .is_some_and(|frame| frame.atom == production.atoms[0])
+            && matches!(
+                observed.structural.traversal.bond_progress[production.bonds[0].index()],
+                ObservedBondProgress::RingOpen { first_endpoint }
+                    if first_endpoint == production.atoms[1]
+            )
+        {
+            break state;
+        }
+        pending.extend(
+            state
+                .choices()
+                .unwrap()
+                .into_iter()
+                .map(Choice::into_successor),
+        );
+    };
+    let before = source.observe_raw();
+    let (_, source_plan_domain, _) = before
+        .directional_ring_plan_domains
+        .iter()
+        .find(|(bond, _, _)| *bond == production.bonds[0])
+        .unwrap();
+    let source_plans = observed_oracle_ring_plans(*source_plan_domain);
+
+    let choices = source.choices().unwrap();
+    assert_eq!(
+        source.observe_raw(),
+        before,
+        "closure choices mutated their source"
+    );
+    let actual = choices
+        .iter()
+        .filter_map(|choice| {
+            let observed = choice.successor().observe_raw();
+            matches!(
+                observed.structural.traversal.bond_progress[production.bonds[0].index()],
+                ObservedBondProgress::RingClosed { .. }
+            )
+            .then(|| {
+                let (_, mark_domain) = observed
+                    .directional_mark_domains
+                    .iter()
+                    .find(|(bond, _)| *bond == production.bonds[0])
+                    .unwrap();
+                let (_, plan_domain, factor_active) = observed
+                    .directional_ring_plan_domains
+                    .iter()
+                    .find(|(bond, _, _)| *bond == production.bonds[0])
+                    .unwrap();
+                RingOpeningSuccessor {
+                    text: choice.text().to_owned(),
+                    mark_values: mark_domain.iter().collect(),
+                    plan_values: observed_oracle_ring_plans(*plan_domain),
+                    factor_active: *factor_active,
+                    label_owner: observed
+                        .labels_by_bond
+                        .iter()
+                        .find(|(bond, _)| *bond == production.bonds[0])
+                        .map(|(bond, label)| (bond_index(&production, *bond), *label)),
+                    pending_label: matches!(
+                        observed.pending,
+                        Some(ObservedPending::RingClosureLabel { bond, endpoint, label: 0 })
+                            if bond == production.bonds[0] && endpoint == production.atoms[0]
+                    ),
+                }
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    let expected = source_plans
+        .into_iter()
+        .map(|plan| match plan {
+            OracleRingPlan::PlainNone => RingOpeningSuccessor {
+                text: "1".to_owned(),
+                mark_values: vec![0],
+                plan_values: vec![plan],
+                factor_active: true,
+                label_owner: None,
+                pending_label: false,
+            },
+            OracleRingPlan::SlashAtA => RingOpeningSuccessor {
+                text: "/".to_owned(),
+                mark_values: vec![1],
+                plan_values: vec![plan],
+                factor_active: true,
+                label_owner: Some((0, 0)),
+                pending_label: true,
+            },
+            OracleRingPlan::BackslashAtA => RingOpeningSuccessor {
+                text: "\\".to_owned(),
+                mark_values: vec![2],
+                plan_values: vec![plan],
+                factor_active: true,
+                label_owner: Some((0, 0)),
+                pending_label: true,
+            },
+            OracleRingPlan::SlashAtB | OracleRingPlan::BackslashAtB => {
+                panic!("label-only opening at fixed B cannot retain a B-emitting plan")
+            }
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual, expected);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

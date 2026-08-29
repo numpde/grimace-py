@@ -375,6 +375,7 @@ pub struct ConstraintModelBuilder {
     factors: Vec<FactorDefinition>,
     factor_activation: Vec<FactorActivation>,
     factors_by_variable: Vec<Vec<FactorId>>,
+    local_projector_leaves: BTreeSet<VariableId>,
 }
 
 impl ConstraintModelBuilder {
@@ -384,6 +385,7 @@ impl ConstraintModelBuilder {
             factors: Vec::new(),
             factor_activation: Vec::new(),
             factors_by_variable: Vec::new(),
+            local_projector_leaves: BTreeSet::new(),
         }
     }
 
@@ -478,6 +480,18 @@ impl ConstraintModelBuilder {
                 mark_variable,
             ));
         }
+        if self.local_projector_leaves.contains(&mark_variable)
+            || !self.factors_by_variable[plan_variable.index()].is_empty()
+            || self.local_projector_leaves.contains(&plan_variable)
+        {
+            return Err(ConstraintModelError::LocalProjectorLeafReuse(
+                if self.local_projector_leaves.contains(&mark_variable) {
+                    mark_variable
+                } else {
+                    plan_variable
+                },
+            ));
+        }
         let mut allowed_plans_by_mark = vec![Domain::empty(); mark_domain.value_span()];
         let mut allowed_marks_by_plan = vec![Domain::empty(); plan_domain.value_span()];
         for (mark, plan) in allowed_pairs {
@@ -498,14 +512,16 @@ impl ConstraintModelBuilder {
             allowed_marks_by_plan[plan as usize] =
                 allowed_marks_by_plan[plan as usize].union(Domain::from_bits(1_u64 << mark));
         }
-        self.push_factor(
+        let factor = self.push_factor(
             FactorDefinition::DirectionalRingPlacement(DirectionalRingPlacementFactor {
                 variables: [mark_variable, plan_variable],
                 allowed_plans_by_mark: allowed_plans_by_mark.into_boxed_slice(),
                 allowed_marks_by_plan: allowed_marks_by_plan.into_boxed_slice(),
             }),
             FactorActivation::Latent,
-        )
+        )?;
+        self.local_projector_leaves.insert(plan_variable);
+        Ok(factor)
     }
 
     pub fn add_spanning_tree(
@@ -748,6 +764,14 @@ impl ConstraintModelBuilder {
         definition: FactorDefinition,
         activation: FactorActivation,
     ) -> Result<FactorId, ConstraintModelError> {
+        if let Some(variable) = definition
+            .variables()
+            .iter()
+            .copied()
+            .find(|variable| self.local_projector_leaves.contains(variable))
+        {
+            return Err(ConstraintModelError::LocalProjectorLeafReuse(variable));
+        }
         let value = u32::try_from(self.factors.len())
             .map_err(|_| ConstraintModelError::FactorCapacityExceeded)?;
         let factor = FactorId::new(value);
@@ -786,6 +810,7 @@ pub enum ConstraintModelError {
     FactorCapacityExceeded,
     UnknownVariable(VariableId),
     RepeatedVariableInFactor(VariableId),
+    LocalProjectorLeafReuse(VariableId),
     RelationValueOutsideInitialDomain {
         variable: VariableId,
         value_index: u8,
@@ -835,6 +860,10 @@ impl fmt::Display for ConstraintModelError {
                     "constraint factor repeats variable {variable:?} in its scope"
                 )
             }
+            Self::LocalProjectorLeafReuse(variable) => write!(
+                formatter,
+                "local projector leaf variable {variable:?} cannot participate in another factor"
+            ),
             Self::RelationValueOutsideInitialDomain {
                 variable,
                 value_index,
@@ -1399,6 +1428,47 @@ mod tests {
                 variable: malformed_pattern,
                 expected: Domain::from_indices(0_u8..8).unwrap(),
             })
+        );
+    }
+
+    #[test]
+    fn directional_ring_plan_variable_is_an_exclusive_local_projector_leaf() {
+        let domain = Domain::from_indices(0_u8..3).unwrap();
+
+        let mut occupied_plan = ConstraintModelBuilder::new();
+        let mark = occupied_plan.add_variable(domain).unwrap();
+        let plan = occupied_plan.add_variable(domain).unwrap();
+        let other = occupied_plan.add_variable(domain).unwrap();
+        occupied_plan
+            .add_binary_relation(plan, other, [(0, 0), (1, 1), (2, 2)])
+            .unwrap();
+        assert_eq!(
+            occupied_plan.add_latent_directional_ring_placement(
+                mark,
+                plan,
+                [(0, 0), (1, 1), (2, 2)],
+            ),
+            Err(ConstraintModelError::LocalProjectorLeafReuse(plan))
+        );
+
+        let mut reused_plan = ConstraintModelBuilder::new();
+        let mark = reused_plan.add_variable(domain).unwrap();
+        let plan = reused_plan.add_variable(domain).unwrap();
+        let other = reused_plan.add_variable(domain).unwrap();
+        reused_plan
+            .add_latent_directional_ring_placement(mark, plan, [(0, 0), (1, 1), (2, 2)])
+            .unwrap();
+        assert_eq!(
+            reused_plan.add_binary_relation(plan, other, [(0, 0), (1, 1), (2, 2)]),
+            Err(ConstraintModelError::LocalProjectorLeafReuse(plan))
+        );
+        assert_eq!(
+            reused_plan.add_latent_directional_ring_placement(
+                plan,
+                other,
+                [(0, 0), (1, 1), (2, 2)],
+            ),
+            Err(ConstraintModelError::LocalProjectorLeafReuse(plan))
         );
     }
 }

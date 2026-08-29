@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
-use crate::model::{EdgeRolePartition, TetrahedralLayoutBond};
+use crate::model::{BondRole, EdgeRolePartition, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
@@ -101,6 +101,95 @@ enum FixedBondEndpoint {
 enum RingEndpointSpelling {
     Omit,
     Emit,
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum DirectionalRingPlan {
+    PlainNone = 0,
+    PlainAtA = 1,
+    PlainAtB = 2,
+    PlainAtBoth = 3,
+    SlashAtA = 4,
+    SlashAtB = 5,
+    BackslashAtA = 6,
+    BackslashAtB = 7,
+}
+
+impl DirectionalRingPlan {
+    const ALL: [Self; 8] = [
+        Self::PlainNone,
+        Self::PlainAtA,
+        Self::PlainAtB,
+        Self::PlainAtBoth,
+        Self::SlashAtA,
+        Self::SlashAtB,
+        Self::BackslashAtA,
+        Self::BackslashAtB,
+    ];
+
+    const fn value_index(self) -> u8 {
+        self as u8
+    }
+
+    const fn singleton_domain(self) -> Domain {
+        Domain::from_bits(1_u64 << self.value_index())
+    }
+
+    const fn mark(self) -> CarrierMark {
+        match self {
+            Self::PlainNone | Self::PlainAtA | Self::PlainAtB | Self::PlainAtBoth => {
+                CarrierMark::Plain
+            }
+            Self::SlashAtA | Self::SlashAtB => CarrierMark::SlashAtFixedA,
+            Self::BackslashAtA | Self::BackslashAtB => CarrierMark::BackslashAtFixedA,
+        }
+    }
+
+    const fn emits_at(self, endpoint: FixedBondEndpoint) -> bool {
+        match (self, endpoint) {
+            (Self::PlainNone, _) => false,
+            (Self::PlainAtA | Self::SlashAtA | Self::BackslashAtA, FixedBondEndpoint::A)
+            | (Self::PlainAtB | Self::SlashAtB | Self::BackslashAtB, FixedBondEndpoint::B)
+            | (Self::PlainAtBoth, _) => true,
+            _ => false,
+        }
+    }
+
+    fn domain_for(token: NonStereoBondToken) -> Domain {
+        Self::ALL.into_iter().fold(Domain::empty(), |domain, plan| {
+            let admitted = match plan {
+                Self::PlainNone => token == NonStereoBondToken::Elided,
+                Self::PlainAtA | Self::PlainAtB | Self::PlainAtBoth => {
+                    token != NonStereoBondToken::Elided
+                }
+                Self::SlashAtA | Self::SlashAtB | Self::BackslashAtA | Self::BackslashAtB => true,
+            };
+            if admitted {
+                domain.union(plan.singleton_domain())
+            } else {
+                domain
+            }
+        })
+    }
+
+    fn endpoint_domain(
+        current: Domain,
+        endpoint: FixedBondEndpoint,
+        mark: Option<CarrierMark>,
+        emit: bool,
+    ) -> Domain {
+        Self::ALL.into_iter().fold(Domain::empty(), |domain, plan| {
+            if current.contains(plan.value_index())
+                && plan.emits_at(endpoint) == emit
+                && mark.is_none_or(|mark| plan.mark() == mark)
+            {
+                domain.union(plan.singleton_domain())
+            } else {
+                domain
+            }
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -236,6 +325,8 @@ impl CarrierMark {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct PreparedDirectionalSite {
     mark_variable: VariableId,
+    ring_plan_variable: VariableId,
+    ring_plan_factor: FactorId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -420,12 +511,28 @@ impl PreparedNonStereo {
         for (atom, prepared) in graph.atom_ids().zip(&atoms) {
             validate_prepared_atom(graph, atom, prepared)?;
         }
-        let decision_domains = bond_tokens
-            .iter()
-            .copied()
-            .map(NonStereoBondToken::representation_domain)
+        let compiled_directional_bonds =
+            provisionally_compiled_directional_bonds(&directional_relations);
+        let decision_domains = graph
+            .bond_ids()
+            .map(|bond| {
+                if compiled_directional_bonds.contains(&bond) {
+                    BondRole::role_domain()
+                } else {
+                    bond_tokens[bond.index()].representation_domain()
+                }
+            })
             .collect::<Vec<_>>();
-        let role_partitions = vec![BondRepresentation::role_partition(); graph.bond_count()];
+        let role_partitions = graph
+            .bond_ids()
+            .map(|bond| {
+                if compiled_directional_bonds.contains(&bond) {
+                    EdgeRolePartition::bond_role()
+                } else {
+                    BondRepresentation::role_partition()
+                }
+            })
+            .collect::<Vec<_>>();
         let mut assembly =
             PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
         let atoms = atoms
@@ -524,6 +631,57 @@ impl PreparedNonStereo {
     ) -> Domain {
         BondRepresentation::endpoint_domain(self.fixed_endpoint(bond, atom), spelling)
     }
+}
+
+fn provisionally_compiled_directional_bonds(
+    relations: &[PreparedDirectionalRelation],
+) -> BTreeSet<BondId> {
+    let mut relations_by_carrier = BTreeMap::<BondId, Vec<usize>>::new();
+    for (index, relation) in relations.iter().enumerate() {
+        for carrier in relation
+            .left_carriers
+            .iter()
+            .chain(relation.right_carriers.iter())
+        {
+            relations_by_carrier
+                .entry(carrier.bond)
+                .or_default()
+                .push(index);
+        }
+    }
+    let mut compiled = BTreeSet::new();
+    let mut unseen = (0..relations.len()).collect::<BTreeSet<_>>();
+    while let Some(first) = unseen.pop_first() {
+        let mut component = vec![first];
+        let mut queue = VecDeque::from([first]);
+        while let Some(index) = queue.pop_front() {
+            for carrier in relations[index]
+                .left_carriers
+                .iter()
+                .chain(relations[index].right_carriers.iter())
+            {
+                for adjacent in &relations_by_carrier[&carrier.bond] {
+                    if unseen.remove(adjacent) {
+                        component.push(*adjacent);
+                        queue.push_back(*adjacent);
+                    }
+                }
+            }
+        }
+        if component.iter().any(|index| {
+            relations[*index].left_carriers.len() > 2 || relations[*index].right_carriers.len() > 2
+        }) {
+            continue;
+        }
+        compiled.extend(component.into_iter().flat_map(|index| {
+            relations[index]
+                .left_carriers
+                .iter()
+                .chain(relations[index].right_carriers.iter())
+                .map(|carrier| carrier.bond)
+        }));
+    }
+    compiled
 }
 
 fn prepare_tetrahedral_center(
@@ -764,10 +922,23 @@ fn prepare_directional_bonds(
             })
             .collect::<BTreeMap<_, _>>();
         for carrier in &carriers {
-            let variable = variables[carrier];
+            let mark_variable = variables[carrier];
+            let ring_plan_domain = DirectionalRingPlan::domain_for(bond_tokens[carrier.index()]);
+            let ring_plan_variable = assembly.add_isolated_variable(ring_plan_domain);
+            let ring_plan_factor = assembly.add_latent_directional_ring_placement(
+                mark_variable,
+                ring_plan_variable,
+                DirectionalRingPlan::ALL.into_iter().filter_map(|plan| {
+                    ring_plan_domain
+                        .contains(plan.value_index())
+                        .then_some((plan.mark().value_index(), plan.value_index()))
+                }),
+            );
             statuses[carrier.index()] =
                 PreparedDirectionalBondStatus::CompiledSite(PreparedDirectionalSite {
-                    mark_variable: variable,
+                    mark_variable,
+                    ring_plan_variable,
+                    ring_plan_factor,
                 });
         }
 
@@ -1300,6 +1471,7 @@ pub(crate) struct ObservedNonStereoState {
     pub(crate) tetrahedral_order_domains: Vec<(AtomId, Domain)>,
     pub(crate) tetrahedral_role_pattern_domains: Vec<(AtomId, Domain)>,
     pub(crate) directional_mark_domains: Vec<(BondId, Domain)>,
+    pub(crate) directional_ring_plan_domains: Vec<(BondId, Domain, bool)>,
     pub(crate) directional_side_pattern_domains: Vec<(BondId, AtomId, Domain)>,
     pub(crate) labels_by_bond: Vec<(BondId, usize)>,
     pub(crate) pending: Option<ObservedPending>,
@@ -1488,9 +1660,6 @@ pub(crate) enum WriterIncompleteness {
         double_bond: BondId,
         endpoint: AtomId,
     },
-    DirectionalRingEndpoint {
-        carrier_bond: BondId,
-    },
 }
 
 impl fmt::Display for WriterIncompleteness {
@@ -1502,10 +1671,6 @@ impl fmt::Display for WriterIncompleteness {
             } => write!(
                 formatter,
                 "directional carrier selection for double bond {double_bond:?} at {endpoint:?} is not implemented"
-            ),
-            Self::DirectionalRingEndpoint { carrier_bond } => write!(
-                formatter,
-                "directional ring-endpoint spelling for carrier {carrier_bond:?} is not implemented"
             ),
         }
     }
@@ -1670,6 +1835,21 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 | PreparedDirectionalBondStatus::IncompleteSelection(_) => None,
             })
             .collect();
+        let directional_ring_plan_domains = self
+            .surface
+            .molecule()
+            .graph()
+            .bond_ids()
+            .filter_map(|bond| match self.surface.directional_status(bond) {
+                PreparedDirectionalBondStatus::CompiledSite(site) => Some((
+                    bond,
+                    self.structural.semantic_domain(site.ring_plan_variable),
+                    self.structural.factor_is_active(site.ring_plan_factor),
+                )),
+                PreparedDirectionalBondStatus::Ordinary
+                | PreparedDirectionalBondStatus::IncompleteSelection(_) => None,
+            })
+            .collect();
         let directional_side_pattern_domains = self
             .surface
             .directional_sides
@@ -1687,6 +1867,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             tetrahedral_order_domains,
             tetrahedral_role_pattern_domains,
             directional_mark_domains,
+            directional_ring_plan_domains,
             directional_side_pattern_domains,
             labels_by_bond,
             pending,
@@ -1975,74 +2156,190 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         else {
             panic!("directional ring attempt requires one compiled physical mark")
         };
-        let mut attempts = Vec::new();
-        let mut directional_viable = false;
-        for value in self.structural.semantic_domain(site.mark_variable).iter() {
-            let mark = CarrierMark::from_value(value)
-                .expect("prepared directional mark domain contains only mark values");
-            let mark_restriction = (site.mark_variable, mark.singleton_domain());
-            if mark == CarrierMark::Plain {
-                let plain = match candidate {
-                    StructuralCandidate::RingOpen { .. } => {
-                        self.attempt_ring_openings(candidate, incident, &[mark_restriction])
-                    }
-                    StructuralCandidate::RingClose { .. } => {
-                        self.attempt_ring_closures(candidate, incident, &[mark_restriction])
-                    }
-                    _ => unreachable!(),
-                };
-                match plain {
-                    Ok(plain) => attempts.extend(plain),
-                    Err(failure) => {
-                        attempts.push(CandidateAttempt::Failed(failure));
-                        return attempts;
-                    }
-                }
+        let result = match candidate {
+            StructuralCandidate::RingOpen { .. } => {
+                self.attempt_directional_ring_openings(candidate, incident, site)
+            }
+            StructuralCandidate::RingClose { .. } => {
+                self.attempt_directional_ring_closures(candidate, incident, site)
+            }
+            _ => unreachable!(),
+        };
+        result.unwrap_or_else(|failure| vec![CandidateAttempt::Failed(failure)])
+    }
+
+    fn directional_ring_endpoint_alternatives(
+        &self,
+        incident: AdjacentBond,
+        site: PreparedDirectionalSite,
+    ) -> Vec<(Domain, Option<CarrierMark>, Option<&'static str>)> {
+        let active = self
+            .structural
+            .active_atom()
+            .expect("ring endpoint requires one active atom");
+        let endpoint = self.surface.fixed_endpoint(incident.bond(), active);
+        let current = self.structural.semantic_domain(site.ring_plan_variable);
+        let mut alternatives = Vec::new();
+        let omitted = DirectionalRingPlan::endpoint_domain(current, endpoint, None, false);
+        if !omitted.is_empty() {
+            alternatives.push((omitted, None, None));
+        }
+        for mark in [
+            CarrierMark::Plain,
+            CarrierMark::SlashAtFixedA,
+            CarrierMark::BackslashAtFixedA,
+        ] {
+            let plans = DirectionalRingPlan::endpoint_domain(current, endpoint, Some(mark), true);
+            if plans.is_empty() {
                 continue;
             }
+            let text = match mark {
+                CarrierMark::Plain => self.surface.bond_text(incident.bond(), active),
+                mark => mark
+                    .directional_text(endpoint == FixedBondEndpoint::A)
+                    .expect("marked ring endpoint must render one directional glyph"),
+            };
+            assert!(
+                !text.is_empty(),
+                "emitted ring endpoint requires visible text"
+            );
+            alternatives.push((plans, Some(mark), Some(text)));
+        }
+        alternatives
+    }
 
-            let probes = match candidate {
-                StructuralCandidate::RingOpen { .. } => {
-                    self.attempt_ring_openings(candidate, incident, &[mark_restriction])
+    fn attempt_directional_ring_openings(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+        site: PreparedDirectionalSite,
+    ) -> Result<Vec<CandidateAttempt<Self, S::Failure>>, S::Failure> {
+        let mut attempts = Vec::new();
+        for (plans, mark, text) in self.directional_ring_endpoint_alternatives(incident, site) {
+            let mut restrictions = self.parent_prefix_restriction(incident);
+            restrictions.push((site.ring_plan_variable, plans));
+            if let Some(mark) = mark {
+                restrictions.push((site.mark_variable, mark.singleton_domain()));
+            }
+            let structural = match self.attempt_candidate_with_transition(
+                candidate,
+                Some(BondRole::Ring.singleton_domain()),
+                &restrictions,
+                &[site.ring_plan_factor],
+            )? {
+                Consistency::Consistent(structural) => structural,
+                Consistency::Contradiction => {
+                    attempts.push(CandidateAttempt::Rejected {
+                        reason: CandidateRejection::Contradiction,
+                    });
+                    continue;
                 }
-                StructuralCandidate::RingClose { .. } => {
-                    self.attempt_ring_closures(candidate, incident, &[mark_restriction])
-                }
-                _ => unreachable!(),
             };
-            let probes = match probes {
-                Ok(probes) => probes,
-                Err(failure) => {
-                    attempts.push(CandidateAttempt::Failed(failure));
-                    return attempts;
-                }
+            let label_slot = self.labels.next_available();
+            let mut labels = self.labels.clone();
+            assert_eq!(labels.allocate(incident.bond()), label_slot);
+            let successor = Self {
+                surface: self.surface.clone(),
+                structural,
+                labels,
+                pending: text.map(|_| PendingEmission::RingOpeningLabel {
+                    incident,
+                    label_slot,
+                }),
             };
-            for probe in probes {
-                match probe {
-                    CandidateAttempt::Accepted { .. } => directional_viable = true,
-                    CandidateAttempt::Rejected { .. }
-                    | CandidateAttempt::Incomplete(_)
-                    | CandidateAttempt::Invariant(_) => attempts.push(probe),
-                    CandidateAttempt::Failed(failure) => {
-                        attempts.push(CandidateAttempt::Failed(failure));
-                        return attempts;
-                    }
-                }
+            let attempt = match text {
+                Some(text) => self.finish_attempt(text.to_owned(), successor),
+                None => self.finish_ring_label_attempt(label_slot, successor),
+            };
+            let stop = matches!(
+                attempt,
+                CandidateAttempt::Incomplete(_)
+                    | CandidateAttempt::Invariant(_)
+                    | CandidateAttempt::Failed(_)
+            );
+            attempts.push(attempt);
+            if stop {
+                break;
             }
         }
-        if directional_viable {
-            attempts.push(CandidateAttempt::Incomplete(
-                WriterIncompleteness::DirectionalRingEndpoint {
-                    carrier_bond: incident.bond(),
+        Ok(attempts)
+    }
+
+    fn attempt_directional_ring_closures(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+        site: PreparedDirectionalSite,
+    ) -> Result<Vec<CandidateAttempt<Self, S::Failure>>, S::Failure> {
+        assert!(
+            self.structural.factor_is_active(site.ring_plan_factor),
+            "directional ring closure requires its opening placement factor"
+        );
+        let label_slot = self.labels.slot_for_bond(incident.bond());
+        let mut attempts = Vec::new();
+        for (plans, mark, text) in self.directional_ring_endpoint_alternatives(incident, site) {
+            let mut restrictions = self.parent_prefix_restriction(incident);
+            restrictions.push((site.ring_plan_variable, plans));
+            if let Some(mark) = mark {
+                restrictions.push((site.mark_variable, mark.singleton_domain()));
+            }
+            let structural = match self.attempt_candidate_with_transition(
+                candidate,
+                Some(BondRole::Ring.singleton_domain()),
+                &restrictions,
+                &[],
+            )? {
+                Consistency::Consistent(structural) => structural,
+                Consistency::Contradiction => {
+                    attempts.push(CandidateAttempt::Rejected {
+                        reason: CandidateRejection::Contradiction,
+                    });
+                    continue;
+                }
+            };
+            assert!(structural
+                .semantic_domain(site.mark_variable)
+                .is_singleton());
+            assert!(structural
+                .semantic_domain(site.ring_plan_variable)
+                .is_singleton());
+            let successor = match text {
+                None => {
+                    let mut labels = self.labels.clone();
+                    labels.release(label_slot, incident.bond());
+                    Self {
+                        surface: self.surface.clone(),
+                        structural,
+                        labels,
+                        pending: None,
+                    }
+                }
+                Some(_) => Self {
+                    surface: self.surface.clone(),
+                    structural,
+                    labels: self.labels.clone(),
+                    pending: Some(PendingEmission::RingClosureLabel {
+                        incident,
+                        label_slot,
+                    }),
                 },
-            ));
+            };
+            let attempt = match text {
+                Some(text) => self.finish_attempt(text.to_owned(), successor),
+                None => self.finish_ring_label_attempt(label_slot, successor),
+            };
+            let stop = matches!(
+                attempt,
+                CandidateAttempt::Incomplete(_)
+                    | CandidateAttempt::Invariant(_)
+                    | CandidateAttempt::Failed(_)
+            );
+            attempts.push(attempt);
+            if stop {
+                break;
+            }
         }
-        if attempts.is_empty() {
-            attempts.push(CandidateAttempt::Rejected {
-                reason: CandidateRejection::Contradiction,
-            });
-        }
-        attempts
+        Ok(attempts)
     }
 
     fn attempt_ring_closures(
@@ -2411,10 +2708,25 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             if let PreparedDirectionalBondStatus::CompiledSite(site) =
                 self.surface.directional_status(bond)
             {
-                if !structural
-                    .semantic_domain(site.mark_variable)
-                    .is_singleton()
-                {
+                let role = structural.bond_decision_domain(bond);
+                let mark = structural.semantic_domain(site.mark_variable);
+                let plan = structural.semantic_domain(site.ring_plan_variable);
+                let factor_active = structural.factor_is_active(site.ring_plan_factor);
+                let valid = if role == BondRole::Traversal.singleton_domain() {
+                    mark.is_singleton() && !factor_active
+                } else if role == BondRole::Ring.singleton_domain() {
+                    factor_active
+                        && (structural.ring_is_open(bond)
+                            || (plan.is_singleton()
+                                && mark.is_singleton()
+                                && DirectionalRingPlan::ALL
+                                    .into_iter()
+                                    .find(|candidate| plan.contains(candidate.value_index()))
+                                    .is_some_and(|plan| mark == plan.mark().singleton_domain())))
+                } else {
+                    false
+                };
+                if !valid {
                     return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier { bond });
                 }
             }
@@ -2458,6 +2770,36 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .semantic_domain(site.mark_variable)
                     .is_singleton()
                 {
+                    return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier {
+                        bond: carrier.bond,
+                    });
+                }
+                let role = structural.bond_decision_domain(carrier.bond);
+                let factor_active = structural.factor_is_active(site.ring_plan_factor);
+                if role == BondRole::Traversal.singleton_domain() {
+                    if factor_active {
+                        return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier {
+                            bond: carrier.bond,
+                        });
+                    }
+                } else if role == BondRole::Ring.singleton_domain() {
+                    let plan = structural.semantic_domain(site.ring_plan_variable);
+                    let mark = structural.semantic_domain(site.mark_variable);
+                    let plan_mark = plan.is_singleton().then(|| {
+                        let value = plan.iter().next().unwrap();
+                        DirectionalRingPlan::ALL
+                            .into_iter()
+                            .find(|plan| plan.value_index() == value)
+                            .expect("prepared directional ring plan must be known")
+                            .mark()
+                            .singleton_domain()
+                    });
+                    if !factor_active || plan_mark != Some(mark) {
+                        return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier {
+                            bond: carrier.bond,
+                        });
+                    }
+                } else {
                     return Err(WriterInvariantFailure::UnresolvedDirectionalCarrier {
                         bond: carrier.bond,
                     });

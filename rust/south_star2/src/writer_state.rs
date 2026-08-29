@@ -145,6 +145,10 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.has_visited_atoms()
     }
 
+    pub(crate) fn ring_is_open(&self, bond: BondId) -> bool {
+        self.traversal.ring_is_open(bond)
+    }
+
     #[cfg(test)]
     pub(crate) fn atom_is_visited(&self, atom: AtomId) -> bool {
         self.traversal.atom_is_visited(atom)

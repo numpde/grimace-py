@@ -236,6 +236,10 @@ impl GraphProgress {
         }
     }
 
+    pub(crate) fn ring_is_open(&self, bond: BondId) -> bool {
+        matches!(self.bond_progress(bond), BondProgress::RingOpen { .. })
+    }
+
     fn bond_progress(&self, bond: BondId) -> &BondProgress {
         self.bonds
             .get(bond.index())
@@ -664,6 +668,10 @@ impl TraversalState {
 
     pub(crate) const fn has_visited_atoms(&self) -> bool {
         self.progress.has_visited_atoms()
+    }
+
+    pub(crate) fn ring_is_open(&self, bond: BondId) -> bool {
+        self.progress.ring_is_open(bond)
     }
 
     #[cfg(test)]

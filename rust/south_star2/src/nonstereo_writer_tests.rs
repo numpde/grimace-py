@@ -5738,6 +5738,39 @@ fn selectable_ring_publishes_plain_semantics_but_keeps_viable_marked_spelling_in
 }
 
 #[test]
+fn exhausted_marked_ring_labels_are_spelling_rejections_before_incompleteness() {
+    let (surface, atoms, bonds) = selectable_directional_ring_fixture();
+    let mut rooted = initial(&surface)
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .unwrap()
+        .into_successor();
+    rooted.labels.maximum_spelling_label = Some(0);
+    let incident = incident(&surface, atoms[1], bonds[0]);
+    let candidate = rooted
+        .structural
+        .derive_candidates()
+        .candidates()
+        .iter()
+        .copied()
+        .find(|candidate| {
+            matches!(candidate, StructuralCandidate::RingOpen { incident: found } if *found == incident)
+        })
+        .unwrap();
+    let before = rooted.observe_raw();
+    let attempts = rooted.attempt_directional_ring_candidate(candidate, incident);
+    assert_eq!(rooted.observe_raw(), before);
+    assert!(attempts.iter().all(|attempt| matches!(
+        attempt,
+        CandidateAttempt::Rejected {
+            reason: CandidateRejection::RingLabelUnavailable { .. }
+        }
+    )));
+}
+
+#[test]
 fn every_complete_selectable_walk_resolves_physical_marks_and_side_patterns() {
     let (surface, _, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);

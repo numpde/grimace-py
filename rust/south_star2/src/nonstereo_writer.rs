@@ -1370,6 +1370,35 @@ fn collect_attempts_fail_fast<S, E>(
     collected
 }
 
+fn classify_missing_ring_probes<S, E>(
+    probes: Vec<CandidateAttempt<S, E>>,
+    incomplete: WriterIncompleteness,
+) -> Vec<CandidateAttempt<S, E>> {
+    let mut classified = Vec::new();
+    let mut viable = false;
+    for probe in probes {
+        match probe {
+            CandidateAttempt::Accepted { .. } => viable = true,
+            CandidateAttempt::Rejected { .. }
+            | CandidateAttempt::Incomplete(_)
+            | CandidateAttempt::Invariant(_) => classified.push(probe),
+            CandidateAttempt::Failed(failure) => {
+                classified.push(CandidateAttempt::Failed(failure));
+                return classified;
+            }
+        }
+    }
+    if viable {
+        classified.push(CandidateAttempt::Incomplete(incomplete));
+    }
+    if classified.is_empty() {
+        classified.push(CandidateAttempt::Rejected {
+            reason: CandidateRejection::Contradiction,
+        });
+    }
+    classified
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SpellingFailure {
     RingLabelExhausted {
@@ -1921,45 +1950,18 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         incident: AdjacentBond,
         incomplete: WriterIncompleteness,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
-        let active = self
-            .structural
-            .active_atom()
-            .expect("ring spelling requires an active endpoint");
-        let current = self.structural.bond_decision_domain(incident.bond());
-        let order_restriction = self.parent_prefix_restriction(incident);
-        let mut attempted = 0;
-        let mut viable = false;
-        for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
-            let allowed = current.intersect(self.surface.ring_endpoint_domain(
-                incident.bond(),
-                active,
-                spelling,
-            ));
-            if allowed.is_empty() {
-                continue;
+        let probes = match candidate {
+            StructuralCandidate::RingOpen { .. } => {
+                self.attempt_ring_openings(candidate, incident, &[])
             }
-            attempted += 1;
-            match self.attempt_candidate_with_transition(
-                candidate,
-                Some(allowed),
-                &order_restriction,
-                &[],
-            ) {
-                Ok(Consistency::Consistent(_)) => viable = true,
-                Ok(Consistency::Contradiction) => {}
-                Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+            StructuralCandidate::RingClose { .. } => {
+                self.attempt_ring_closures(candidate, incident, &[])
             }
-        }
-        assert!(
-            attempted > 0,
-            "a directional ring candidate must retain one prepared endpoint placement"
-        );
-        if viable {
-            vec![CandidateAttempt::Incomplete(incomplete)]
-        } else {
-            vec![CandidateAttempt::Rejected {
-                reason: CandidateRejection::Contradiction,
-            }]
+            _ => unreachable!(),
+        };
+        match probes {
+            Ok(probes) => classify_missing_ring_probes(probes, incomplete),
+            Err(failure) => vec![CandidateAttempt::Failed(failure)],
         }
     }
 
@@ -1999,31 +2001,29 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 continue;
             }
 
-            let active = self
-                .structural
-                .active_atom()
-                .expect("ring spelling requires an active endpoint");
-            let current = self.structural.bond_decision_domain(incident.bond());
-            let mut restrictions = self.parent_prefix_restriction(incident);
-            restrictions.push(mark_restriction);
-            for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
-                let allowed = current.intersect(self.surface.ring_endpoint_domain(
-                    incident.bond(),
-                    active,
-                    spelling,
-                ));
-                if allowed.is_empty() {
-                    continue;
+            let probes = match candidate {
+                StructuralCandidate::RingOpen { .. } => {
+                    self.attempt_ring_openings(candidate, incident, &[mark_restriction])
                 }
-                match self.attempt_candidate_with_transition(
-                    candidate,
-                    Some(allowed),
-                    &restrictions,
-                    &[],
-                ) {
-                    Ok(Consistency::Consistent(_)) => directional_viable = true,
-                    Ok(Consistency::Contradiction) => {}
-                    Err(failure) => {
+                StructuralCandidate::RingClose { .. } => {
+                    self.attempt_ring_closures(candidate, incident, &[mark_restriction])
+                }
+                _ => unreachable!(),
+            };
+            let probes = match probes {
+                Ok(probes) => probes,
+                Err(failure) => {
+                    attempts.push(CandidateAttempt::Failed(failure));
+                    return attempts;
+                }
+            };
+            for probe in probes {
+                match probe {
+                    CandidateAttempt::Accepted { .. } => directional_viable = true,
+                    CandidateAttempt::Rejected { .. }
+                    | CandidateAttempt::Incomplete(_)
+                    | CandidateAttempt::Invariant(_) => attempts.push(probe),
+                    CandidateAttempt::Failed(failure) => {
                         attempts.push(CandidateAttempt::Failed(failure));
                         return attempts;
                     }

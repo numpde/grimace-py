@@ -452,6 +452,35 @@ fn latent_directional_ring_projection_matches_exhaustive_for_every_partial_domai
     }
 }
 
+#[test]
+fn latent_directional_ring_factor_does_no_work_before_activation() {
+    let (model, mark, plan, factor) = latent_directional_ring_fixture();
+    let initial = NativeSolverState::initial(model).unwrap();
+    initial.reset_directional_ring_factor_revision_count();
+
+    let restricted = initial
+        .restricted(&[(mark, Domain::singleton(1).unwrap())])
+        .unwrap()
+        .unwrap_consistent();
+    assert_eq!(restricted.factor_is_active(factor), Some(false));
+    assert_eq!(restricted.directional_ring_factor_revision_count(), 0);
+    assert_eq!(
+        restricted.domain(plan),
+        Some(Domain::from_indices(0_u8..8).unwrap())
+    );
+
+    let activated = restricted
+        .transitioned(&[], &[factor])
+        .unwrap()
+        .unwrap_consistent();
+    assert!(activated.directional_ring_factor_revision_count() > 0);
+    assert_eq!(activated.exact_run_counts(), (0, 0));
+    assert_eq!(
+        activated.domain(plan),
+        Some(Domain::from_indices([4, 5]).unwrap())
+    );
+}
+
 fn projected_domains<S: ConstraintSolver>(state: &S, variables: &[VariableId]) -> Vec<Domain> {
     variables
         .iter()

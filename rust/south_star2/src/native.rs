@@ -34,6 +34,8 @@ pub(crate) struct NativeSolverState {
     mixed_exact_runs: Arc<AtomicUsize>,
     #[cfg(test)]
     tetrahedral_factor_revisions: Arc<AtomicUsize>,
+    #[cfg(test)]
+    directional_ring_factor_revisions: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +87,8 @@ impl NativeSolverState {
             mixed_exact_runs: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
             tetrahedral_factor_revisions: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            directional_ring_factor_revisions: Arc::new(AtomicUsize::new(0)),
         };
         state.enforce_consistency(
             initial_factor_ids,
@@ -134,6 +138,18 @@ impl NativeSolverState {
     #[cfg(test)]
     pub(crate) fn tetrahedral_factor_revision_count(&self) -> usize {
         self.tetrahedral_factor_revisions.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_directional_ring_factor_revision_count(&self) {
+        self.directional_ring_factor_revisions
+            .store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn directional_ring_factor_revision_count(&self) -> usize {
+        self.directional_ring_factor_revisions
+            .load(Ordering::Relaxed)
     }
 
     /// Return one atomically restricted and propagated successor.
@@ -291,6 +307,9 @@ impl NativeSolverState {
                         .collect::<Vec<_>>()
                 }
                 FactorDefinition::DirectionalRingPlacement(placement) => {
+                    #[cfg(test)]
+                    self.directional_ring_factor_revisions
+                        .fetch_add(1, Ordering::Relaxed);
                     revise_directional_ring_placement(placement, &mut self.domains)?
                         .into_iter()
                         .flatten()

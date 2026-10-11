@@ -36,6 +36,14 @@ pub(crate) struct NativeSolverState {
     tetrahedral_factor_revisions: Arc<AtomicUsize>,
     #[cfg(test)]
     directional_ring_factor_revisions: Arc<AtomicUsize>,
+    #[cfg(test)]
+    spanning_first_edge_visits: Arc<AtomicUsize>,
+    #[cfg(test)]
+    spanning_atom_visits: Arc<AtomicUsize>,
+    #[cfg(test)]
+    spanning_second_edge_visits: Arc<AtomicUsize>,
+    #[cfg(test)]
+    potential_layout_checks: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,6 +97,14 @@ impl NativeSolverState {
             tetrahedral_factor_revisions: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
             directional_ring_factor_revisions: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            spanning_first_edge_visits: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            spanning_atom_visits: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            spanning_second_edge_visits: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            potential_layout_checks: Arc::new(AtomicUsize::new(0)),
         };
         state.enforce_consistency(
             initial_factor_ids,
@@ -106,17 +122,17 @@ impl NativeSolverState {
     }
 
     #[cfg(test)]
-    fn reset_mixed_search_branch_count(&self) {
+    pub(crate) fn reset_mixed_search_branch_count(&self) {
         self.mixed_search_branches.store(0, Ordering::Relaxed);
     }
 
     #[cfg(test)]
-    fn mixed_search_branch_count(&self) -> usize {
+    pub(crate) fn mixed_search_branch_count(&self) -> usize {
         self.mixed_search_branches.load(Ordering::Relaxed)
     }
 
     #[cfg(test)]
-    fn reset_exact_run_counts(&self) {
+    pub(crate) fn reset_exact_run_counts(&self) {
         self.binary_exact_runs.store(0, Ordering::Relaxed);
         self.mixed_exact_runs.store(0, Ordering::Relaxed);
     }
@@ -150,6 +166,40 @@ impl NativeSolverState {
     pub(crate) fn directional_ring_factor_revision_count(&self) -> usize {
         self.directional_ring_factor_revisions
             .load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_projector_work_counts(&self) {
+        self.spanning_first_edge_visits.store(0, Ordering::Relaxed);
+        self.spanning_atom_visits.store(0, Ordering::Relaxed);
+        self.spanning_second_edge_visits.store(0, Ordering::Relaxed);
+        self.potential_layout_checks.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn projector_work_counts(&self) -> (usize, usize, usize, usize) {
+        (
+            self.spanning_first_edge_visits.load(Ordering::Relaxed),
+            self.spanning_atom_visits.load(Ordering::Relaxed),
+            self.spanning_second_edge_visits.load(Ordering::Relaxed),
+            self.potential_layout_checks.load(Ordering::Relaxed),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn solver_copy_counts(&self) -> ((usize, usize), (usize, usize), (usize, usize)) {
+        (
+            self.domains.copy_counts(),
+            self.active_factors.copy_counts(),
+            self.activated_factors_by_variable.copy_counts(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_solver_copy_counts(&self) {
+        self.domains.reset_copy_counts();
+        self.active_factors.reset_copy_counts();
+        self.activated_factors_by_variable.reset_copy_counts();
     }
 
     /// Return one atomically restricted and propagated successor.
@@ -316,7 +366,15 @@ impl NativeSolverState {
                         .collect::<Vec<_>>()
                 }
                 FactorDefinition::SpanningTree(spanning_tree) => {
-                    revise_spanning_tree(spanning_tree, &mut self.domains)?
+                    #[cfg(test)]
+                    let work = (
+                        self.spanning_first_edge_visits.as_ref(),
+                        self.spanning_atom_visits.as_ref(),
+                        self.spanning_second_edge_visits.as_ref(),
+                    );
+                    #[cfg(not(test))]
+                    let work = ();
+                    revise_spanning_tree(spanning_tree, &mut self.domains, work)?
                 }
                 FactorDefinition::TetrahedralLayout(layout) => {
                     #[cfg(test)]
@@ -405,7 +463,11 @@ impl NativeSolverState {
             .potential_layout_factors
             .iter()
             .copied()
-            .filter(|factor| self.factor_is_active(*factor) == Some(true))
+            .filter(|factor| {
+                #[cfg(test)]
+                self.potential_layout_checks.fetch_add(1, Ordering::Relaxed);
+                self.factor_is_active(*factor) == Some(true)
+            })
             .collect::<Vec<_>>();
         if component.always_core_variables.is_empty() && active_layouts.is_empty() {
             return Ok(Vec::new());
@@ -1091,12 +1153,16 @@ fn revise_tetrahedral_layout(
 fn revise_spanning_tree(
     factor: &SpanningTreeFactor,
     domains: &mut PagedStore<Domain>,
+    #[cfg(test)] work: (&AtomicUsize, &AtomicUsize, &AtomicUsize),
+    #[cfg(not(test))] _work: (),
 ) -> Result<Vec<VariableId>, NativeSolverError> {
     let mut components = DisjointSet::new(factor.atoms().len());
 
     // Forced traversal edges are the independent set that the remaining
     // graphic-matroid basis must extend. A cycle makes extension impossible.
     for edge in factor.edges() {
+        #[cfg(test)]
+        work.0.fetch_add(1, Ordering::Relaxed);
         let domain = domains[edge.decision_variable().index()];
         match role_membership(domain, edge.role_partition()) {
             (true, false) => {
@@ -1113,6 +1179,8 @@ fn revise_spanning_tree(
 
     let mut quotient_by_root = BTreeMap::new();
     for atom in 0..factor.atoms().len() {
+        #[cfg(test)]
+        work.1.fetch_add(1, Ordering::Relaxed);
         let root = components.find(atom);
         if !quotient_by_root.contains_key(&root) {
             let quotient = quotient_by_root.len();
@@ -1124,6 +1192,8 @@ fn revise_spanning_tree(
     let mut quotient_edges = Vec::new();
 
     for edge in factor.edges() {
+        #[cfg(test)]
+        work.2.fetch_add(1, Ordering::Relaxed);
         let variable = edge.decision_variable();
         let domain = domains[variable.index()];
         let membership = role_membership(domain, edge.role_partition());

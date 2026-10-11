@@ -164,6 +164,11 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.atom_is_visited(atom)
     }
 
+    #[cfg(test)]
+    pub(crate) fn bond_role_domain_for_test(&self, bond: BondId) -> Domain {
+        self.bond_role_domain(bond)
+    }
+
     fn bond_role_domain(&self, bond: BondId) -> Domain {
         let decision_domain = self.bond_decision_domain(bond);
         let partition = self
@@ -601,6 +606,16 @@ impl<S: ConstraintSolver> WriterState<S> {
     #[cfg(test)]
     pub(crate) fn candidate_batch_derivation_count(&self) -> usize {
         self.candidate_batch_derivations.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_traversal_copy_counts(&self) {
+        self.traversal.reset_copy_counts();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn traversal_copy_counts(&self) -> (usize, usize) {
+        self.traversal.copy_counts()
     }
 
     #[cfg(test)]

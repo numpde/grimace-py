@@ -658,6 +658,28 @@ impl TraversalState {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn reset_copy_counts(&self) {
+        self.progress.visited_atoms.words.reset_copy_counts();
+        self.progress.bonds.reset_copy_counts();
+        self.residual.component_by_atom.reset_copy_counts();
+        self.residual.components.reset_copy_counts();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn copy_counts(&self) -> (usize, usize) {
+        [
+            self.progress.visited_atoms.words.copy_counts(),
+            self.progress.bonds.copy_counts(),
+            self.residual.component_by_atom.copy_counts(),
+            self.residual.components.copy_counts(),
+        ]
+        .into_iter()
+        .fold((0, 0), |(nodes, pages), (next_nodes, next_pages)| {
+            (nodes + next_nodes, pages + next_pages)
+        })
+    }
+
     pub(crate) fn active_atom(&self) -> Option<AtomId> {
         self.active.as_ref().map(|frame| frame.atom)
     }

@@ -6820,3 +6820,666 @@ fn backend_failure_while_filtering_incomplete_ring_candidate_aborts_the_batch() 
         Err(ChoiceFailure::Backend(InjectedSolverFailure::Restriction))
     ));
 }
+
+#[test]
+#[ignore = "opt-in native work-count probe; run with --ignored --nocapture"]
+fn native_work_count_probe_fixed_interior_prefix() {
+    fn json_quote(text: &str) -> String {
+        format!("\"{}\"", text.replace('\\', "\\\\").replace('\"', "\\\""))
+    }
+
+    fn prepared_chain(
+        component_atoms: usize,
+        spectator_count: usize,
+        tetra_mode: Option<bool>,
+    ) -> PreparedNonStereo {
+        let tetra_atoms = if tetra_mode.is_some() { 4 } else { 0 };
+        let total = component_atoms + spectator_count * 2 + tetra_atoms;
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..total)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let mut bonds = Vec::new();
+        for index in 0..component_atoms - 1 {
+            bonds.push(graph.add_bond(atoms[index], atoms[index + 1]).unwrap());
+        }
+        for component in 0..spectator_count {
+            let first = component_atoms + component * 2;
+            bonds.push(graph.add_bond(atoms[first], atoms[first + 1]).unwrap());
+        }
+        let mut atom_tokens = vec![PreparedAtomToken::Fixed("C".to_owned()); total];
+        if let Some(connected) = tetra_mode {
+            let center = component_atoms + spectator_count * 2;
+            let leaves = [center + 1, center + 2, center + 3];
+            let center_bonds =
+                leaves.map(|leaf| graph.add_bond(atoms[center], atoms[leaf]).unwrap());
+            bonds.extend(center_bonds);
+            if connected {
+                bonds.push(
+                    graph
+                        .add_bond(atoms[component_atoms - 1], atoms[leaves[0]])
+                        .unwrap(),
+                );
+            }
+            atom_tokens[center] = PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(center_bonds[0]),
+                    TetrahedralLigand::Bond(center_bonds[1]),
+                    TetrahedralLigand::Bond(center_bonds[2]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            };
+        }
+        PreparedNonStereo::with_atom_tokens(
+            PreparedMolecule::new(graph.build()),
+            atom_tokens,
+            vec![NonStereoBondToken::Elided; bonds.len()],
+        )
+        .unwrap()
+    }
+
+    fn probe(name: &str, surface: PreparedNonStereo, inactive_center: Option<usize>) {
+        let initial = initial(&surface);
+        let root = initial
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| choice.successor().active_atom() == Some(AtomId::new(0)))
+            .expect("fixture must expose atom zero as a root")
+            .into_successor();
+        assert_eq!(root.active_atom(), Some(AtomId::new(0)));
+        if let Some(index) = inactive_center {
+            let center = surface
+                .tetrahedral_center(AtomId::new(u32::try_from(index).unwrap()))
+                .expect("inactive-stereo case must prepare its remote tetrahedral center");
+            for factor in std::iter::once(center.root_layout_factor).chain(
+                center
+                    .entry_layout_factors
+                    .iter()
+                    .map(|(_, factor)| *factor),
+            ) {
+                assert_eq!(
+                    root.structural
+                        .constraints_for_test()
+                        .factor_is_active(factor),
+                    Some(false)
+                );
+            }
+        }
+        let native = root.structural.constraints_for_test();
+        native.reset_projector_work_counts();
+        native.reset_exact_run_counts();
+        native.reset_mixed_search_branch_count();
+        native.reset_tetrahedral_factor_revision_count();
+        native.reset_directional_ring_factor_revision_count();
+        native.reset_solver_copy_counts();
+        root.structural.reset_traversal_copy_counts();
+        root.reset_writer_work_counts();
+
+        let choices = root.choices().unwrap();
+        let interior = choices
+            .iter()
+            .filter(|choice| choice.successor().active_atom() == Some(AtomId::new(1)))
+            .count();
+        assert!(interior > 0, "{name}: fixed 0-to-1 transition is required");
+        assert!(choices.iter().all(|choice| {
+            choice.successor().active_atom().is_some()
+                || choice.successor().is_accepted()
+                || choice.successor().pending.is_some()
+        }));
+        let projector = native.projector_work_counts();
+        let exact = native.exact_run_counts();
+        let branches = native.mixed_search_branch_count();
+        let tetra = native.tetrahedral_factor_revision_count();
+        let directional = native.directional_ring_factor_revision_count();
+        let solver_copies = native.solver_copy_counts();
+        let traversal_copies = root.structural.traversal_copy_counts();
+        let writer = root.writer_work_counts();
+        let successor_observation = choices[0]
+            .successor()
+            .structural
+            .constraints_for_test()
+            .projector_work_counts();
+        assert_eq!(
+            successor_observation, projector,
+            "source and successor read one shared lineage total"
+        );
+        assert_eq!(
+            choices[0].successor().writer_work_counts(),
+            writer,
+            "discarded prevalidation remains visible on the source lineage"
+        );
+        println!(
+            "{{\"schema\":\"south_star2_native_work_count_v1\",\"case\":\"{name}\",\"graph_atoms\":{},\"prefix\":\"root_atom_0_active_atom_0\",\"event\":\"choices_to_active_atom_1\",\"choices\":{},\"fixed_transition_successors\":{},\"projector\":{{\"first_edge_visits\":{},\"atom_visits\":{},\"second_edge_visits\":{},\"potential_layout_checks\":{}}},\"exact_runs\":{{\"binary\":{},\"mixed\":{}}},\"mixed_branch_points\":{},\"tetra_factor_revisions\":{},\"directional_ring_revisions\":{},\"copy_pages\":{{\"solver_domains\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_active_factors\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_activation_adjacency\":{{\"index_nodes\":{},\"value_pages\":{}}},\"traversal_aggregate\":{{\"index_nodes\":{},\"value_pages\":{}}}}},\"writer_frontier\":{{\"pending_atom_evaluations\":{},\"discarded_prevalidated_successors\":{}}},\"successor_snapshot_equals_source_shared_total\":true}}",
+            surface.molecule().graph().atom_count(), choices.len(), interior,
+            projector.0, projector.1, projector.2, projector.3,
+            exact.0, exact.1, branches, tetra, directional,
+            solver_copies.0.0, solver_copies.0.1,
+            solver_copies.1.0, solver_copies.1.1,
+            solver_copies.2.0, solver_copies.2.1,
+            traversal_copies.0, traversal_copies.1, writer.0, writer.1,
+        );
+    }
+
+    for (name, atoms, spectators, tetra) in [
+        ("fixed_ccc", 3, 0, None),
+        ("fixed_ccc_plus_2_disconnected_ethanes", 3, 2, None),
+        (
+            "fixed_ccc_plus_disconnected_inactive_tetra",
+            3,
+            0,
+            Some(false),
+        ),
+        ("connected_extension_ccccccc", 7, 0, None),
+        (
+            "connected_extension_plus_distant_inactive_tetra",
+            7,
+            0,
+            Some(true),
+        ),
+    ] {
+        let inactive_center = tetra.map(|_| atoms + spectators * 2);
+        probe(
+            name,
+            prepared_chain(atoms, spectators, tetra),
+            inactive_center,
+        );
+    }
+
+    fn triangle_case(
+        tail_atoms: usize,
+        plain_spectators: usize,
+        disconnected_tetra: bool,
+        distant_connected_tetra: bool,
+    ) -> (PreparedNonStereo, [BondId; 3], usize) {
+        let tetra_atoms = usize::from(disconnected_tetra || distant_connected_tetra) * 4;
+        let tail_extra = tail_atoms;
+        let total = 3 + tail_extra + plain_spectators * 2 + tetra_atoms;
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..total)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let triangle = [
+            graph.add_bond(atoms[0], atoms[1]).unwrap(),
+            graph.add_bond(atoms[1], atoms[2]).unwrap(),
+            graph.add_bond(atoms[2], atoms[0]).unwrap(),
+        ];
+        let mut bonds = triangle.to_vec();
+        let mut next = 3;
+        if tail_atoms > 0 {
+            bonds.push(graph.add_bond(atoms[2], atoms[next]).unwrap());
+            for index in 0..tail_atoms - 1 {
+                bonds.push(
+                    graph
+                        .add_bond(atoms[next + index], atoms[next + index + 1])
+                        .unwrap(),
+                );
+            }
+            next += tail_atoms;
+        }
+        for _ in 0..plain_spectators {
+            bonds.push(graph.add_bond(atoms[next], atoms[next + 1]).unwrap());
+            next += 2;
+        }
+        let mut atom_tokens = vec![PreparedAtomToken::Fixed("C".to_owned()); total];
+        let mut inactive_center = usize::MAX;
+        if disconnected_tetra || distant_connected_tetra {
+            let center = next;
+            let leaves = [center + 1, center + 2, center + 3];
+            let center_bonds =
+                leaves.map(|leaf| graph.add_bond(atoms[center], atoms[leaf]).unwrap());
+            bonds.extend(center_bonds);
+            if distant_connected_tetra {
+                let tail_end = if tail_atoms == 0 { 2 } else { 2 + tail_atoms };
+                bonds.push(graph.add_bond(atoms[tail_end], atoms[leaves[0]]).unwrap());
+            }
+            atom_tokens[center] = PreparedAtomToken::Tetrahedral {
+                reference_order: [
+                    TetrahedralLigand::Bond(center_bonds[0]),
+                    TetrahedralLigand::Bond(center_bonds[1]),
+                    TetrahedralLigand::Bond(center_bonds[2]),
+                    TetrahedralLigand::VirtualHydrogen,
+                ],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            };
+            inactive_center = center;
+        }
+        let surface = PreparedNonStereo::with_atom_tokens(
+            PreparedMolecule::new(graph.build()),
+            atom_tokens,
+            vec![NonStereoBondToken::Elided; bonds.len()],
+        )
+        .unwrap();
+        (surface, triangle, inactive_center)
+    }
+
+    fn probe_triangle(
+        name: &str,
+        tail_atoms: usize,
+        plain_spectators: usize,
+        disconnected_tetra: bool,
+        distant_connected_tetra: bool,
+    ) -> (Vec<String>, (usize, usize, usize, usize), (usize, usize)) {
+        let (surface, triangle, inactive_center) = triangle_case(
+            tail_atoms,
+            plain_spectators,
+            disconnected_tetra,
+            distant_connected_tetra,
+        );
+        let root = initial(&surface)
+            .choices()
+            .unwrap()
+            .into_iter()
+            .find(|choice| choice.successor().active_atom() == Some(AtomId::new(0)))
+            .expect("triangle case must expose atom zero as a root")
+            .into_successor();
+        assert_eq!(root.active_atom(), Some(AtomId::new(0)));
+        let unresolved_seed_domains =
+            triangle.map(|bond| root.structural.bond_role_domain_for_test(bond).len());
+        assert!(
+            unresolved_seed_domains.iter().any(|size| *size > 1),
+            "{name}: triangle must retain an unresolved role decision"
+        );
+        if inactive_center != usize::MAX {
+            let center = surface
+                .tetrahedral_center(AtomId::new(inactive_center as u32))
+                .unwrap();
+            for factor in std::iter::once(center.root_layout_factor).chain(
+                center
+                    .entry_layout_factors
+                    .iter()
+                    .map(|(_, factor)| *factor),
+            ) {
+                assert_eq!(
+                    root.structural
+                        .constraints_for_test()
+                        .factor_is_active(factor),
+                    Some(false)
+                );
+            }
+        }
+        let native = root.structural.constraints_for_test();
+        native.reset_projector_work_counts();
+        native.reset_exact_run_counts();
+        native.reset_mixed_search_branch_count();
+        native.reset_tetrahedral_factor_revision_count();
+        native.reset_directional_ring_factor_revision_count();
+        native.reset_solver_copy_counts();
+        root.structural.reset_traversal_copy_counts();
+        root.reset_writer_work_counts();
+        let choices = root.choices().unwrap();
+        assert!(!choices.is_empty());
+        let strings = choices
+            .iter()
+            .map(|choice| choice.text().to_owned())
+            .collect::<Vec<_>>();
+        let projector = native.projector_work_counts();
+        assert!(
+            projector.0 + projector.1 + projector.2 > 0,
+            "{name}: unresolved triangle choices must execute spanning projector loops"
+        );
+        let copies = native.solver_copy_counts();
+        let traversal_copies = root.structural.traversal_copy_counts();
+        let writer = root.writer_work_counts();
+        let exact = native.exact_run_counts();
+        assert_eq!(
+            choices[0]
+                .successor()
+                .structural
+                .constraints_for_test()
+                .projector_work_counts(),
+            projector
+        );
+        assert_eq!(choices[0].successor().writer_work_counts(), writer);
+        println!(
+            "{{\"schema\":\"south_star2_native_work_count_v1\",\"case\":\"{name}\",\"graph_atoms\":{},\"triangle_seed_role_domain_sizes\":[{},{},{}],\"prefix\":\"root_atom_0_active_atom_0\",\"event\":\"complete_choices_batch_for_unresolved_triangle_roles\",\"remote_tetra_factor_family_inactive_at_seed\":{},\"choices\":{},\"projector\":{{\"first_edge_visits\":{},\"atom_visits\":{},\"second_edge_visits\":{},\"potential_layout_checks\":{}}},\"exact_runs\":{{\"binary\":{},\"mixed\":{}}},\"mixed_branch_points\":{},\"tetra_factor_revisions\":{},\"directional_ring_revisions\":{},\"copy_pages\":{{\"solver_domains\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_active_factors\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_activation_adjacency\":{{\"index_nodes\":{},\"value_pages\":{}}},\"traversal_aggregate\":{{\"index_nodes\":{},\"value_pages\":{}}}}},\"writer_frontier\":{{\"pending_atom_evaluations\":{},\"discarded_prevalidated_successors\":{}}},\"successor_snapshot_equals_source_shared_total\":true}}",
+            surface.molecule().graph().atom_count(), unresolved_seed_domains[0], unresolved_seed_domains[1], unresolved_seed_domains[2],
+            inactive_center != usize::MAX,
+            choices.len(), projector.0, projector.1, projector.2, projector.3,
+            exact.0, exact.1, native.mixed_search_branch_count(), native.tetrahedral_factor_revision_count(), native.directional_ring_factor_revision_count(),
+            copies.0.0, copies.0.1, copies.1.0, copies.1.1, copies.2.0, copies.2.1, traversal_copies.0, traversal_copies.1, writer.0, writer.1,
+        );
+        (strings, projector, (exact.0, exact.1))
+    }
+
+    let triangle_base = probe_triangle("triangle_unresolved_roles", 0, 0, false, false);
+    let triangle_plain = probe_triangle("triangle_plus_disconnected_plain", 0, 2, false, false);
+    let triangle_stereo = probe_triangle(
+        "triangle_plus_disconnected_inactive_tetra",
+        0,
+        0,
+        true,
+        false,
+    );
+    let triangle_tail = probe_triangle("triangle_plus_connected_tail", 6, 0, false, false);
+    let triangle_tail_stereo = probe_triangle(
+        "triangle_tail_plus_distant_inactive_tetra",
+        6,
+        0,
+        false,
+        true,
+    );
+    assert_eq!(
+        triangle_base.0, triangle_plain.0,
+        "plain disconnected spectators preserve triangle alternatives"
+    );
+    assert_eq!(
+        triangle_base.0, triangle_stereo.0,
+        "inactive disconnected stereo preserves triangle alternatives"
+    );
+    assert_eq!(
+        triangle_base.1, triangle_plain.1,
+        "plain disconnected spectators must not add active projector work"
+    );
+    assert_eq!(
+        triangle_base.1, triangle_stereo.1,
+        "inactive disconnected stereo must not add active projector work"
+    );
+    assert_eq!(
+        triangle_base.2, triangle_plain.2,
+        "plain disconnected spectators must not add exact-search work"
+    );
+    assert_eq!(
+        triangle_base.2, triangle_stereo.2,
+        "inactive disconnected stereo must not add exact-search work"
+    );
+    assert_eq!(
+        triangle_base.0, triangle_tail.0,
+        "connected tail growth preserves root-local alternatives"
+    );
+    assert_eq!(
+        triangle_base.0, triangle_tail_stereo.0,
+        "distant inactive tetra preserves root-local alternatives"
+    );
+    assert!(
+        triangle_tail.1 .0 + triangle_tail.1 .1 + triangle_tail.1 .2
+            > triangle_base.1 .0 + triangle_base.1 .1 + triangle_base.1 .2,
+        "connected tail growth must be attributed to more projector visits"
+    );
+    assert!(
+        triangle_tail_stereo.1 .0 + triangle_tail_stereo.1 .1 + triangle_tail_stereo.1 .2
+            > triangle_base.1 .0 + triangle_base.1 .1 + triangle_base.1 .2,
+        "connected tail plus distant tetra is attributed to connected projector visits"
+    );
+
+    let (surface, atoms, bonds) = adjacent_ring_coupled_tetrahedral_fixture();
+    let centers = [atoms[0], atoms[1]].map(|atom| surface.tetrahedral_center(atom).unwrap());
+    let center_factors = centers.map(|center| {
+        std::iter::once(center.root_layout_factor)
+            .chain(
+                center
+                    .entry_layout_factors
+                    .iter()
+                    .map(|(_, factor)| *factor),
+            )
+            .collect::<Vec<_>>()
+    });
+    let center_domains = |state: &State| {
+        centers
+            .iter()
+            .map(|center| {
+                std::iter::once(
+                    state
+                        .structural
+                        .semantic_domain(center.order_variable)
+                        .len(),
+                )
+                .chain(std::iter::once(
+                    state
+                        .structural
+                        .semantic_domain(center.role_pattern_variable)
+                        .len(),
+                ))
+                .chain(
+                    center
+                        .bond_pattern_bits
+                        .iter()
+                        .map(|(bond, _)| state.structural.bond_role_domain_for_test(*bond).len()),
+                )
+                .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let family_activity = |state: &State| -> [bool; 2] {
+        let active = state.observe_raw().structural.active_factors;
+        std::array::from_fn(|index| center_factors[index].iter().any(|id| active.contains(id)))
+    };
+    let shared_bond = bonds[0];
+    let mut pending = vec![initial(&surface)];
+    let mut selected = None;
+    let mut explored = 0;
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(
+            explored < 100_000,
+            "coupled-center witness search must stay bounded"
+        );
+        if state.is_accepted() {
+            continue;
+        }
+        let observed = state.observe_raw();
+        let active_before = family_activity(&state);
+        let before = center_domains(&state);
+        let unresolved = before.iter().flatten().any(|size| *size > 1);
+        let active_frame = observed.structural.traversal.active_frame.as_ref();
+        let adjacent_center_attachment = active_frame.is_some_and(|frame| {
+            frame.atom == atoms[1]
+                && frame
+                    .attachment_groups
+                    .iter()
+                    .flatten()
+                    .any(|attachment| attachment.bond() == shared_bond)
+        });
+        if active_before.iter().any(|active| *active) && unresolved && adjacent_center_attachment {
+            let shared_bond_before = state
+                .structural
+                .bond_role_domain_for_test(shared_bond)
+                .len();
+            let native = state.structural.constraints_for_test();
+            native.reset_projector_work_counts();
+            native.reset_exact_run_counts();
+            native.reset_mixed_search_branch_count();
+            native.reset_tetrahedral_factor_revision_count();
+            native.reset_directional_ring_factor_revision_count();
+            native.reset_solver_copy_counts();
+            state.structural.reset_traversal_copy_counts();
+            state.reset_writer_work_counts();
+            let choices = state.choices().unwrap();
+            let revisions = native.tetrahedral_factor_revision_count();
+            let narrowed = choices.iter().find_map(|choice| {
+                let after = center_domains(choice.successor());
+                let active_after = family_activity(choice.successor());
+                let shared_bond_after = choice
+                    .successor()
+                    .structural
+                    .bond_role_domain_for_test(shared_bond)
+                    .len();
+                let center_zero_narrows = after[0]
+                    .iter()
+                    .zip(&before[0])
+                    .any(|(after, before)| after < before);
+                (active_before == [false, true]
+                    && active_after == [true, true]
+                    && shared_bond_before == 1
+                    && shared_bond_after == shared_bond_before
+                    && center_zero_narrows)
+                    .then(|| {
+                        (
+                            after,
+                            active_after,
+                            shared_bond_after,
+                            choice.text().to_owned(),
+                        )
+                    })
+            });
+            if revisions > 0 {
+                if let Some((after, active_after, shared_bond_after, text)) = narrowed {
+                    selected = Some((
+                        state,
+                        choices,
+                        before,
+                        after,
+                        revisions,
+                        active_before,
+                        active_after,
+                        shared_bond_before,
+                        shared_bond_after,
+                        text,
+                    ));
+                    break;
+                }
+            }
+            pending.extend(choices.into_iter().map(Choice::into_successor));
+        } else {
+            pending.extend(
+                state
+                    .choices()
+                    .unwrap()
+                    .into_iter()
+                    .map(Choice::into_successor),
+            );
+        }
+    }
+
+    let (
+        state,
+        choices,
+        before,
+        after,
+        revisions,
+        active_before,
+        active_after,
+        shared_bond_before,
+        shared_bond_after,
+        narrowing_text,
+    ) = selected.expect(
+        "adjacent-center residual shared-bond attachment must have a bounded successor that narrows a center domain and revises a tetra factor",
+    );
+    assert_eq!(state.active_atom(), Some(atoms[1]));
+    let source_observation = state.observe_raw();
+    let source_frame = source_observation
+        .structural
+        .traversal
+        .active_frame
+        .as_ref()
+        .unwrap();
+    assert_eq!(source_frame.entry_bond, Some(bonds[5]));
+    assert!(source_frame
+        .attachment_groups
+        .iter()
+        .flatten()
+        .any(|attachment| attachment.bond() == shared_bond));
+    assert_eq!(
+        shared_bond_before, 1,
+        "shared center bond is already role-fixed"
+    );
+    assert_eq!(
+        active_before,
+        [false, true],
+        "center 1 is active before the adjacent center is entered"
+    );
+    assert_eq!(
+        active_after,
+        [true, true],
+        "center 0 activates while center 1 remains active"
+    );
+    assert_eq!(shared_bond_before, 1);
+    assert_eq!(
+        shared_bond_after, 1,
+        "shared bond remains role-fixed across the local propagation"
+    );
+    assert!(!state.pending.is_some());
+    assert_eq!(narrowing_text, "[L@H]");
+    assert_eq!(revisions, 2);
+    assert!(revisions > 0);
+    assert!(after.iter().enumerate().any(|(center, values)| {
+        values
+            .iter()
+            .zip(&before[center])
+            .any(|(after, before)| after < before)
+    }));
+    let native = state.structural.constraints_for_test();
+    let projector = native.projector_work_counts();
+    let exact = native.exact_run_counts();
+    let copies = native.solver_copy_counts();
+    let traversal_copies = state.structural.traversal_copy_counts();
+    let writer = state.writer_work_counts();
+    let successor = choices
+        .iter()
+        .find(|choice| {
+            center_domains(choice.successor()) == after
+                && family_activity(choice.successor()) == active_after
+                && choice
+                    .successor()
+                    .structural
+                    .bond_role_domain_for_test(shared_bond)
+                    .len()
+                    == shared_bond_after
+                && choice.text() == narrowing_text
+        })
+        .expect("selected narrowing successor must be retained");
+    assert_eq!(
+        successor
+            .successor()
+            .structural
+            .constraints_for_test()
+            .projector_work_counts(),
+        projector
+    );
+    assert_eq!(successor.successor().writer_work_counts(), writer);
+    println!(
+        "{{\"schema\":\"south_star2_native_work_count_v1\",\"case\":\"adjacent_center_activation_positive_revision\",\"source_prefix\":{{\"active_atom\":{},\"entry_bond\":{},\"pending_present\":{},\"shared_bond_attached_as_residual\":true,\"active_center_families\":[{},{}],\"shared_bond_role_domain\":{}}},\"successor\":{{\"choice_text\":{},\"active_atom\":{},\"entry_bond\":{},\"pending_present\":{},\"active_center_families\":[{},{}],\"shared_bond_role_domain\":{}}},\"before_domains\":{:?},\"after_domains\":{:?},\"event\":\"adjacent_center_activation_local_propagation_not_exact_search\",\"choices\":{},\"projector\":{{\"first_edge_visits\":{},\"atom_visits\":{},\"second_edge_visits\":{},\"potential_layout_checks\":{}}},\"exact_runs\":{{\"binary\":{},\"mixed\":{}}},\"mixed_branch_points\":{},\"tetra_factor_revisions\":{},\"directional_ring_revisions\":{},\"copy_pages\":{{\"solver_domains\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_active_factors\":{{\"index_nodes\":{},\"value_pages\":{}}},\"solver_activation_adjacency\":{{\"index_nodes\":{},\"value_pages\":{}}},\"traversal_aggregate\":{{\"index_nodes\":{},\"value_pages\":{}}}}},\"writer_frontier\":{{\"pending_atom_evaluations\":{},\"discarded_prevalidated_successors\":{}}},\"successor_snapshot_equals_source_shared_total\":true}}",
+        state.active_atom().unwrap().index(),
+        state.observe_raw().structural.traversal.active_frame.as_ref().and_then(|frame| frame.entry_bond).map(|bond| bond.index()).unwrap_or(usize::MAX),
+        state.pending.is_some(), active_before[0], active_before[1], shared_bond_before,
+        json_quote(&narrowing_text),
+        successor.successor().active_atom().map(|atom| atom.index()).unwrap_or(usize::MAX),
+        successor.successor().observe_raw().structural.traversal.active_frame.as_ref().and_then(|frame| frame.entry_bond).map(|bond| bond.index()).unwrap_or(usize::MAX),
+        successor.successor().pending.is_some(), active_after[0], active_after[1], shared_bond_after, before, after, choices.len(),
+        projector.0, projector.1, projector.2, projector.3, exact.0, exact.1,
+        native.mixed_search_branch_count(), revisions, native.directional_ring_factor_revision_count(),
+        copies.0.0, copies.0.1, copies.1.0, copies.1.1, copies.2.0, copies.2.1,
+        traversal_copies.0, traversal_copies.1, writer.0, writer.1,
+    );
+
+    let mut model = crate::model::ConstraintModelBuilder::new();
+    let variables = (0..3)
+        .map(|_| {
+            model
+                .add_variable(crate::model::BondRole::role_domain())
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let triangle_atoms = [
+        crate::ids::AtomId::new(0),
+        crate::ids::AtomId::new(1),
+        crate::ids::AtomId::new(2),
+    ];
+    let edges = [(0, 1), (1, 2), (2, 0)].map(|(a, b)| {
+        crate::model::SpanningTreeEdge::new(variables[a], triangle_atoms[a], triangle_atoms[b])
+    });
+    model.add_spanning_tree(triangle_atoms, edges).unwrap();
+    let source = NativeSolverState::initial(Arc::new(model.build())).unwrap();
+    source.reset_projector_work_counts();
+    let rejected = source.with_restrictions(variables.iter().copied().map(|variable| {
+        (
+            variable,
+            crate::model::BondRole::Traversal.singleton_domain(),
+        )
+    }));
+    assert!(matches!(
+        rejected,
+        Err(crate::native::NativeSolverError::Contradiction)
+    ));
+    let rejected_work = source.projector_work_counts();
+    assert!(
+        rejected_work.0 > 0,
+        "contradictory candidate must visit edges before rejection"
+    );
+    println!(
+        "{{\"schema\":\"south_star2_native_work_count_v1\",\"case\":\"rejected_candidate_source_lineage_observer\",\"event\":\"all_triangle_edges_forced_traversal_then_cycle_rejected\",\"surviving_successors\":0,\"source_projector_after_rejection\":{{\"first_edge_visits\":{},\"atom_visits\":{},\"second_edge_visits\":{},\"potential_layout_checks\":{}}},\"source_snapshot_retains_rejected_work\":true}}",
+        rejected_work.0, rejected_work.1, rejected_work.2, rejected_work.3,
+    );
+}

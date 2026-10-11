@@ -62,6 +62,12 @@ jobs:
           source-tree-test-env: "true"
       - name: Run pinned RDKit parity suite
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_pinned_rdkit_parity -q
+      - name: Run bounded South Star 2 exact support
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star2_rdkit_exact_support -q
+      - name: Run public prefix contract
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.integration.test_public_prefix_api -q
+      - name: Run South Star 2 bridge and preparation regressions
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_native_bridge tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics -q
 
   exact-public-invariants:
     runs-on: ubuntu-latest

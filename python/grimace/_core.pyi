@@ -1,6 +1,17 @@
 from typing import Any
 
 
+class _SouthStar2PreparedWriter:
+    def __init__(self, atoms: list[str], bonds: list[tuple[int, int, str]]) -> None: ...
+    def initial_state(self) -> "_SouthStar2Walker": ...
+
+
+class _SouthStar2Walker:
+    @property
+    def is_accepted(self) -> bool: ...
+    def choices(self) -> list[tuple[str, "_SouthStar2Walker"]]: ...
+
+
 class WriterContinuationRustCursor:
     @property
     def node_id(self) -> int: ...

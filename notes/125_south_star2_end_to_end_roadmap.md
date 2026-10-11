@@ -220,11 +220,12 @@ the working decoder or a concrete consumer establishes their required contract.
 
 ## Working method and progress
 
-Use small coherent slices, coordinator-owned integration, and lower-effort
-peers for bounded implementation proposals and independent audits. Deliberate
-with stronger peers for consequential strategic choices. Apply relevant QA/QC
-skills sequentially, verify findings, fix confirmed issues, and recheck until a
-full pass yields no new actionable findings. Preserve unrelated dirty work.
+Use small coherent slices with delegated authorship, review, QA/QC, and
+validation; the coordinator orchestrates and adjudicates findings. Apply
+relevant QA/QC skills sequentially. Verify each finding, fix confirmed issues,
+and rerun affected earlier lenses. Continue the full relevant pass until it
+produces no new actionable findings; an initial clean review is not final
+acceptance. Preserve unrelated dirty work.
 
 Update this note with verified progress, decisions, and outstanding gates.
 Add another note only when a durable architectural decision needs a separate
@@ -235,14 +236,16 @@ a local commit or local test result.
 | --- | --- | --- |
 | Roadmap | Independently reviewed | Source audit and fresh reader teach-back passed; root-frontier cost scope clarified. |
 | CI coverage | Implemented and independently audited | Explicit new-crate step; 86 root and 224 South Star 2 tests passed locally. Remote CI not observed. |
-| Molecular preparation and mixed validation | In progress | Native cross-crate interface audited; 227 crate tests pass. Molecular adapter and Python bridge remain pending. |
+| Molecular preparation and mixed validation | In progress | Native cross-crate interface audited; 227 crate tests pass. Molecular adapter and mixed-state validation remain pending. |
 | Text-prefix decoder | Pending | Preserve both initial carbon roots for unrooted `CCO`. |
+| Private native Python bridge probe | Implemented and independently reviewed | Private `_core` classes expose fixed atom/bond preparation, accepted state, and owned successor choices. Five bridge tests and both Rust test packages pass locally. Direct wheel and sdist-rebuilt wheel installations each passed those five bridge tests plus 15 public smoke tests, with imports verified from site-packages. This validates the private bridge packaging path, not molecular preparation, text-prefix decoding, or the complete molecular path. |
 | Semantics and cost closure | Pending | Establish separate parse-back, exact parity, and measurement lanes. |
 | Python interface and installed artifacts | Pending | Follow the private molecular and prefix gates. |
 
 The native interface preserves typed spelling and stereo inputs and publishes
 text with its validated successor. Solver and traversal stores remain private.
-Independent code-beauty and error-contract audits found no actionable issues.
-Formatting and diff checks pass. Ordinary Clippy completes, but a strict
-`-D warnings` run fails on existing implementation diagnostics (dead code and
-four Clippy lints outside the new interface); that strict gate remains open.
+Sequential code-beauty, error-contract, and anti-slop reviews found no
+actionable issues after the full pass stabilized. Formatting and diff checks
+pass. Ordinary Clippy completes, but a strict `-D warnings` run fails on
+existing implementation diagnostics (dead code and four Clippy lints outside
+the new interface); that strict gate remains open.

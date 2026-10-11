@@ -5,6 +5,7 @@ mod prepared_graph;
 mod rooted_nonstereo;
 mod rooted_stereo;
 mod smiles_shared;
+mod south_star2;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -28,9 +29,12 @@ use crate::rooted_stereo::{
     internal_stereo_target_guided_marker_basis_diagnostics, PyRootedConnectedStereoDecoder,
     PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState,
 };
+use crate::south_star2::{PySouthStar2PreparedWriter, PySouthStar2Walker};
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PySouthStar2PreparedWriter>()?;
+    m.add_class::<PySouthStar2Walker>()?;
     m.add_class::<PyPreparedSmilesGraph>()?;
     m.add_class::<PyRootedConnectedNonStereoDecoder>()?;
     m.add_class::<PyRootedConnectedNonStereoWalker>()?;

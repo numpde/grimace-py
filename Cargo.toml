@@ -19,6 +19,7 @@ crate-type = ["cdylib"]
 path = "rust/src/lib.rs"
 
 [dependencies]
+grimace-south-star2 = { path = "rust/south_star2" }
 pyo3 = { version = "0.28.2", features = ["num-bigint"] }
 num-bigint = "0.4.6"
 num-traits = "0.2.19"

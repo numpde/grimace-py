@@ -300,3 +300,138 @@ pass stabilized. Formatting and diff checks pass. Ordinary Clippy completes,
 but a strict `-D warnings` run reports existing implementation diagnostics
 (dead code and four Clippy lints outside the new interface); those pre-existing
 diagnostics remain.
+
+## Published-package support delta investigation
+
+The opt-in probe `tmp/exploration/south_star2/003_compare_published_support_delta.py`
+compares this source revision's public `grimace.decoding.start(mol)` prefix
+walk with the actual PyPI `grimace-py` 0.1.18 wheel
+(SHA256 `14589d18295e418b5570566953250b5b039a4c20c79ef7815eb221e98ff239ee`)
+under RDKit 2026.03.4. It verifies the extracted wheel members and extension
+hash, and checks the installed current core and preparation hashes. Rerun it
+with the pinned 2026.03.4 environment and the same wheel and extracted root;
+the JSON report is an external run artifact, not a checked-in expected set.
+Each lane/case runs in a fresh subprocess with a three-second timeout and 2 GiB
+address-space limit. The prefix walk has a 20,000-state cap. Outcomes and
+failures are retained by case. Seeded RDKit strings are positive membership
+witnesses only. The published package's enumerated strings are its observed
+baseline, not independently source-proven complete RDKit support. The walker
+records acceptance and still visits available choices; a small accepted-and-
+expandable state check guards this boundary. The latest run had no worker
+timeouts or prefix-cap exhaustion.
+
+The 45-case matrix combines C/O controls, ordinary unsupported feature probes,
+and the nine curated examples in the published package's former timing corpus.
+All nine published decoders initialize; current South Star 2 accepts only
+`C1COCCC12CO2` from that group. The other eight fail preparation because of
+aromatic bonds, unsupported elements, or directional carrier constraints.
+Across the matrix, 19 small cases completed both exact-set comparisons: 14
+sets agree and five cyclic unsaturated inputs have strict SS2 supersets. The
+published package has no output missing from SS2 in those five. For
+`C1=CCCCC1`, for example, SS2 additionally emits `C=1CCCCC1` and
+`C=1CCCCC=1`; the other extra spellings are recorded in the run JSON. This is
+a standard-valid spelling delta: OpenSMILES §3.4 lists these cyclohexene
+ring-bond forms. Daylight §§3.2 and 3.3 also define explicit hydrogen atoms
+and directional-bond spelling for partial double-bond stereo. These are not
+invalid SMILES or a chemical defect. They are outside the published package's
+observed writer style, but are members of the intended standard-defined output
+language. The five cyclic cases are `C1=CCCCC1`
+(6 published, 8 SS2 strings), `C1=CCCC1` (5, 7), `C1=CCCCCC1` (7, 9),
+`C1=CC=CCC1` (6, 10), and `C1=CCCCC1O` (24, 32).
+
+The separate configured E/?/E triene case has seven outputs in each lane, with
+equal string sets. Mapped bond facts show that every output preserves the two
+configured outer E bonds; four outputs assign E and three assign Z to the
+otherwise unspecified middle bond. A seeded writer witness demonstrates each
+middle assignment. An explicit-H spelling parses with E/?/E when hydrogens are
+retained, then `Chem.RemoveHs` yields the same heavy-atom graph and mapped
+stereo facts. RDKit's default parser removes those hydrogens during parsing and
+assigns the middle bond, so this observation is scoped to parse-then-normalize
+order; it is not a general claim that default parsing preserves the unset
+stereo. The observed outputs show a per-string difference in whether the
+unspecified center receives a directional assignment; its collective meaning
+under the intended language and hydrogen-normalization rules remains an open
+semantic question. This is not evidence that default parsing is defective or
+that the center is generally unrepresentable. See [OpenSMILES
+§3.4](https://opensmiles.org/opensmiles.html) and [Daylight SMILES theory
+§§3.2–3.3](https://www.daylight.com/dayhtml/doc/theory/theory.smiles.html).
+
+The bounded matrix also shows where the current preparation boundary lies:
+neutral saturated and unsaturated C/O controls, tetrahedral C/O cases, simple
+C/C and C/O directional cases, and selected shared-double/ring cases prepare;
+N/S/P/B/halogens, charges, explicit hydrogen state, isotopes, atom maps,
+radicals, aromatic bonds, and triple bonds are rejected. A short adjacent
+directional-chain request reaches native `NotImplementedError` for the
+currently declared anchor scope. These are observed admission facts for this
+candidate and RDKit version, not a complete chemistry classification.
+
+The intended South Star 2 end state is to generate the standard-defined valid
+SMILES representations for the intended molecule first, with any requested
+style applied as a separate optional subset. The ring-open-only,
+ring-close-only, and matching-both-endpoint spellings therefore belong to the
+core language when allowed by the relevant standard; a closure-only preference
+is a style filter, not a universal correction. Published/RDKit output is useful
+comparative evidence for a style subset, not the authority for the core
+language. The current runtime remains incomplete and entangles some writer
+style with generation; this investigation does not implement or claim that
+target. Moving the public contract to this target requires an explicit API and
+documentation transition, not silently treating parsed-object equivalence as
+exact writer parity.
+
+The native core must model the applicable standard grammar, not enumerate a
+finite glyph list and call it complete. OpenSMILES v1.0 (2016-05-15) §3.1.4
+explicitly equates the isotope spellings `[2H]`, `[02H]`, and `[002H]`; §3.1.7
+defines atom classes as arbitrary integers, defaults an omitted class to zero,
+and gives `:005` as a numeric interpretation example. Section 3.10 discusses
+minimum parser width for atom-class fields; it is not ring-label syntax.
+OpenSMILES §3.4 limits ring tokens to one digit or `%` followed by exactly two
+digits, matched numerically, so leading-zero ring aliases are finite. The
+document does not give a separate formal `NUMBER ::= DIGIT+` production;
+unbounded zero-prefixed aliases for isotope and atom-class fields follow by
+interpreting their values numerically, not by quoting a grammar production.
+As a concrete parser observation, RDKit 2026.03.1 and 2026.03.4 accept `[2H]`
+but reject `[02H]` and `[002H]`, despite those explicit OpenSMILES examples.
+Parser acceptance is comparative runtime evidence, not authority for the
+intended standard language. This supports an incremental lexical-state design
+with finite next-character choices and arbitrarily long valid numeric fields,
+without whole-language enumeration. Evidence and runtime resource limits cap
+an execution or fixture walk; they do not cap the language definition. Ring
+bond labels also need pair-consistent alternatives, including a mark at either
+endpoint or matching marks at both. See [OpenSMILES v1.0,
+§§3.1.4, 3.1.7, 3.4 and 3.10](https://raw.githubusercontent.com/opensmiles/OpenSMILES/master/opensmiles.asciidoc).
+
+The grammar has structural serialization choices beyond graph traversal over
+connected components. OpenSMILES §3.7.1 documents dot-separated forms such as
+`CC` and `C1.C1` for the same molecule, and `CCC` and `C1.C12.C2`; dot segments
+therefore cannot be assumed to represent disconnected graph components.
+Standard-defined serialization events must be modeled independently from the
+current component-first/traversal schedule. The first substantial native step
+should establish incremental grammar state and those event transitions, then
+allow an optional style predicate to intersect the valid paths. It must not
+assume one fixed glyph renderer or equate graph components with dot segments.
+
+The target language still needs a precise, reviewed account of graph identity
+and equivalence across hydrogen forms, aromatic and Kekule forms, charge and
+atom-class fields, maps, isotopes, and partial stereo. These are standards and
+semantic questions, not fields to silently normalize using RDKit's default
+parser. In particular, the triene observations above are per-string facts;
+collective equivalence under hydrogen normalization remains unresolved. The
+pinned RDKit 2026.03.4 source manifest at
+`tests/fixtures/rdkit_upstream_serializer_sources/2026.03.4/manifest.json`
+supplies provenance for comparative `Canon.cpp` ring-stack traversal (lines
+991–1022) and `SmilesWrite.cpp` stack-bond emission (lines 430–458), but these
+sources do not define the target core language. See [OpenSMILES
+§§2.2, 3.1.4, 3.1.7, 3.4, 3.7.1](https://opensmiles.org/opensmiles.html) and
+[Daylight SMILES theory §§3.2–3.3](https://www.daylight.com/dayhtml/doc/theory/theory.smiles.html).
+The source-to-native design and the standard/language boundary require review
+before behavior changes.
+
+The comparison is intentionally small and version-specific. It does not
+establish full RDKit support equality, general SMILES validity, broad chemical
+coverage, or performance. Exact enumerations are limited to the 19 completed
+small cases and one separate triene; the larger curated and feature cases are
+admission or single-witness observations. The two package lanes share the
+same installed RDKit version, but the published and current implementations
+remain distinct artifacts. This investigation records the intended language
+direction; it does not change the implementation or silently alter the current
+public contract.

@@ -1,6 +1,12 @@
 {
   "files": [
     {
+      "bytes": 31913,
+      "lines": 1053,
+      "path": "Code/GraphMol/Atom.cpp",
+      "sha256": "2ea6aeefda734796fd6e3e38ab8a56efcea6c4f90c1c8a73ac3cd053e4e69dbd"
+    },
+    {
       "bytes": 69181,
       "lines": 1759,
       "path": "Code/GraphMol/Canon/Canon.cpp",

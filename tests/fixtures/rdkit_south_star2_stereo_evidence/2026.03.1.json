@@ -1,0 +1,856 @@
+{
+  "rdkit_version": "2026.03.1",
+  "source_commit": "cb251343b9448601963cbcec5057a76ff02b27c2",
+  "source_manifest": "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/manifest.json",
+  "tree_bound_formula": "sum_r[d(r)! product(v!=r)(degree(v)-1)!] = 2|E| product_v(degree(v)-1)!",
+  "source_claims": [
+    {
+      "path": "Code/GraphMol/Atom.cpp",
+      "lines": "748-760",
+      "claim": "Atom::getPerturbationOrder compares the proposed bond-index order with the atom incoming-bond reference frame."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "338-345, 1460-1508",
+      "claim": "RDKit identifies when a tetrahedral tag needs inversion and computes parity from the traversal bond order, including implicit neighbors and the atom incoming-bond frame."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "356-417, 556-563",
+      "claim": "RDKit chooses controlling directional carrier bonds by traversal order and assigns direction marks to encode configured double-bond stereo."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "1198-1304",
+      "claim": "During directional stereo rendering, RDKit can set direction marks on a bond around a configured stereogenic double bond; seeded replay demonstrates that this can assign stereo to an otherwise unspecified middle double bond on parse-back."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "841-965, 991-1025, 1033-1124, 1146-1154",
+      "claim": "The first depth-first traversal identifies ring closures, which are absent on these trees. The second traversal controls writer order. Together with traversal-based tetrahedral and directional rendering, each fixed root and child-order schedule yields one deterministic stereo spelling."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "840-965, 1033-1124, 1146-1154",
+      "claim": "On this tree the cycle-detection DFS has no closures. The writer DFS selects a root and child order, and records each continuation or branch in that order."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "376-419, 450-477",
+      "claim": "RDKit orders the double-bond endpoints by atom visit order, selects the lowest-visit-order eligible carrier on each end, and derives carrier flips from traversal order."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "92-145, 553-563",
+      "claim": "For E stereo RDKit takes the controlling carrier sign as reference and derives the other carrier sign from traversal flips; when neither side has a direction, the first controlling carrier is assigned ENDUPRIGHT."
+    },
+    {
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "lines": "1312-1344",
+      "claim": "The final redundancy pass clears only unneeded direction marks; the two marks needed for the configured E bond remain on its carriers."
+    },
+    {
+      "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+      "lines": "279-292",
+      "claim": "RDKit renders ENDUPRIGHT as slash and ENDDOWNRIGHT as backslash in isomeric SMILES."
+    }
+  ],
+  "cases": [
+    {
+      "id": "stereo_tetra_ccw_tree",
+      "input_smiles": "C[C@H](O)CC",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 2
+          },
+          {
+            "index": 4,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "SINGLE"
+          },
+          {
+            "index": 2,
+            "begin": 1,
+            "end": 3,
+            "type": "SINGLE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 1,
+            "incident_bonds": [
+              0,
+              1,
+              2
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+          }
+        ]
+      },
+      "schedule_upper_bound": 16,
+      "expected_distinct_outputs": 16,
+      "bound_argument": "The graph is a tree. RDKit permits a root and a continuation-child order at each visited branching atom. The sum over roots is sum_r[d(r)! product(v!=r)(d(v)-1)!, equal to 2|E| product_v(degree(v)-1)!. Source claim supplies the upper bound; each listed unique replayed seed supplies a lower-bound witness.",
+      "distinct_output_upper_bound": 16,
+      "expected_support": [
+        "C(C)[C@@H](O)C",
+        "C(C)[C@H](C)O",
+        "C([C@@H](O)C)C",
+        "C([C@H](C)O)C",
+        "CC[C@@H](O)C",
+        "CC[C@H](C)O",
+        "C[C@@H](CC)O",
+        "C[C@H](O)CC",
+        "O[C@@H](C)CC",
+        "O[C@H](CC)C",
+        "[C@@H](C)(O)CC",
+        "[C@@H](CC)(C)O",
+        "[C@@H](O)(CC)C",
+        "[C@H](C)(CC)O",
+        "[C@H](CC)(O)C",
+        "[C@H](O)(C)CC"
+      ],
+      "witness_seeds": [
+        8,
+        3,
+        23,
+        13,
+        4,
+        14,
+        60,
+        5,
+        2,
+        27,
+        16,
+        31,
+        41,
+        1,
+        21,
+        6
+      ],
+      "source": "Fixed parsed RDKit graph. Root and child-order schedules give the stated finite writer bound; each support entry has a replayed randomized-writer seed.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support"
+    },
+    {
+      "id": "stereo_tetra_cw_tree",
+      "input_smiles": "C[C@@H](O)CC",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 2
+          },
+          {
+            "index": 4,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "SINGLE"
+          },
+          {
+            "index": 2,
+            "begin": 1,
+            "end": 3,
+            "type": "SINGLE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 1,
+            "incident_bonds": [
+              0,
+              1,
+              2
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CW"
+          }
+        ]
+      },
+      "schedule_upper_bound": 16,
+      "expected_distinct_outputs": 16,
+      "bound_argument": "The graph is a tree. RDKit permits a root and a continuation-child order at each visited branching atom. The sum over roots is sum_r[d(r)! product(v!=r)(d(v)-1)!, equal to 2|E| product_v(degree(v)-1)!. Source claim supplies the upper bound; each listed unique replayed seed supplies a lower-bound witness.",
+      "distinct_output_upper_bound": 16,
+      "expected_support": [
+        "C(C)[C@@H](C)O",
+        "C(C)[C@H](O)C",
+        "C([C@@H](C)O)C",
+        "C([C@H](O)C)C",
+        "CC[C@@H](C)O",
+        "CC[C@H](O)C",
+        "C[C@@H](O)CC",
+        "C[C@H](CC)O",
+        "O[C@@H](CC)C",
+        "O[C@H](C)CC",
+        "[C@@H](C)(CC)O",
+        "[C@@H](CC)(O)C",
+        "[C@@H](O)(C)CC",
+        "[C@H](C)(O)CC",
+        "[C@H](CC)(C)O",
+        "[C@H](O)(CC)C"
+      ],
+      "witness_seeds": [
+        3,
+        8,
+        13,
+        23,
+        14,
+        4,
+        5,
+        60,
+        27,
+        2,
+        1,
+        21,
+        6,
+        16,
+        31,
+        41
+      ],
+      "source": "Fixed parsed RDKit graph. Root and child-order schedules give the stated finite writer bound; each support entry has a replayed randomized-writer seed.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support"
+    },
+    {
+      "id": "stereo_mixed_alkene_tetra_tree",
+      "input_smiles": "C/C=C/[C@H](O)C",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 4,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 5,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOE",
+            "stereo_atoms": [
+              0,
+              3
+            ]
+          },
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "direction": "ENDUPRIGHT"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 3,
+            "incident_bonds": [
+              2,
+              3,
+              4
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+          }
+        ]
+      },
+      "schedule_upper_bound": 20,
+      "expected_distinct_outputs": 20,
+      "bound_argument": "For this tree the root and branch-order schedule formula gives 20. RDKit source supports that schedule upper bound; each unique replayed seed is a lower-bound witness.",
+      "distinct_output_upper_bound": 20,
+      "expected_support": [
+        "C(/C)=C\\[C@@H](C)O",
+        "C(/C)=C\\[C@H](O)C",
+        "C(/[C@@H](C)O)=C\\C",
+        "C(/[C@H](O)C)=C\\C",
+        "C(=C\\C)/[C@@H](C)O",
+        "C(=C\\C)/[C@H](O)C",
+        "C(=C\\[C@@H](C)O)/C",
+        "C(=C\\[C@H](O)C)/C",
+        "C/C=C/[C@@H](C)O",
+        "C/C=C/[C@H](O)C",
+        "C[C@@H](O)/C=C/C",
+        "C[C@H](/C=C/C)O",
+        "O[C@@H](/C=C/C)C",
+        "O[C@H](C)/C=C/C",
+        "[C@@H](/C=C/C)(O)C",
+        "[C@@H](C)(/C=C/C)O",
+        "[C@@H](O)(C)/C=C/C",
+        "[C@H](/C=C/C)(C)O",
+        "[C@H](C)(O)/C=C/C",
+        "[C@H](O)(/C=C/C)C"
+      ],
+      "witness_seeds": [
+        25,
+        7,
+        26,
+        44,
+        2,
+        32,
+        1,
+        19,
+        12,
+        6,
+        5,
+        11,
+        22,
+        4,
+        51,
+        123,
+        21,
+        15,
+        9,
+        3
+      ],
+      "source": "Fixed parsed RDKit graph. Root and child-order schedules give the stated finite writer bound; each support entry has a replayed randomized-writer seed.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support"
+    },
+    {
+      "id": "stereo_e_butene_tree",
+      "input_smiles": "C/C=C/C",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOE",
+            "stereo_atoms": [
+              0,
+              3
+            ]
+          },
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "direction": "ENDUPRIGHT"
+          }
+        ],
+        "tetrahedral_centers": []
+      },
+      "schedule_upper_bound": 6,
+      "expected_distinct_outputs": 3,
+      "bound_argument": "The path graph has four possible roots. Endpoint roots have one child order each; either internal root has two orders for its two neighbors, giving six rows total. With no cycles, source traversal order fixes the first visited alkene endpoint and the unique carrier at each end. Canon source rules fix the control and other direction signs for every row, and the writer maps those signs to slash glyphs. The six source-derived rows render to three distinct strings. Reversal pairs rows 1/2, 3/4, and 5/6; replayed seeds and RDKit output orders corroborate each row.",
+      "distinct_output_upper_bound": 3,
+      "source": "Fixed parsed RDKit graph. Root and child-order schedules give the stated finite writer bound; each support entry has a replayed randomized-writer seed.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "source_schedule_rows": [
+        {
+          "root": 0,
+          "root_children": [
+            1
+          ],
+          "visit_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 0,
+            "to_atom": 1,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C/C=C/C",
+          "seed": 4,
+          "atom_output_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "root": 3,
+          "root_children": [
+            2
+          ],
+          "visit_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 3,
+            "to_atom": 2,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C/C=C/C",
+          "seed": 1,
+          "atom_output_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "root": 1,
+          "root_children": [
+            0,
+            2
+          ],
+          "visit_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(/C)=C\\C",
+          "seed": 15,
+          "atom_output_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "root": 2,
+          "root_children": [
+            3,
+            1
+          ],
+          "visit_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(/C)=C\\C",
+          "seed": 2,
+          "atom_output_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "root": 1,
+          "root_children": [
+            2,
+            0
+          ],
+          "visit_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(=C\\C)/C",
+          "seed": 3,
+          "atom_output_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "bond_output_order": [
+            1,
+            2,
+            0
+          ]
+        },
+        {
+          "root": 2,
+          "root_children": [
+            1,
+            3
+          ],
+          "visit_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(=C\\C)/C",
+          "seed": 10,
+          "atom_output_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "bond_output_order": [
+            1,
+            0,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unspecified_alkene_with_tetrahedral_stereo",
+      "input_smiles": "CC=C[C@H](O)C",
+      "unspecified_stereo": [
+        {
+          "kind": "alkene",
+          "bond_index": 1,
+          "expected": "STEREONONE"
+        }
+      ],
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C(=C[C@@H](C)O)C"
+        },
+        {
+          "seed": 6,
+          "smiles": "CC=C[C@H](O)C"
+        }
+      ],
+      "tetrahedral_centers": [
+        {
+          "atom": 3,
+          "incident_bonds": [
+            2,
+            3,
+            4
+          ],
+          "non_graph_hydrogens": 1,
+          "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+        }
+      ],
+      "source": "Seeded RDKit writer membership witness plus semantic parse-back control; no support completeness is claimed.",
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "unspecified_stereo_semantic_control"
+    },
+    {
+      "id": "unspecified_tetrahedron_with_e_alkene",
+      "input_smiles": "C/C=C/C(O)C",
+      "unspecified_stereo": [
+        {
+          "kind": "tetrahedral",
+          "atom_index": 3,
+          "expected": "CHI_UNSPECIFIED"
+        }
+      ],
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C(=C\\C(C)O)/C"
+        },
+        {
+          "seed": 6,
+          "smiles": "C/C=C/C(O)C"
+        }
+      ],
+      "alkenes": [
+        {
+          "bond_index": 1,
+          "begin": 1,
+          "end": 2,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            0,
+            3
+          ]
+        }
+      ],
+      "source": "Seeded RDKit writer membership witness plus semantic parse-back control; no support completeness is claimed.",
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "unspecified_stereo_semantic_control"
+    },
+    {
+      "id": "unspecified_middle_alkene_receives_writer_directional_marks",
+      "input_smiles": "CC=CC=CC=CC",
+      "configured_bonds": [
+        {
+          "index": 1,
+          "begin": 1,
+          "end": 2,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            0,
+            3
+          ]
+        },
+        {
+          "index": 3,
+          "begin": 3,
+          "end": 4,
+          "stereo": "STEREONONE",
+          "stereo_atoms": []
+        },
+        {
+          "index": 5,
+          "begin": 5,
+          "end": 6,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            4,
+            7
+          ]
+        }
+      ],
+      "clear_all_bond_directions_before_write": true,
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C/C=C/C=C/C=C/C",
+          "parsed_middle_stereo": "STEREOE"
+        },
+        {
+          "seed": 2,
+          "smiles": "C(/C)=C\\C=C/C=C/C",
+          "parsed_middle_stereo": "STEREOZ"
+        }
+      ],
+      "evidence_scope": "These are positive writer-membership witnesses paired with a parse-back semantic discrepancy. They do not establish complete writer support or justify a negative parity factor.",
+      "source_lines": "Code/GraphMol/Canon/Canon.cpp:1198-1304",
+      "source": "These are positive writer-membership witnesses paired with a parse-back semantic discrepancy. They do not establish complete writer support or justify a negative parity factor.",
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "known_writer_quirk"
+    }
+  ]
+}

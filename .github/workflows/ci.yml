@@ -103,6 +103,13 @@ jobs:
         run: python -m pip install dist/*.whl
       - name: Run installed-package correctness subset
         run: python -m unittest tests.run_installed_package_correctness -q
+      - name: Test installed prefix API with latest RDKit
+        if: ${{ matrix.python-version == '3.12' }}
+        run: |
+          python -m pip install --upgrade --force-reinstall rdkit
+          python -m pip check
+          python -c "from rdkit import rdBase; import grimace, grimace.decoding, grimace._core; print('RDKit:', rdBase.rdkitVersion); print('grimace:', grimace.__file__); print('grimace.decoding:', grimace.decoding.__file__); print('grimace._core:', grimace._core.__file__)"
+          python -m unittest tests.integration.test_public_prefix_api -q
 
   sdist:
     runs-on: ubuntu-latest
@@ -123,3 +130,9 @@ jobs:
         run: python -m pip install dist/*.tar.gz
       - name: Run installed-package correctness subset from source distribution
         run: python -m unittest tests.run_installed_package_correctness -q
+      - name: Test installed prefix API with latest RDKit
+        run: |
+          python -m pip install --upgrade --force-reinstall rdkit
+          python -m pip check
+          python -c "from rdkit import rdBase; import grimace, grimace.decoding, grimace._core; print('RDKit:', rdBase.rdkitVersion); print('grimace:', grimace.__file__); print('grimace.decoding:', grimace.decoding.__file__); print('grimace._core:', grimace._core.__file__)"
+          python -m unittest tests.integration.test_public_prefix_api -q

@@ -25,6 +25,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run Rust tests
         run: cargo test --lib
+      - name: Run South Star 2 Rust tests
+        run: cargo test -p grimace-south-star2 --lib
 
   tests:
     runs-on: ubuntu-latest

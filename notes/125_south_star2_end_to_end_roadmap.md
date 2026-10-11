@@ -234,7 +234,7 @@ a local commit or local test result.
 | Milestone | Status | Evidence or next action |
 | --- | --- | --- |
 | Roadmap | Independently reviewed | Source audit and fresh reader teach-back passed; root-frontier cost scope clarified. |
-| CI coverage | Pending | Add the explicit new-crate test step. |
+| CI coverage | Implemented and independently audited | Explicit new-crate step; 86 root and 224 South Star 2 tests passed locally. Remote CI not observed. |
 | Molecular preparation and mixed validation | Pending | Define the first independent molecular input and bounded cases. |
 | Text-prefix decoder | Pending | Preserve both initial carbon roots for unrooted `CCO`. |
 | Semantics and cost closure | Pending | Establish separate parse-back, exact parity, and measurement lanes. |

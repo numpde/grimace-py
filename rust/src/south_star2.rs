@@ -1,8 +1,8 @@
 //! Private Python transport for the independent South Star 2 native walker.
 
 use grimace_south_star2::{
-    AtomId, AtomToken, BondToken, PreparedGraphBuilder, PreparedWriter, Walker, WalkerFailure,
-    WalkerFailureKind,
+    AtomId, AtomToken, BondToken, PreparedGraphBuilder, PreparedWriter, TextPrefix, Walker,
+    WalkerFailure, WalkerFailureKind,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -45,6 +45,49 @@ impl PySouthStar2PreparedWriter {
         self.prepared
             .initial()
             .map(|state| PySouthStar2Walker { state })
+            .map_err(python_failure)
+    }
+
+    fn initial_prefix(&self) -> PyResult<PySouthStar2TextPrefix> {
+        TextPrefix::initial(&self.prepared)
+            .map(|prefix| PySouthStar2TextPrefix { prefix })
+            .map_err(python_failure)
+    }
+}
+
+#[pyclass(name = "_SouthStar2TextPrefix", module = "grimace._core", frozen)]
+pub struct PySouthStar2TextPrefix {
+    prefix: TextPrefix,
+}
+
+#[pymethods]
+impl PySouthStar2TextPrefix {
+    #[getter]
+    fn is_accepted(&self) -> bool {
+        self.prefix.is_accepted()
+    }
+
+    #[getter]
+    fn frontier_size(&self) -> usize {
+        self.prefix.frontier_size()
+    }
+
+    fn choices(&self) -> PyResult<Vec<(String, Self)>> {
+        self.prefix
+            .choices()
+            .map(|choices| {
+                choices
+                    .into_iter()
+                    .map(|choice| {
+                        (
+                            choice.text,
+                            Self {
+                                prefix: choice.successor,
+                            },
+                        )
+                    })
+                    .collect()
+            })
             .map_err(python_failure)
     }
 }

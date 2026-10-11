@@ -12,7 +12,7 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
 
 
-PINNED_RDKIT_VERSION = "2026.03.1"
+RDKIT_VERSION = rdBase.rdkitVersion
 PINNED_STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 
 
@@ -51,7 +51,7 @@ def _prefix_strings(mol: Chem.Mol) -> tuple[list[str], list[str]]:
 def _stereo_cases():
     return load_pinned_rdkit_fixture_cases(
         fixture_root=PINNED_STEREO_FIXTURES,
-        rdkit_version=PINNED_RDKIT_VERSION,
+        rdkit_version=RDKIT_VERSION,
         fixture_label="South Star 2 stereo evidence",
     )
 
@@ -77,7 +77,7 @@ def _triene_source(case) -> Chem.Mol:
 def _tetrahedral_stereo_cases():
     cases = load_pinned_rdkit_fixture_cases(
         fixture_root=PINNED_STEREO_FIXTURES,
-        rdkit_version=PINNED_RDKIT_VERSION,
+        rdkit_version=RDKIT_VERSION,
         fixture_label="South Star 2 stereo evidence",
     )
     by_id = {case.case_id: case for case in cases}
@@ -90,10 +90,6 @@ def _tetrahedral_stereo_cases():
 class SouthStar2PreparationWriterParityTests(unittest.TestCase):
     """Compare native output sets with pinned RDKit writer support fixtures."""
 
-    @unittest.skipUnless(
-        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-        f"Exact stereo support is pinned to RDKit {PINNED_RDKIT_VERSION}",
-    )
     def test_exact_tetrahedral_support_and_renumbering_for_both_enantiomers(self) -> None:
         supports: list[set[str]] = []
         for case in _tetrahedral_stereo_cases():
@@ -120,10 +116,6 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
 
         self.assertTrue(supports[0].isdisjoint(supports[1]))
 
-    @unittest.skipUnless(
-        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-        f"Exact stereo support is pinned to RDKit {PINNED_RDKIT_VERSION}",
-    )
     def test_exact_mixed_and_e_butene_support_in_grouped_prefix_path(self) -> None:
         by_id = {case.case_id: case for case in _stereo_cases()}
         mixed = by_id["stereo_mixed_alkene_tetra_tree"]
@@ -339,10 +331,6 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
 class SouthStar2PreparationWriterQuirkWitnessTests(unittest.TestCase):
     """Check the pinned positive writer witnesses for the known triene quirk."""
 
-    @unittest.skipUnless(
-        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-        f"RDKit writer witnesses are pinned to {PINNED_RDKIT_VERSION}",
-    )
     def test_triene_outputs_include_each_seeded_writer_witness(self) -> None:
         case = next(
             case
@@ -356,10 +344,6 @@ class SouthStar2PreparationWriterQuirkWitnessTests(unittest.TestCase):
         actual = _accepted_strings(source)
         self.assertTrue({witness["smiles"] for witness in case.raw["witnesses"]} <= actual)
 
-    @unittest.skipUnless(
-        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-        f"RDKit writer witnesses are pinned to {PINNED_RDKIT_VERSION}",
-    )
     def test_triene_witness_parseback_records_unspecified_middle_stereo(self) -> None:
         case = next(
             case

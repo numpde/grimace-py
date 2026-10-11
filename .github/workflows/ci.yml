@@ -60,10 +60,14 @@ jobs:
         with:
           python-version: "3.12"
           source-tree-test-env: "true"
+      - name: Verify pinned RDKit upstream source fixtures
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.contract.test_rdkit_upstream_sources -q
       - name: Run pinned RDKit parity suite
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_pinned_rdkit_parity -q
       - name: Run bounded South Star 2 exact support
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star2_rdkit_exact_support -q
+      - name: Run South Star 2 source evidence for installed RDKit
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m tests.run_pinned_stereo_evidence
       - name: Run public prefix contract
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.integration.test_public_prefix_api -q
       - name: Run South Star 2 bridge and preparation regressions
@@ -103,13 +107,32 @@ jobs:
         run: python -m pip install dist/*.whl
       - name: Run installed-package correctness subset
         run: python -m unittest tests.run_installed_package_correctness -q
-      - name: Test installed prefix API with latest RDKit
+      - name: Test installed South Star 2 gates with RDKit 2026.03.4
         if: ${{ matrix.python-version == '3.12' }}
         run: |
-          python -m pip install --upgrade --force-reinstall rdkit
+          python -m pip install --upgrade --force-reinstall "rdkit==2026.3.4"
           python -m pip check
-          python -c "from rdkit import rdBase; import grimace, grimace.decoding, grimace._core; print('RDKit:', rdBase.rdkitVersion); print('grimace:', grimace.__file__); print('grimace.decoding:', grimace.decoding.__file__); print('grimace._core:', grimace._core.__file__)"
-          python -m unittest tests.integration.test_public_prefix_api -q
+          python - <<'PY'
+          from importlib.metadata import version
+          from pathlib import Path
+          import site
+
+          from rdkit import rdBase
+          import grimace
+          import grimace.decoding
+          import grimace._core
+
+          assert rdBase.rdkitVersion == "2026.03.4", rdBase.rdkitVersion
+          print("RDKit runtime:", rdBase.rdkitVersion)
+          print("RDKit distribution:", version("rdkit"))
+          site_roots = tuple(Path(path).resolve() for path in site.getsitepackages())
+          for module in (grimace, grimace.decoding, grimace._core):
+              module_path = Path(module.__file__).resolve()
+              assert any(module_path.is_relative_to(root) for root in site_roots), module_path
+              print(f"{module.__name__}: {module_path}")
+          PY
+          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests -q
+          python -m tests.run_pinned_stereo_evidence
 
   sdist:
     runs-on: ubuntu-latest
@@ -130,9 +153,28 @@ jobs:
         run: python -m pip install dist/*.tar.gz
       - name: Run installed-package correctness subset from source distribution
         run: python -m unittest tests.run_installed_package_correctness -q
-      - name: Test installed prefix API with latest RDKit
+      - name: Test installed South Star 2 gates with RDKit 2026.03.4
         run: |
-          python -m pip install --upgrade --force-reinstall rdkit
+          python -m pip install --upgrade --force-reinstall "rdkit==2026.3.4"
           python -m pip check
-          python -c "from rdkit import rdBase; import grimace, grimace.decoding, grimace._core; print('RDKit:', rdBase.rdkitVersion); print('grimace:', grimace.__file__); print('grimace.decoding:', grimace.decoding.__file__); print('grimace._core:', grimace._core.__file__)"
-          python -m unittest tests.integration.test_public_prefix_api -q
+          python - <<'PY'
+          from importlib.metadata import version
+          from pathlib import Path
+          import site
+
+          from rdkit import rdBase
+          import grimace
+          import grimace.decoding
+          import grimace._core
+
+          assert rdBase.rdkitVersion == "2026.03.4", rdBase.rdkitVersion
+          print("RDKit runtime:", rdBase.rdkitVersion)
+          print("RDKit distribution:", version("rdkit"))
+          site_roots = tuple(Path(path).resolve() for path in site.getsitepackages())
+          for module in (grimace, grimace.decoding, grimace._core):
+              module_path = Path(module.__file__).resolve()
+              assert any(module_path.is_relative_to(root) for root in site_roots), module_path
+              print(f"{module.__name__}: {module_path}")
+          PY
+          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests -q
+          python -m tests.run_pinned_stereo_evidence

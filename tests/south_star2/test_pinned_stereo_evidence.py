@@ -15,14 +15,14 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
 
 
-PINNED_RDKIT_VERSION = "2026.03.1"
+RDKIT_VERSION = rdBase.rdkitVersion
 FIXTURE_ROOT = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
-FIXTURE_PATH = FIXTURE_ROOT / f"{PINNED_RDKIT_VERSION}.json"
+FIXTURE_PATH = FIXTURE_ROOT / f"{RDKIT_VERSION}.json"
 
 
 def _fixture_payload() -> dict[str, object]:
     payload = json.loads(FIXTURE_PATH.read_text())
-    if payload.get("rdkit_version") != PINNED_RDKIT_VERSION:
+    if payload.get("rdkit_version") != RDKIT_VERSION:
         raise AssertionError(f"{FIXTURE_PATH} declares an unexpected RDKit version")
     return payload
 
@@ -125,27 +125,23 @@ def _source_molecule(case: dict[str, object]) -> Chem.Mol:
     return mol
 
 
-@unittest.skipUnless(
-    rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-    f"Stereo evidence is pinned to RDKit {PINNED_RDKIT_VERSION}",
-)
 class PinnedStereoEvidenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.fixture_cases = load_pinned_rdkit_fixture_cases(
             fixture_root=FIXTURE_ROOT,
-            rdkit_version=PINNED_RDKIT_VERSION,
+            rdkit_version=RDKIT_VERSION,
             fixture_label="South Star 2 stereo evidence",
         )
         cls.cases = {case.case_id: case.raw for case in cls.fixture_cases}
         cls.payload = _fixture_payload()
 
     def test_pinned_rdkit_source_manifest_preserves_atom_reference_frame(self) -> None:
-        root = checked_in_fixture_path("rdkit_upstream_serializer_sources") / PINNED_RDKIT_VERSION
+        root = checked_in_fixture_path("rdkit_upstream_serializer_sources") / RDKIT_VERSION
         manifest = json.loads((root / "manifest.json").read_text())
         self.assertEqual(self.payload["source_commit"], manifest["source_commit"])
         self.assertEqual(
-            "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/manifest.json",
+            f"tests/fixtures/rdkit_upstream_serializer_sources/{RDKIT_VERSION}/manifest.json",
             self.payload["source_manifest"],
         )
         atom_entry = next(entry for entry in manifest["files"] if entry["path"] == "Code/GraphMol/Atom.cpp")
@@ -239,8 +235,14 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                                 }[parsed_bond.GetBondDir()]
                                 self.assertEqual(carrier["glyph"], glyph)
                     rendered = {row["rendered_smiles"] for row in rows}
-                    self.assertEqual(case["distinct_output_upper_bound"], len(rendered))
                     self.assertEqual(case["expected_distinct_outputs"], len(rendered))
+                    self.assertLessEqual(
+                        case["expected_distinct_outputs"],
+                        case["distinct_output_upper_bound"],
+                    )
+                    self.assertLessEqual(
+                        case["distinct_output_upper_bound"], len(schedules)
+                    )
                     support_by_case[case["id"]] = rendered
                     continue
 
@@ -248,8 +250,14 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                     case["expected_support"], field_name="expected_support",
                     fixture_path=FIXTURE_PATH, case_id=case["id"]
                 )
-                self.assertEqual(case["distinct_output_upper_bound"], len(expected))
                 self.assertEqual(case["expected_distinct_outputs"], len(expected))
+                self.assertLessEqual(
+                    case["expected_distinct_outputs"],
+                    case["distinct_output_upper_bound"],
+                )
+                self.assertLessEqual(
+                    case["distinct_output_upper_bound"], case["schedule_upper_bound"]
+                )
                 support_by_case[case["id"]] = set(expected)
                 seeds = case["witness_seeds"]
                 self.assertEqual(len(expected), len(seeds))

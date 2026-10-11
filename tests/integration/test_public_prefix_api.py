@@ -15,7 +15,7 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
 
 
-REFERENCE_RDKIT_VERSION = "2026.03.1"
+FIXTURE_RDKIT_VERSION = rdBase.rdkitVersion
 NONSTEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_exact_support")
 STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 
@@ -23,7 +23,7 @@ STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 def _cases(fixture_root: object, label: str):
     return load_pinned_rdkit_fixture_cases(
         fixture_root=fixture_root,
-        rdkit_version=REFERENCE_RDKIT_VERSION,
+        rdkit_version=FIXTURE_RDKIT_VERSION,
         fixture_label=label,
     )
 
@@ -129,8 +129,8 @@ def _triene_molecule(case: object) -> Chem.Mol:
     return source
 
 
-class PublicPrefixReferenceConventionTests(unittest.TestCase):
-    """Compare the fixed native convention with bounded RDKit 2026.03.1 evidence."""
+class PublicPrefixPinnedSupportTests(unittest.TestCase):
+    """Compare complete public languages with this RDKit version's fixtures."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -140,7 +140,7 @@ class PublicPrefixReferenceConventionTests(unittest.TestCase):
         cls.nonstereo_cases = _cases(NONSTEREO_FIXTURES, "South Star 2 exact support")
         cls.stereo_cases = _cases(STEREO_FIXTURES, "South Star 2 stereo evidence")
 
-    def test_public_prefix_language_equals_reference_convention_fixture(self) -> None:
+    def test_public_prefix_language_equals_pinned_writer_support(self) -> None:
         cases = [*self.nonstereo_cases]
         cases.extend(
             case

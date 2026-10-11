@@ -61,15 +61,15 @@ nonaccepted state without a successor raises an error from the native writer.
 The molecule is prepared once by Python, and subsequent choices use the owned
 Rust prefix state without RDKit or the older support enumerators.
 
-The installed RDKit prepares molecular facts; it does not select or certify
-the serializer used by this API. The native decoder uses Grimace's fixed
-`rdkit_random_noncanonical` convention. Its bounded reference output sets are
-keyed to RDKit `2026.03.1`; they are not qualification of the installed
-RDKit's own serializer, and the API does not claim exact parity with other
-installed RDKit releases. Preparation may also need revision if a future RDKit
-changes how these supported facts are represented or interpreted. Strict
-version-keyed parity runners continue to fail when no fixture set exists for
-the installed version.
+The installed RDKit prepares molecular facts; it does not select the native
+writer convention. South Star 2 exact-support tests load fixtures for the
+installed RDKit version, and the named gate requires both the exact-support
+and stereo-evidence fixture families. The checked-in cases bound that claim to
+their represented molecules and facts; runtime success alone does not certify
+an unrepresented RDKit release or broader writer support. Preparation may also
+need revision if a future RDKit changes how supported facts are represented or
+interpreted. Strict version-keyed parity runners fail when a required fixture
+set is absent for the installed version.
 
 In this source revision, preparation represents neutral, nonaromatic carbon
 and oxygen atoms with implicit valence hydrogens; nonaromatic single and double
@@ -79,20 +79,17 @@ carrier at each end. Other atom, hydrogen, bond, and stereo facts are rejected
 at preparation or native-writer construction. This describes the adapter's
 current fact boundary, not a chemistry classification.
 
-The bounded public reference-convention corpus compares six complete C/O output
-sets, both 16-string tetrahedral enantiomer supports, the 20-string mixed
-alkene/tetrahedral support, and the complete three-string E and Z butene
-supports. Separate parse-back checks verify mapped graph identity, hydrogen
-counts, configured stereo, and preservation of unspecified stereo on bounded
-controls. A pinned
-triene witness records RDKit's writer assigning stereo to an otherwise
-unspecified middle alkene; it is a known writer behavior, not a complete
-support fixture or a general semantic guarantee. Prefix tests exhaust the
-reachable states for the complete reference corpus and this triene witness input,
-checking token union, sibling ownership, EOS, and nonterminal liveness. These
-finite cases do not establish universal liveness, support for unrepresented
-molecular facts, or installed-writer parity beyond the pinned reference
-evidence.
+The bounded public corpus compares complete output sets for the C/O and stereo
+cases represented in the matching RDKit-version fixtures. Separate parse-back
+checks verify mapped graph identity, hydrogen counts, configured stereo, and
+preservation of unspecified stereo on bounded controls. A triene witness
+records RDKit's writer assigning stereo to an otherwise unspecified middle alkene; it is a known
+writer behavior, not a complete support fixture or a general semantic
+guarantee. Prefix tests exhaust reachable states for the complete fixture
+corpus and this triene witness input, checking token union, sibling ownership,
+EOS, and nonterminal liveness. These finite cases do not establish universal
+liveness, support for unrepresented molecular facts, or parity for versions
+without the required fixtures.
 
 The compiled extension `grimace._core` is required. There is no
 public runtime fallback. Run the public API from the same Python environment
@@ -158,11 +155,12 @@ outputs = list(
 The keyword names mirror RDKit `MolToSmiles`, but the current engine only
 implements rooted random support generation.
 
-The serialization target is the current stable RDKit writer convention,
-currently `RDKit 2026.03.1`. Older slash/backslash serialization conventions
-are out of scope. The dependency floor is `rdkit>=2026.3`, but exact output
-parity is only validated against that current stable writer convention; newer
-RDKit releases may still require fixture or expectation updates.
+The broader legacy serialization suite remains pinned to RDKit `2026.03.1`.
+The South Star 2 fixture gates described above instead select version-matched
+fixtures for their bounded cases. Older slash/backslash serialization
+conventions are out of scope. The dependency floor is `rdkit>=2026.3`; releases
+without South Star 2 fixtures do not gain an exact-parity claim from the
+runtime API.
 
 This is the important semantic point:
 

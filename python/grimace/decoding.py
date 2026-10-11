@@ -1,7 +1,7 @@
-"""Immutable prefixes for Grimace's fixed RDKit random noncanonical convention.
+"""Immutable prefixes for Grimace's RDKit random noncanonical convention.
 
-The installed RDKit prepares molecule facts; it does not select or certify the
-serializer convention used by the native decoder.
+The installed RDKit prepares molecule facts; Rust owns online traversal under
+the fixed writer convention. Runtime success does not certify writer parity.
 """
 
 from __future__ import annotations

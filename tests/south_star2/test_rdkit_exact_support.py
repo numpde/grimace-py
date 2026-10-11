@@ -11,7 +11,7 @@ from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
 from tests.south_star2.test_preparation_semantics import _accepted_strings
 
 
-PINNED_RDKIT_VERSION = "2026.03.1"
+RDKIT_VERSION = rdBase.rdkitVersion
 FIXTURE_ROOT = checked_in_fixture_path("rdkit_south_star2_exact_support")
 RENUMBERED_CASE_IDS = {
     "ss2_disconnected_cc_o_ethane_component_first",
@@ -29,34 +29,41 @@ def _input_molecule(case: PinnedFixtureCase) -> Chem.Mol:
             raise ValueError(
                 f"fixture case {case.case_id!r} must not define atom_order"
             )
-        return mol
+    else:
+        if "atom_order" not in raw:
+            raise ValueError(f"fixture case {case.case_id!r} requires atom_order")
+        atom_order = raw["atom_order"]
+        if (
+            type(atom_order) is not list
+            or not all(type(atom) is int for atom in atom_order)
+            or len(atom_order) != mol.GetNumAtoms()
+            or sorted(atom_order) != list(range(mol.GetNumAtoms()))
+        ):
+            raise ValueError(
+                f"fixture case {case.case_id!r} atom_order must be a complete permutation; "
+                f"got {atom_order!r}"
+            )
+        mol = Chem.RenumberAtoms(mol, atom_order)
 
-    if "atom_order" not in raw:
-        raise ValueError(f"fixture case {case.case_id!r} requires atom_order")
-    atom_order = raw["atom_order"]
-    if (
-        type(atom_order) is not list
-        or not all(type(atom) is int for atom in atom_order)
-        or len(atom_order) != mol.GetNumAtoms()
-        or sorted(atom_order) != list(range(mol.GetNumAtoms()))
-    ):
-        raise ValueError(
-            f"fixture case {case.case_id!r} atom_order must be a complete permutation; "
-            f"got {atom_order!r}"
-        )
-    return Chem.RenumberAtoms(mol, atom_order)
+    if "fragment_atom_indices" in raw:
+        actual_fragments = [
+            list(fragment)
+            for fragment in Chem.GetMolFrags(mol, asMols=False, sanitizeFrags=False)
+        ]
+        if actual_fragments != raw["fragment_atom_indices"]:
+            raise AssertionError(
+                f"fixture case {case.case_id!r} fragment atom indexes disagree: "
+                f"{actual_fragments!r} != {raw['fragment_atom_indices']!r}"
+            )
+    return mol
 
 
-@unittest.skipUnless(
-    rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
-    f"South Star 2 exact support fixture is pinned to RDKit {PINNED_RDKIT_VERSION}",
-)
 class SouthStar2RdkitExactSupportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.fixture_cases = load_pinned_rdkit_fixture_cases(
             fixture_root=FIXTURE_ROOT,
-            rdkit_version=PINNED_RDKIT_VERSION,
+            rdkit_version=RDKIT_VERSION,
             fixture_label="South Star 2 exact support",
         )
 

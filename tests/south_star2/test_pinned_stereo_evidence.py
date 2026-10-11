@@ -161,14 +161,15 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
     def test_tree_schedule_bounds_and_seeded_support_witnesses(self) -> None:
         cases = [case for case in self.cases.values() if case["evidence_kind"] == "complete_bounded_writer_support"]
         self.assertEqual(
-            {"stereo_tetra_ccw_tree", "stereo_tetra_cw_tree", "stereo_mixed_alkene_tetra_tree", "stereo_e_butene_tree"},
+            {"stereo_tetra_ccw_tree", "stereo_tetra_cw_tree", "stereo_mixed_alkene_tetra_tree", "stereo_e_butene_tree", "stereo_z_butene_tree"},
             {case["id"] for case in cases},
         )
+        support_by_case = {}
         for case in cases:
             with self.subTest(case=case["id"]):
                 mol = _source_molecule(case)
                 self.assertEqual(case["schedule_upper_bound"], _tree_schedule_bound(case["graph_facts"]["atoms"]))
-                if case["id"] == "stereo_e_butene_tree":
+                if case["id"] in {"stereo_e_butene_tree", "stereo_z_butene_tree"}:
                     rows = case["source_schedule_rows"]
                     schedules = {
                         (row["root"], tuple(row["root_children"]), tuple(row["visit_order"]))
@@ -190,6 +191,21 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                             first_endpoint = min(endpoints, key=visit_order.index)
                             second_endpoint = next(endpoint for endpoint in endpoints if endpoint != first_endpoint)
                             self.assertEqual(first_endpoint, row["first_endpoint"])
+                            positions = {atom: index for index, atom in enumerate(visit_order)}
+                            control_endpoints = next(
+                                (bond["begin"], bond["end"])
+                                for bond in case["graph_facts"]["bonds"]
+                                if bond["index"] == row["control_carrier"]["bond_index"]
+                            )
+                            control_anchor = next(atom for atom in control_endpoints if atom != first_endpoint)
+                            other_endpoints = next(
+                                (bond["begin"], bond["end"])
+                                for bond in case["graph_facts"]["bonds"]
+                                if bond["index"] == row["other_carrier"]["bond_index"]
+                            )
+                            other_anchor = next(atom for atom in other_endpoints if atom != second_endpoint)
+                            self.assertEqual(row["control_flipped"], positions[first_endpoint] < positions[control_anchor])
+                            self.assertEqual(row["other_flipped"], positions[other_anchor] < positions[second_endpoint])
                             self.assertEqual([carriers[first_endpoint][0], carriers[second_endpoint][0]], [row["control_carrier"]["bond_index"], row["other_carrier"]["bond_index"]])
                             for carrier in (row["control_carrier"], row["other_carrier"]):
                                 fact = next(bond for bond in case["graph_facts"]["bonds"] if bond["index"] == carrier["bond_index"])
@@ -225,6 +241,7 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                     rendered = {row["rendered_smiles"] for row in rows}
                     self.assertEqual(case["distinct_output_upper_bound"], len(rendered))
                     self.assertEqual(case["expected_distinct_outputs"], len(rendered))
+                    support_by_case[case["id"]] = rendered
                     continue
 
                 expected = normalized_unique_sorted_strings(
@@ -233,6 +250,7 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                 )
                 self.assertEqual(case["distinct_output_upper_bound"], len(expected))
                 self.assertEqual(case["expected_distinct_outputs"], len(expected))
+                support_by_case[case["id"]] = set(expected)
                 seeds = case["witness_seeds"]
                 self.assertEqual(len(expected), len(seeds))
                 for expected_text, seed in zip(expected, seeds, strict=True):
@@ -243,6 +261,11 @@ class PinnedStereoEvidenceTests(unittest.TestCase):
                             [expected_text],
                             Chem.MolToRandomSmilesVect(Chem.Mol(mol), 1, seed, True, False, False, False),
                         )
+        self.assertEqual(
+            set(),
+            support_by_case["stereo_e_butene_tree"]
+            & support_by_case["stereo_z_butene_tree"],
+        )
 
     def test_unspecified_stereo_stays_unspecified_on_seeded_parseback(self) -> None:
         cases = [case for case in self.cases.values() if case["evidence_kind"] == "unspecified_stereo_semantic_control"]

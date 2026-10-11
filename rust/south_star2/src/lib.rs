@@ -6,6 +6,7 @@
 //! Provisional implementation stages remain private rather than becoming
 //! capability labels in the semantic API.
 
+mod atom_spelling;
 mod domain;
 mod ids;
 mod model;
@@ -23,6 +24,10 @@ mod traversal;
 mod walker;
 mod writer_state;
 
+pub use atom_spelling::{
+    AtomBondContext, AtomFacts, AtomFactsError, AtomSpellingChoice, AtomSpellingContext,
+    AtomSpellingField, AtomSpellingState, ElementSymbol, TetrahedralMarker,
+};
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, VariableId};
 pub use model::{

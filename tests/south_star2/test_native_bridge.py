@@ -174,6 +174,21 @@ class NativeBridgeTests(unittest.TestCase):
                     )
                 self.assertIn(reason, str(caught.exception))
 
+    def test_directional_wire_requires_integer_ids_and_boolean_phase(self) -> None:
+        atoms = ["C", "C", "C", "C"]
+        bonds = [(0, 1, ""), (1, 2, "="), (2, 3, "")]
+        with self.assertRaisesRegex(
+            ValueError, r"directional relation 0: item 0 must be an unsigned 32-bit integer ID"
+        ):
+            _SouthStar2PreparedWriter(
+                atoms, bonds, "rdkit_random_noncanonical", ((True, 1, 0, 2, 2, True),)
+            )
+
+        prepared = _SouthStar2PreparedWriter(
+            atoms, bonds, "rdkit_random_noncanonical", ((1, 1, 0, 2, 2, True),)
+        )
+        self.assertTrue(prepared.initial_state().choices())
+
     def test_component_order_is_required_and_validated(self) -> None:
         with self.assertRaises(TypeError):
             _SouthStar2PreparedWriter(["C"], [])

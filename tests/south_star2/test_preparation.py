@@ -173,18 +173,33 @@ class SouthStar2PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "degree-three carbon"):
             prepare_molecule(mol)
 
-    def test_rejects_unsaturated_and_aromatic_bonds(self) -> None:
-        expected_bond_details = (
-            ("C=C", "BondType.DOUBLE", "is_aromatic = False"),
-            ("c1ccccc1", "BondType.AROMATIC", "is_aromatic = True"),
-        )
-        for smiles, bond_type, aromaticity in expected_bond_details:
+    def test_prepares_ordinary_double_bonds_and_rejects_aromatic_bonds(self) -> None:
+        double_bond = Chem.MolFromSmiles("C=C")
+        assert double_bond is not None
+        self.assertEqual("=", prepare_molecule(double_bond).bonds[0][2])
+
+        for smiles, bond_type, aromaticity in (("c1ccccc1", "BondType.AROMATIC", "is_aromatic = True"),):
             with self.subTest(smiles=smiles):
                 mol = Chem.MolFromSmiles(smiles)
                 assert mol is not None
                 with self.assertRaisesRegex(ValueError, bond_type) as caught:
                     prepare_molecule(mol)
                 self.assertIn(aromaticity, str(caught.exception))
+
+    def test_unpaired_source_direction_errors_name_sorted_bond_ids(self) -> None:
+        for smiles, marked_bonds, expected_ids in (
+            ("CC=C", (0,), "[0]"),
+            ("CC=CC", (2, 0), "[0, 2]"),
+        ):
+            with self.subTest(smiles=smiles, marked_bonds=marked_bonds):
+                mol = Chem.MolFromSmiles(smiles)
+                assert mol is not None
+                for bond_id in marked_bonds:
+                    mol.GetBondWithIdx(bond_id).SetBondDir(Chem.BondDir.ENDUPRIGHT)
+                with self.assertRaises(ValueError) as caught:
+                    prepare_molecule(mol)
+                self.assertIn(expected_ids, str(caught.exception))
+                self.assertIn("each must be a configured double-bond reference carrier", str(caught.exception))
 
     def test_build_writer_explains_missing_compiled_extension(self) -> None:
         prepared = PreparedMolecule(("C",), ())

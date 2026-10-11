@@ -1,8 +1,9 @@
 //! Private Python transport for the independent South Star 2 native walker.
 
 use grimace_south_star2::{
-    AtomId, AtomToken, BondId, BondToken, ComponentOrder, PreparedGraphBuilder, PreparedWriter,
-    TetrahedralLigand, TextPrefix, Walker, WalkerFailure, WalkerFailureKind, WriterRegime,
+    AtomId, AtomToken, BondId, BondToken, ComponentOrder, DirectionalCarrier, DirectionalRelation,
+    PreparedGraphBuilder, PreparedWriter, TetrahedralLigand, TextPrefix, Walker, WalkerFailure,
+    WalkerFailureKind, WriterRegime,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -16,11 +17,13 @@ pub struct PySouthStar2PreparedWriter {
 #[pymethods]
 impl PySouthStar2PreparedWriter {
     #[new]
+    #[pyo3(signature = (atoms, bonds, writer_regime, directional=Vec::new()))]
     fn new(
         py: Python<'_>,
         atoms: Vec<Py<PyAny>>,
         bonds: Vec<(u32, u32, String)>,
         writer_regime: &str,
+        directional: Vec<Py<PyAny>>,
     ) -> PyResult<Self> {
         let regime = match writer_regime {
             "generic_any_order" => WriterRegime::Generic {
@@ -56,7 +59,12 @@ impl PySouthStar2PreparedWriter {
             .enumerate()
             .map(|(index, atom)| atom_token(atom.bind(py), index))
             .collect::<PyResult<Vec<_>>>()?;
-        let prepared = PreparedWriter::new(graph.build(), atom_tokens, tokens, Vec::new(), regime)
+        let relations = directional
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| directional_relation(fact.bind(py), index))
+            .collect::<PyResult<Vec<_>>>()?;
+        let prepared = PreparedWriter::new(graph.build(), atom_tokens, tokens, relations, regime)
             .map_err(python_failure)?;
         Ok(Self { prepared })
     }
@@ -73,6 +81,55 @@ impl PySouthStar2PreparedWriter {
             .map(|prefix| PySouthStar2TextPrefix { prefix })
             .map_err(python_failure)
     }
+}
+
+fn directional_relation(fact: &Bound<'_, PyAny>, index: usize) -> PyResult<DirectionalRelation> {
+    let values = fact.cast::<PyTuple>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "Cannot prepare directional relation {index}: expected a six-item tuple"
+        ))
+    })?;
+    if values.len() != 6 {
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare directional relation {index}: expected six items, got {}",
+            values.len()
+        )));
+    }
+    let mut ids = [0_u32; 5];
+    for (position, id) in ids.iter_mut().enumerate() {
+        let value = values.get_item(position)?;
+        if !value.is_instance_of::<PyInt>() || value.is_instance_of::<PyBool>() {
+            return Err(PyValueError::new_err(format!(
+                "Cannot prepare directional relation {index}: item {position} must be an unsigned 32-bit integer ID"
+            )));
+        }
+        *id = value.extract::<u32>().map_err(|_| {
+            PyValueError::new_err(format!(
+                "Cannot prepare directional relation {index}: item {position} must be an unsigned 32-bit integer ID"
+            ))
+        })?;
+    }
+    let phase = values.get_item(5)?;
+    if !phase.is_instance_of::<PyBool>() {
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare directional relation {index}: item 5 must be a boolean phase"
+        )));
+    }
+    let side_phase_xor = phase.extract::<bool>()?;
+    Ok(DirectionalRelation {
+        double_bond: BondId::new(ids[0]),
+        left_endpoint: AtomId::new(ids[1]),
+        left_carriers: Box::new([DirectionalCarrier {
+            bond: BondId::new(ids[2]),
+            side_flip: false,
+        }]),
+        right_endpoint: AtomId::new(ids[3]),
+        right_carriers: Box::new([DirectionalCarrier {
+            bond: BondId::new(ids[4]),
+            side_flip: false,
+        }]),
+        side_phase_xor,
+    })
 }
 
 fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken> {

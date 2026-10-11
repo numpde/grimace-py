@@ -32,6 +32,48 @@ def _accepted_strings(mol: Chem.Mol) -> set[str]:
     return accepted
 
 
+def _prefix_strings(mol: Chem.Mol) -> tuple[list[str], list[str]]:
+    prefix = prepare_molecule(mol).build_writer().initial_prefix()
+    pending = [(prefix, "")]
+    accepted: list[str] = []
+    dead: list[str] = []
+    while pending:
+        current, text = pending.pop()
+        if current.is_accepted:
+            accepted.append(text)
+        choices = current.choices()
+        if not current.is_accepted and not choices:
+            dead.append(text)
+        pending.extend((successor, text + token) for token, successor in choices)
+    return accepted, dead
+
+
+def _stereo_cases():
+    return load_pinned_rdkit_fixture_cases(
+        fixture_root=PINNED_STEREO_FIXTURES,
+        rdkit_version=PINNED_RDKIT_VERSION,
+        fixture_label="South Star 2 stereo evidence",
+    )
+
+
+def _triene_source(case) -> Chem.Mol:
+    molecule = Chem.MolFromSmiles(case.raw["input_smiles"])
+    if molecule is None:
+        raise AssertionError(f"Invalid triene fixture input: {case.raw['input_smiles']!r}")
+    stereo_by_name = {"STEREOE": Chem.BondStereo.STEREOE}
+    for fact in case.raw["configured_bonds"]:
+        bond = molecule.GetBondWithIdx(fact["index"])
+        if (bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()) != (fact["begin"], fact["end"]):
+            raise AssertionError(f"Triene fixture bond endpoints disagree at bond {fact['index']}")
+        if fact["stereo"] == "STEREONONE":
+            if bond.GetStereo() != Chem.BondStereo.STEREONONE:
+                raise AssertionError(f"Triene middle bond {fact['index']} is unexpectedly configured")
+            continue
+        bond.SetStereoAtoms(*fact["stereo_atoms"])
+        bond.SetStereo(stereo_by_name[fact["stereo"]])
+    return molecule
+
+
 def _tetrahedral_stereo_cases():
     cases = load_pinned_rdkit_fixture_cases(
         fixture_root=PINNED_STEREO_FIXTURES,
@@ -77,6 +119,53 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
                 self.assertEqual(expected, _accepted_strings(renumbered))
 
         self.assertTrue(supports[0].isdisjoint(supports[1]))
+
+    @unittest.skipUnless(
+        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
+        f"Exact stereo support is pinned to RDKit {PINNED_RDKIT_VERSION}",
+    )
+    def test_exact_mixed_and_e_butene_support_in_grouped_prefix_path(self) -> None:
+        by_id = {case.case_id: case for case in _stereo_cases()}
+        mixed = by_id["stereo_mixed_alkene_tetra_tree"]
+        mixed_source = Chem.MolFromSmiles(mixed.raw["input_smiles"])
+        self.assertIsNotNone(mixed_source)
+        assert mixed_source is not None
+        mixed_expected = set(
+            normalized_unique_sorted_strings(
+                mixed.raw["expected_support"], field_name="expected_support",
+                fixture_path=mixed.fixture_path, case_id=mixed.case_id,
+            )
+        )
+        mixed_actual, mixed_dead = _prefix_strings(mixed_source)
+        self.assertEqual(set(mixed_actual), mixed_expected)
+        self.assertEqual(len(mixed_actual), len(mixed_expected))
+        self.assertFalse(mixed_dead)
+
+        e_case = by_id["stereo_e_butene_tree"]
+        e_source = Chem.MolFromSmiles(e_case.raw["input_smiles"])
+        self.assertIsNotNone(e_source)
+        assert e_source is not None
+        e_expected = {row["rendered_smiles"] for row in e_case.raw["source_schedule_rows"]}
+        e_actual, e_dead = _prefix_strings(e_source)
+        self.assertEqual(set(e_actual), e_expected)
+        self.assertEqual(len(e_actual), len(e_expected))
+        self.assertFalse(e_dead)
+
+        z_case = by_id["stereo_z_butene_tree"]
+        z_source = Chem.MolFromSmiles(z_case.raw["input_smiles"])
+        self.assertIsNotNone(z_source)
+        assert z_source is not None
+        z_expected = {row["rendered_smiles"] for row in z_case.raw["source_schedule_rows"]}
+        z_actual, z_dead = _prefix_strings(z_source)
+        self.assertEqual(set(z_actual), z_expected)
+        self.assertEqual(len(z_actual), len(z_expected))
+        self.assertFalse(z_dead)
+
+        opposite_tetra = Chem.MolFromSmiles("C/C=C/[C@@H](O)C")
+        self.assertIsNotNone(opposite_tetra)
+        assert opposite_tetra is not None
+        self.assertTrue(mixed_expected.isdisjoint(_accepted_strings(opposite_tetra)))
+        self.assertTrue(e_expected.isdisjoint(z_expected))
 
 
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
@@ -152,6 +241,73 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                         f"element or non-graph hydrogen facts differ: {output!r}",
                     )
 
+    def test_mixed_outputs_preserve_graph_hydrogens_and_configured_stereo(self) -> None:
+        case = next(case for case in _stereo_cases() if case.case_id == "stereo_mixed_alkene_tetra_tree")
+        source = Chem.MolFromSmiles(case.raw["input_smiles"])
+        self.assertIsNotNone(source)
+        assert source is not None
+        for output in _accepted_strings(source):
+            parsed = Chem.MolFromSmiles(output)
+            self.assertIsNotNone(parsed, output)
+            assert parsed is not None
+            self.assertEqual(source.GetNumAtoms(), parsed.GetNumAtoms(), output)
+            self.assertEqual(source.GetNumBonds(), parsed.GetNumBonds(), output)
+            mappings = parsed.GetSubstructMatches(source, useChirality=True)
+            self.assertTrue(mappings, f"stereo or graph differs: {output!r}")
+            self.assertTrue(
+                any(
+                    all(
+                        parsed.GetAtomWithIdx(mapping[atom.GetIdx()]).GetAtomicNum()
+                        == atom.GetAtomicNum()
+                        and parsed.GetAtomWithIdx(mapping[atom.GetIdx()]).GetTotalNumHs()
+                        == atom.GetTotalNumHs()
+                        for atom in source.GetAtoms()
+                    )
+                    and all(
+                        (target := parsed.GetBondBetweenAtoms(
+                            mapping[bond.GetBeginAtomIdx()], mapping[bond.GetEndAtomIdx()]
+                        )) is not None
+                        and target.GetBondType() == bond.GetBondType()
+                        and target.GetStereo() == bond.GetStereo()
+                        for bond in source.GetBonds()
+                    )
+                    for mapping in mappings
+                ),
+                f"bond stereo or hydrogen facts differ: {output!r}",
+            )
+
+
+    def test_unconfigured_stereo_controls_remain_independent_facts(self) -> None:
+        for smiles in ("CC=C[C@H](O)C", "C/C=C/C(O)C"):
+            with self.subTest(smiles=smiles):
+                source = Chem.MolFromSmiles(smiles)
+                self.assertIsNotNone(source)
+                assert source is not None
+                prepared = prepare_molecule(source)
+                configured = [
+                    bond for bond in source.GetBonds()
+                    if bond.GetBondType() == Chem.BondType.DOUBLE
+                    and bond.GetStereo() != Chem.BondStereo.STEREONONE
+                ]
+                self.assertEqual(len(prepared.directional), len(configured))
+                outputs, dead = _prefix_strings(source)
+                self.assertTrue(outputs)
+                self.assertFalse(dead)
+                for output in outputs:
+                    parsed = Chem.MolFromSmiles(output)
+                    self.assertIsNotNone(parsed, output)
+                    assert parsed is not None
+                    matches = parsed.GetSubstructMatches(source, useChirality=True)
+                    self.assertTrue(matches, f"specified stereo or graph differs: {output!r}")
+                    for mapping in matches:
+                        for bond in source.GetBonds():
+                            if bond.GetStereo() != Chem.BondStereo.STEREONONE:
+                                continue
+                            corresponding = parsed.GetBondBetweenAtoms(
+                                mapping[bond.GetBeginAtomIdx()], mapping[bond.GetEndAtomIdx()]
+                            )
+                            self.assertEqual(corresponding.GetStereo(), Chem.BondStereo.STEREONONE)
+
     def test_tetrahedral_prefix_retains_ambiguous_roots_and_sibling_ownership(self) -> None:
         for case in _tetrahedral_stereo_cases():
             source = Chem.MolFromSmiles(case.raw["input_smiles"])
@@ -178,6 +334,93 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                 self.assertEqual(
                     tuple(text for text, _ in sibling.choices()), sibling_choices
                 )
+
+
+class SouthStar2PreparationWriterQuirkWitnessTests(unittest.TestCase):
+    """Check the pinned positive writer witnesses for the known triene quirk."""
+
+    @unittest.skipUnless(
+        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
+        f"RDKit writer witnesses are pinned to {PINNED_RDKIT_VERSION}",
+    )
+    def test_triene_outputs_include_each_seeded_writer_witness(self) -> None:
+        case = next(
+            case
+            for case in _stereo_cases()
+            if case.case_id == "unspecified_middle_alkene_receives_writer_directional_marks"
+        )
+        source = _triene_source(case)
+        configured = [fact for fact in case.raw["configured_bonds"] if fact["stereo"] != "STEREONONE"]
+        prepared = prepare_molecule(source)
+        self.assertEqual(len(prepared.directional), len(configured))
+        actual = _accepted_strings(source)
+        self.assertTrue({witness["smiles"] for witness in case.raw["witnesses"]} <= actual)
+
+    @unittest.skipUnless(
+        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
+        f"RDKit writer witnesses are pinned to {PINNED_RDKIT_VERSION}",
+    )
+    def test_triene_witness_parseback_records_unspecified_middle_stereo(self) -> None:
+        case = next(
+            case
+            for case in _stereo_cases()
+            if case.case_id == "unspecified_middle_alkene_receives_writer_directional_marks"
+        )
+        source = _triene_source(case)
+        middle_fact = next(
+            fact for fact in case.raw["configured_bonds"] if fact["stereo"] == "STEREONONE"
+        )
+        middle_source_bond = source.GetBondWithIdx(middle_fact["index"])
+        self.assertEqual(Chem.BondStereo.STEREONONE, middle_source_bond.GetStereo())
+        configured = [
+            fact for fact in case.raw["configured_bonds"] if fact["stereo"] != "STEREONONE"
+        ]
+        for witness in case.raw["witnesses"]:
+            parsed = Chem.MolFromSmiles(witness["smiles"])
+            self.assertIsNotNone(parsed, witness["smiles"])
+            assert parsed is not None
+            self.assertEqual(source.GetNumAtoms(), parsed.GetNumAtoms(), witness["smiles"])
+            self.assertEqual(source.GetNumBonds(), parsed.GetNumBonds(), witness["smiles"])
+            matches = parsed.GetSubstructMatches(source, useChirality=True)
+            self.assertTrue(matches, f"triene witness graph or configured stereo differs: {witness['smiles']!r}")
+            preserved = False
+            for mapping in matches:
+                if not all(
+                    parsed.GetAtomWithIdx(mapping[atom.GetIdx()]).GetAtomicNum() == atom.GetAtomicNum()
+                    and parsed.GetAtomWithIdx(mapping[atom.GetIdx()]).GetTotalNumHs() == atom.GetTotalNumHs()
+                    for atom in source.GetAtoms()
+                ):
+                    continue
+                if any(
+                    (target := parsed.GetBondBetweenAtoms(
+                        mapping[bond.GetBeginAtomIdx()], mapping[bond.GetEndAtomIdx()]
+                    )) is None
+                    or target.GetBondType() != bond.GetBondType()
+                    for bond in source.GetBonds()
+                ):
+                    continue
+                targets = {
+                    fact["index"]: parsed.GetBondBetweenAtoms(
+                        mapping[fact["begin"]], mapping[fact["end"]]
+                    )
+                    for fact in case.raw["configured_bonds"]
+                }
+                if any(target is None or target.GetBondType() != Chem.BondType.DOUBLE for target in targets.values()):
+                    continue
+                if any(
+                    targets[fact["index"]].GetStereo() != Chem.BondStereo.STEREOE
+                    for fact in configured
+                ):
+                    continue
+                middle_target = targets[middle_fact["index"]]
+                expected_middle = {
+                    "STEREOE": Chem.BondStereo.STEREOE,
+                    "STEREOZ": Chem.BondStereo.STEREOZ,
+                }[witness["parsed_middle_stereo"]]
+                self.assertEqual(expected_middle, middle_target.GetStereo())
+                preserved = True
+            self.assertTrue(preserved, f"no source-to-parsed mapping preserves the triene witness: {witness!r}")
+
 
 
 if __name__ == "__main__":

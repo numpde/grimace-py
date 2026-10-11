@@ -1,6 +1,12 @@
 {
   "files": [
     {
+      "bytes": 69181,
+      "lines": 1759,
+      "path": "Code/GraphMol/Canon/Canon.cpp",
+      "sha256": "dc7fbd486c04ae123cf16c3684e019b62c0f993611a8ca5f7a5d0f3148814cea"
+    },
+    {
       "bytes": 34612,
       "lines": 1047,
       "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
@@ -23,6 +29,12 @@
       "lines": 1733,
       "path": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp",
       "sha256": "d85e3c4b00da95af96866116026aca5406f420949bd4f14deedb91b2b7a79bca"
+    },
+    {
+      "bytes": 46142,
+      "lines": 1359,
+      "path": "Code/GraphMol/Wrap/MolOps.cpp",
+      "sha256": "98477538ed796c5e4aeeab2568a909e19542ed6b15887315bcc3ac426d6f3061"
     },
     {
       "bytes": 344487,

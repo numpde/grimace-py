@@ -1,0 +1,159 @@
+{
+  "rdkit_version": "2026.03.1",
+  "writer_policy": {
+    "input": "Fresh RDKit MolFromSmiles input with atom indexing preserved; cases with atom_order renumber a fresh parse using Chem.RenumberAtoms",
+    "rooted_at_atom": -1,
+    "canonical": false,
+    "do_random": true,
+    "isomeric_smiles": true,
+    "kekule": false,
+    "all_bonds_explicit": false,
+    "all_hs_explicit": false,
+    "component_order": "RDKit constructs fragments in input atom order and concatenates them in that order when canonical is false."
+  },
+  "completeness_basis": {
+    "kind": "source_bounded_writer_permutations",
+    "source_manifest": "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/manifest.json",
+    "source_commit": "cb251343b9448601963cbcec5057a76ff02b27c2",
+    "argument": "For these fixed parsed graphs and writer parameters, RDKit's noncanonical traversal emits one depth-first walk per selected component root. At each atom it emits one continuation child and renders each other unvisited child as a branch, so the finite root and child-order cases listed per input contain every possible traversal. Ring closure numbering is deterministic and introduces no additional ordering choice here. Each listed upper-bound traversal has a replayed MolToRandomSmilesVect witness, so the finite bound is attained and equals support. Each renumbered CC.O case has an ethane component with one distinct serialization and a singleton oxygen component with one spelling; the deterministic component construction and fixed noncanonical assembly therefore leave one output for that input atom order.",
+    "source_claims": [
+      {
+        "path": "Code/GraphMol/Canon/Canon.cpp",
+        "lines": "841-965, 991-1025, 1033-1124, 1146-1154",
+        "claim": "RDKit's first traversal selects the first depth-first walk and detects ring closures; its second traversal chooses a continuation child, emits remaining children as branches, and orders them according to the active random writer mode."
+      },
+      {
+        "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+        "lines": "105-240, 279-311, 435-462, 620-624, 730-745, 834-849",
+        "claim": "These lines define the fixed C/O and single-bond spellings, label ring closures from the first available integer, choose a random root when rootedAtAtom is -1, concatenate noncanonical fragments in constructed order, and seed random output generation for each witness call."
+      },
+      {
+        "path": "Code/GraphMol/Wrap/MolOps.cpp",
+        "lines": "704-734, 838-856",
+        "claim": "RDKit constructs connected fragments and preserves the source atom mapping used by noncanonical fragment concatenation."
+      }
+    ],
+    "witnesses": "Each case stores one positive replay seed per expected_support entry in index order. The cases were observed through fresh-molecule MolToRandomSmilesVect calls and replayed exactly. These observations establish membership; the source-derived upper bound establishes completeness."
+  },
+  "cases": [
+    {
+      "id": "ss2_c_o_linear_ethanol",
+      "source": "Fixed-input RDKit writer regime with complete support established by the pinned source-bounded root and child-order enumeration.",
+      "input_smiles": "CCO",
+      "upper_bound": 4,
+      "bound_cases": [
+        "Either terminal root forces one orientation, yielding CCO or OCC.",
+        "The central root has two child orders, yielding C(C)O or C(O)C."
+      ],
+      "expected_support": [
+        "C(C)O",
+        "C(O)C",
+        "CCO",
+        "OCC"
+      ],
+      "witness_seeds": [
+        1,
+        10,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "ss2_c_o_isopropanol",
+      "source": "Fixed-input RDKit writer regime with complete support established by the pinned source-bounded root and child-order enumeration.",
+      "input_smiles": "CC(C)O",
+      "upper_bound": 6,
+      "bound_cases": [
+        "The tertiary carbon root has three distinct child orders because its two carbon children are identical.",
+        "Either of the two equivalent methyl roots allows two orders for the remaining carbon and oxygen children at the tertiary carbon.",
+        "The oxygen root has one distinct order for the two equivalent carbon children at the tertiary carbon."
+      ],
+      "expected_support": [
+        "C(C)(C)O",
+        "C(C)(O)C",
+        "C(O)(C)C",
+        "CC(C)O",
+        "CC(O)C",
+        "OC(C)C"
+      ],
+      "witness_seeds": [
+        11,
+        7,
+        3,
+        16,
+        2,
+        1
+      ]
+    },
+    {
+      "id": "ss2_c_cycle_triangle",
+      "source": "Fixed-input RDKit writer regime with complete support established by the pinned source-bounded root and child-order enumeration.",
+      "input_smiles": "C1CC1",
+      "upper_bound": 1,
+      "bound_cases": [
+        "Every root and either direction around the three-membered cycle emits the same string with deterministic ring label 1."
+      ],
+      "expected_support": [
+        "C1CC1"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_carbon_oxygen",
+      "source": "Fixed-input RDKit writer regime with complete support established by source-pinned deterministic noncanonical component construction and concatenation.",
+      "input_smiles": "C.O",
+      "upper_bound": 1,
+      "bound_cases": [
+        "Each one-atom component has one spelling, and deterministic component construction plus fixed noncanonical concatenation preserves input component order."
+      ],
+      "expected_support": [
+        "C.O"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_cc_o_ethane_component_first",
+      "source": "Fresh MolFromSmiles(\"CC.O\") parse renumbered with Chem.RenumberAtoms([0, 2, 1]); RDKit fragment construction and noncanonical assembly preserve this fixed atom order.",
+      "input_smiles": "CC.O",
+      "atom_order": [
+        0,
+        2,
+        1
+      ],
+      "upper_bound": 1,
+      "bound_cases": [
+        "The ethane and singleton oxygen components each have one distinct serialization; fixed component construction and noncanonical assembly produce one string for this input atom order."
+      ],
+      "expected_support": [
+        "CC.O"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_cc_o_oxygen_component_first",
+      "source": "Fresh MolFromSmiles(\"CC.O\") parse renumbered with Chem.RenumberAtoms([2, 1, 0]); RDKit fragment construction and noncanonical assembly preserve this fixed atom order.",
+      "input_smiles": "CC.O",
+      "atom_order": [
+        2,
+        1,
+        0
+      ],
+      "upper_bound": 1,
+      "bound_cases": [
+        "The singleton oxygen and ethane components each have one distinct serialization; fixed component construction and noncanonical assembly produce one string for this input atom order."
+      ],
+      "expected_support": [
+        "O.CC"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    }
+  ]
+}

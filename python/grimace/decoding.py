@@ -1,4 +1,8 @@
-"""Immutable prefix decoding for the pinned RDKit random noncanonical writer."""
+"""Immutable prefixes for Grimace's fixed RDKit random noncanonical convention.
+
+The installed RDKit prepares molecule facts; it does not select or certify the
+serializer convention used by the native decoder.
+"""
 
 from __future__ import annotations
 
@@ -9,9 +13,6 @@ from rdkit import Chem
 
 if TYPE_CHECKING:
     from ._core import _SouthStar2TextPrefix
-
-
-_SUPPORTED_RDKIT_VERSION = "2026.03.1"
 
 
 @dataclass(frozen=True, slots=True, init=False, eq=False)
@@ -47,19 +48,11 @@ class Prefix:
 def start(mol: Chem.Mol) -> Prefix:
     """Prepare an RDKit molecule and return its initial immutable prefix.
 
-    This entry point requires the pinned RDKit writer convention. Preparation
-    snapshots supported molecular and stereo facts; subsequent choices are
-    produced by the native Rust writer state.
+    Preparation snapshots supported molecular and stereo facts from the
+    installed RDKit. Subsequent choices use the fixed native RDKit random
+    noncanonical writer convention; the installed RDKit serializer is not
+    called or certified by this entry point.
     """
-
-    from rdkit import rdBase
-
-    installed_version = rdBase.rdkitVersion
-    if installed_version != _SUPPORTED_RDKIT_VERSION:
-        raise RuntimeError(
-            "grimace.decoding.start requires RDKit "
-            f"{_SUPPORTED_RDKIT_VERSION}; installed RDKit is {installed_version}."
-        )
 
     from ._south_star2 import preparation
 

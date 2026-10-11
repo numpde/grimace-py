@@ -15,7 +15,7 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
 
 
-SUPPORTED_RDKIT_VERSION = "2026.03.1"
+REFERENCE_RDKIT_VERSION = "2026.03.1"
 NONSTEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_exact_support")
 STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 
@@ -23,7 +23,7 @@ STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 def _cases(fixture_root: object, label: str):
     return load_pinned_rdkit_fixture_cases(
         fixture_root=fixture_root,
-        rdkit_version=SUPPORTED_RDKIT_VERSION,
+        rdkit_version=REFERENCE_RDKIT_VERSION,
         fixture_label=label,
     )
 
@@ -129,12 +129,8 @@ def _triene_molecule(case: object) -> Chem.Mol:
     return source
 
 
-@unittest.skipUnless(
-    rdBase.rdkitVersion == SUPPORTED_RDKIT_VERSION,
-    f"Public prefix parity fixtures are pinned to RDKit {SUPPORTED_RDKIT_VERSION}",
-)
-class PublicPrefixPinnedParityTests(unittest.TestCase):
-    """Compare complete public languages with pinned RDKit support sets."""
+class PublicPrefixReferenceConventionTests(unittest.TestCase):
+    """Compare the fixed native convention with bounded RDKit 2026.03.1 evidence."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -144,7 +140,7 @@ class PublicPrefixPinnedParityTests(unittest.TestCase):
         cls.nonstereo_cases = _cases(NONSTEREO_FIXTURES, "South Star 2 exact support")
         cls.stereo_cases = _cases(STEREO_FIXTURES, "South Star 2 stereo evidence")
 
-    def test_public_prefix_language_equals_pinned_writer_support(self) -> None:
+    def test_public_prefix_language_equals_reference_convention_fixture(self) -> None:
         cases = [*self.nonstereo_cases]
         cases.extend(
             case
@@ -181,12 +177,8 @@ class PublicPrefixPinnedParityTests(unittest.TestCase):
                 self.assertEqual(_expected(case), _collect_outputs(prefix))
 
 
-@unittest.skipUnless(
-    rdBase.rdkitVersion == SUPPORTED_RDKIT_VERSION,
-    f"Prefix liveness checks use RDKit {SUPPORTED_RDKIT_VERSION} fixtures",
-)
 class PublicPrefixLivenessTests(unittest.TestCase):
-    """Check reachable-prefix laws throughout the complete bounded corpus."""
+    """Check bounded reachable-prefix laws against the fixed convention."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -297,43 +289,44 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
         mol = Chem.MolFromSmiles("C")
         self.assertIsNotNone(mol)
         assert mol is not None
-        if rdBase.rdkitVersion != SUPPORTED_RDKIT_VERSION:
-            return
         prefix = decoding.start(mol)
         for name in ("advance", "select_text", "frontier_size", "count", "enumerate"):
             self.assertFalse(hasattr(prefix, name), name)
 
-    def test_import_and_existing_api_do_not_require_the_pinned_start_version(self) -> None:
+    def test_import_and_existing_api_remain_available(self) -> None:
         from grimace import decoding
 
         mol = Chem.MolFromSmiles("CCO")
         self.assertIsNotNone(mol)
         assert mol is not None
-        with patch.object(rdBase, "rdkitVersion", "2026.03.4"):
-            self.assertIs(importlib.import_module("grimace.decoding"), decoding)
-            self.assertTrue(callable(grimace.MolToSmilesEnum))
-            old_api_outputs = tuple(
-                grimace.MolToSmilesEnum(mol, canonical=False, doRandom=True)
-            )
-            self.assertTrue(old_api_outputs)
-            self.assertTrue(all(type(output) is str for output in old_api_outputs))
+        self.assertIs(importlib.import_module("grimace.decoding"), decoding)
+        self.assertTrue(callable(grimace.MolToSmilesEnum))
+        old_api_outputs = tuple(
+            grimace.MolToSmilesEnum(mol, canonical=False, doRandom=True)
+        )
+        self.assertTrue(old_api_outputs)
+        self.assertTrue(all(type(output) is str for output in old_api_outputs))
 
-    def test_start_reports_installed_and_supported_rdkit_versions(self) -> None:
+    def test_rdkit_version_label_does_not_select_a_writer_policy(self) -> None:
         from grimace import decoding
 
         mol = Chem.MolFromSmiles("C")
         self.assertIsNotNone(mol)
+        assert mol is not None
+        actual_choices = tuple(token for token, _ in decoding.start(mol).choices())
         with patch.object(rdBase, "rdkitVersion", "2026.03.4"):
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r"2026\.03\.4.*2026\.03\.1|2026\.03\.1.*2026\.03\.4",
-            ):
-                decoding.start(mol)
+            labeled_choices = tuple(token for token, _ in decoding.start(mol).choices())
+        self.assertEqual(actual_choices, labeled_choices)
 
-    @unittest.skipUnless(
-        rdBase.rdkitVersion == SUPPORTED_RDKIT_VERSION,
-        f"Public prefix start is pinned to RDKit {SUPPORTED_RDKIT_VERSION}",
-    )
+    def test_unsupported_molecular_facts_still_fail_preparation(self) -> None:
+        from grimace import decoding
+
+        nitrogen = Chem.MolFromSmiles("N")
+        self.assertIsNotNone(nitrogen)
+        assert nitrogen is not None
+        with self.assertRaisesRegex(ValueError, "atomic number"):
+            decoding.start(nitrogen)
+
     def test_prefix_and_choices_are_immutable_and_source_is_not_mutated(self) -> None:
         from grimace import decoding
 
@@ -356,10 +349,6 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
             choices_before[0][0] = "mutated"
         self.assertFalse(hasattr(prefix, "advance"))
 
-@unittest.skipUnless(
-    rdBase.rdkitVersion == SUPPORTED_RDKIT_VERSION,
-    f"Semantic fixture checks are pinned to RDKit {SUPPORTED_RDKIT_VERSION}",
-)
 class PublicPrefixSemanticTests(unittest.TestCase):
     """Check graph, hydrogen, and stereo identity independently of parity."""
 

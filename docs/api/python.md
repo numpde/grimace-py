@@ -4,9 +4,8 @@
 
 The only supported public Python import name is `grimace`.
 
-The public runtime is intentionally narrow: exact support and decoding for
-RDKit's `canonical=False, doRandom=True` writer regime under the current
-stable writer convention.
+The existing public runtime is intentionally narrow: exact support and
+decoding for the fixed `canonical=False, doRandom=True` writer convention.
 
 This is an RDKit writer-parity API, not a general "all semantically equivalent
 SMILES" API. A SMILES string can be valid and parse to the same molecule while
@@ -32,11 +31,11 @@ Current top-level exports:
 
 The source tree also provides `grimace.decoding.start(mol)`. This is an
 unreleased repository interface; current published `grimace-py` distributions
-do not provide it. To try the checkout, install the pinned RDKit and build the
-local package in the same environment:
+do not provide it. To try the checkout, install the repository's declared
+dependencies and build the local package in the same environment:
 
 ```bash
-python3 -m pip install 'rdkit==2026.3.1'
+python3 -m pip install 'rdkit>=2026.3'
 python3 -m pip install .
 ```
 
@@ -62,10 +61,15 @@ nonaccepted state without a successor raises an error from the native writer.
 The molecule is prepared once by Python, and subsequent choices use the owned
 Rust prefix state without RDKit or the older support enumerators.
 
-`start()` requires exactly RDKit `2026.03.1`. The version check occurs when
-`start()` is called, so importing `grimace` and using its existing APIs does not
-require that exact version. A mismatch reports both the installed and
-supported versions.
+The installed RDKit prepares molecular facts; it does not select or certify
+the serializer used by this API. The native decoder uses Grimace's fixed
+`rdkit_random_noncanonical` convention. Its bounded reference output sets are
+keyed to RDKit `2026.03.1`; they are not qualification of the installed
+RDKit's own serializer, and the API does not claim exact parity with other
+installed RDKit releases. Preparation may also need revision if a future RDKit
+changes how these supported facts are represented or interpreted. Strict
+version-keyed parity runners continue to fail when no fixture set exists for
+the installed version.
 
 In this source revision, preparation represents neutral, nonaromatic carbon
 and oxygen atoms with implicit valence hydrogens; nonaromatic single and double
@@ -75,18 +79,20 @@ carrier at each end. Other atom, hydrogen, bond, and stereo facts are rejected
 at preparation or native-writer construction. This describes the adapter's
 current fact boundary, not a chemistry classification.
 
-The pinned public parity corpus compares six complete C/O supports, both
-16-string tetrahedral enantiomer supports, the 20-string mixed alkene/tetrahedral
-support, and the complete three-string E and Z butene supports. Separate
-parse-back checks verify mapped graph identity, hydrogen counts, configured
-stereo, and preservation of unspecified stereo on bounded controls. A pinned
+The bounded public reference-convention corpus compares six complete C/O output
+sets, both 16-string tetrahedral enantiomer supports, the 20-string mixed
+alkene/tetrahedral support, and the complete three-string E and Z butene
+supports. Separate parse-back checks verify mapped graph identity, hydrogen
+counts, configured stereo, and preservation of unspecified stereo on bounded
+controls. A pinned
 triene witness records RDKit's writer assigning stereo to an otherwise
 unspecified middle alkene; it is a known writer behavior, not a complete
 support fixture or a general semantic guarantee. Prefix tests exhaust the
-reachable states for the complete parity corpus and this triene witness input,
+reachable states for the complete reference corpus and this triene witness input,
 checking token union, sibling ownership, EOS, and nonterminal liveness. These
-finite cases do not establish universal liveness or support for unrepresented
-molecular facts.
+finite cases do not establish universal liveness, support for unrepresented
+molecular facts, or installed-writer parity beyond the pinned reference
+evidence.
 
 The compiled extension `grimace._core` is required. There is no
 public runtime fallback. Run the public API from the same Python environment

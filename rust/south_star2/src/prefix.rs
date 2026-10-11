@@ -120,6 +120,7 @@ mod tests {
                 .collect(),
             vec![BondToken::Elided; edges.len()],
             Vec::new(),
+            crate::ComponentOrder::AnyOrder,
         )
         .unwrap()
     }

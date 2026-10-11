@@ -21,6 +21,7 @@ use crate::tetrahedral::{
     singleton_order, TetrahedralLigand, TetrahedralParity,
 };
 use crate::traversal::LocalLayoutContext;
+use crate::walker::ComponentOrder;
 #[cfg(test)]
 use crate::writer_state::ObservedWriterState;
 use crate::writer_state::{StructuralCandidate, WriterState};
@@ -1719,14 +1720,24 @@ pub(crate) struct NonStereoWriterState<S> {
 }
 
 impl<S: ConstraintSolver> NonStereoWriterState<S> {
+    #[cfg(test)]
     pub(crate) fn initial(surface: &PreparedNonStereo) -> Result<Consistency<Self>, S::Failure> {
+        Self::initial_with_component_order(surface, ComponentOrder::AnyOrder)
+    }
+
+    pub(crate) fn initial_with_component_order(
+        surface: &PreparedNonStereo,
+        component_order: ComponentOrder,
+    ) -> Result<Consistency<Self>, S::Failure> {
         Ok(
-            WriterState::initial(surface.molecule())?.map(|structural| Self {
-                surface: surface.clone(),
-                structural,
-                labels: RingLabels::default(),
-                pending: None,
-            }),
+            WriterState::initial_with_component_order(surface.molecule(), component_order)?.map(
+                |structural| Self {
+                    surface: surface.clone(),
+                    structural,
+                    labels: RingLabels::default(),
+                    pending: None,
+                },
+            ),
         )
     }
 

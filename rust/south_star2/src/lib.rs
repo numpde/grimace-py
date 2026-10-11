@@ -41,4 +41,6 @@ pub use prepared::{
     PreparedMolecule,
 };
 pub use tetrahedral::TetrahedralLigand;
-pub use walker::{PreparedWriter, Walker, WalkerChoice, WalkerFailure, WalkerFailureKind};
+pub use walker::{
+    ComponentOrder, PreparedWriter, Walker, WalkerChoice, WalkerFailure, WalkerFailureKind,
+};

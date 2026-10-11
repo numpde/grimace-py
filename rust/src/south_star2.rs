@@ -1,8 +1,8 @@
 //! Private Python transport for the independent South Star 2 native walker.
 
 use grimace_south_star2::{
-    AtomId, AtomToken, BondToken, PreparedGraphBuilder, PreparedWriter, TextPrefix, Walker,
-    WalkerFailure, WalkerFailureKind,
+    AtomId, AtomToken, BondToken, ComponentOrder, PreparedGraphBuilder, PreparedWriter, TextPrefix,
+    Walker, WalkerFailure, WalkerFailureKind,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -36,6 +36,7 @@ impl PySouthStar2PreparedWriter {
             atoms.into_iter().map(AtomToken::Fixed).collect(),
             tokens,
             Vec::new(),
+            ComponentOrder::AnyOrder,
         )
         .map_err(python_failure)?;
         Ok(Self { prepared })

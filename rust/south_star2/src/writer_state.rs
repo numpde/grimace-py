@@ -14,6 +14,7 @@ use crate::traversal::ObservedTraversalState;
 use crate::traversal::{
     IncidentBondState, LocalBondOrder, LocalLayoutContext, PathCompletion, TraversalState,
 };
+use crate::walker::ComponentOrder;
 
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -103,6 +104,7 @@ impl StructuralCandidateBatch {
 #[derive(Clone, Debug)]
 pub(crate) struct WriterState<S> {
     prepared: PreparedMolecule,
+    component_order: ComponentOrder,
     traversal: TraversalState,
     constraints: S,
     #[cfg(test)]
@@ -118,12 +120,21 @@ pub(crate) struct ObservedWriterState {
 }
 
 impl<S: ConstraintSolver> WriterState<S> {
+    #[cfg(test)]
     pub(crate) fn initial(prepared: &PreparedMolecule) -> Result<Consistency<Self>, S::Failure> {
+        Self::initial_with_component_order(prepared, ComponentOrder::AnyOrder)
+    }
+
+    pub(crate) fn initial_with_component_order(
+        prepared: &PreparedMolecule,
+        component_order: ComponentOrder,
+    ) -> Result<Consistency<Self>, S::Failure> {
         Ok(
             S::initial(prepared.constraint_model_arc())?.map(|constraints| {
                 assert_initial_solver_shape(prepared, &constraints);
                 Self {
                     prepared: prepared.clone(),
+                    component_order,
                     traversal: TraversalState::new(prepared.graph()),
                     constraints,
                     #[cfg(test)]
@@ -201,8 +212,18 @@ impl<S: ConstraintSolver> WriterState<S> {
 
         let graph = self.prepared.graph();
         let Some(active) = self.traversal.active_atom() else {
+            let mut component_roots = self.traversal.unvisited_atoms(graph).collect::<Vec<_>>();
+            if self.component_order == ComponentOrder::InputOrder {
+                if let Some(first_unvisited) = component_roots.first().copied() {
+                    let component = graph
+                        .component_of_atom(first_unvisited)
+                        .expect("unvisited atom must belong to a prepared component");
+                    component_roots
+                        .retain(|atom| graph.component_of_atom(*atom) == Some(component));
+                }
+            }
             return StructuralFrontier {
-                component_roots: self.traversal.unvisited_atoms(graph).collect(),
+                component_roots,
                 ..StructuralFrontier::default()
             };
         };
@@ -417,6 +438,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             .restricted_constraints(None, None, restrictions, activate)?
             .map(|constraints| Self {
                 prepared: self.prepared.clone(),
+                component_order: self.component_order,
                 traversal: self.traversal.clone(),
                 constraints,
                 #[cfg(test)]
@@ -509,6 +531,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 }
                 Self {
                     prepared: self.prepared.clone(),
+                    component_order: self.component_order,
                     traversal,
                     constraints,
                     #[cfg(test)]
@@ -1129,6 +1152,7 @@ mod tests {
             .unwrap_consistent();
         let basis = WriterState {
             prepared: rooted.prepared.clone(),
+            component_order: ComponentOrder::AnyOrder,
             traversal: rooted.traversal.clone(),
             constraints,
             candidate_batch_derivations: rooted.candidate_batch_derivations.clone(),

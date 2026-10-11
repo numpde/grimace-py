@@ -6163,6 +6163,50 @@ fn inline_directional_carrier_emits_sign_before_the_child_atom() {
 }
 
 #[test]
+fn rdkit_anchor_restricts_an_incoming_mark_before_publishing_its_token() {
+    let (surface, atoms, bonds) = directional_chain_fixture();
+    let root = State::initial_with_regime(&surface, crate::WriterRegime::RdkitRandomNoncanonical)
+        .unwrap()
+        .unwrap_consistent();
+    let root = root
+        .choices()
+        .unwrap()
+        .into_iter()
+        .find(|choice| choice.text() == "F")
+        .unwrap()
+        .into_successor();
+    let choices = root.choices().unwrap();
+
+    assert_eq!(
+        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
+        BTreeSet::from(["/"])
+    );
+    let slash = choices.into_iter().next().unwrap().into_successor();
+    let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
+    else {
+        panic!("left carrier must be compiled");
+    };
+    let PreparedDirectionalBondStatus::CompiledSite(right) = surface.directional_status(bonds[2])
+    else {
+        panic!("right carrier must be compiled");
+    };
+    assert_eq!(
+        slash.structural.semantic_domain(left.mark_variable),
+        CarrierMark::SlashAtFixedA.singleton_domain()
+    );
+    assert_eq!(
+        slash.structural.semantic_domain(right.mark_variable),
+        CarrierMark::BackslashAtFixedA.singleton_domain()
+    );
+    assert_eq!(
+        slash.pending,
+        Some(PendingEmission::InlineAtom(incident(
+            &surface, atoms[0], bonds[0],
+        )))
+    );
+}
+
+#[test]
 fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
     for token in [NonStereoBondToken::Single, NonStereoBondToken::Aromatic] {
         let (surface, _, _) =

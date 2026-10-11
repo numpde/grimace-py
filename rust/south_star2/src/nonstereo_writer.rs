@@ -21,7 +21,7 @@ use crate::tetrahedral::{
     singleton_order, TetrahedralLigand, TetrahedralParity,
 };
 use crate::traversal::LocalLayoutContext;
-use crate::walker::ComponentOrder;
+use crate::walker::{ComponentOrder, WriterRegime};
 #[cfg(test)]
 use crate::writer_state::ObservedWriterState;
 use crate::writer_state::{StructuralCandidate, WriterState};
@@ -565,7 +565,7 @@ impl PreparedNonStereo {
         })
     }
 
-    fn molecule(&self) -> &PreparedMolecule {
+    pub(crate) fn molecule(&self) -> &PreparedMolecule {
         &self.molecule
     }
 
@@ -1668,7 +1668,7 @@ impl fmt::Display for WriterIncompleteness {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RdkitDirectionalAnchoring => formatter.write_str(
-                "RDKit directional anchoring for configured double bonds is not implemented",
+                "RDKit directional anchoring currently supports one carrier per endpoint, distinct endpoints and carrier bonds across relations, and acyclic directional double/carrier bonds",
             ),
             Self::DirectionalCarrierSelection {
                 double_bond,
@@ -1718,6 +1718,7 @@ impl<E: std::error::Error + 'static> std::error::Error for ChoiceFailure<E> {
 #[derive(Clone, Debug)]
 pub(crate) struct NonStereoWriterState<S> {
     surface: PreparedNonStereo,
+    regime: WriterRegime,
     structural: WriterState<S>,
     labels: RingLabels,
     pending: Option<PendingEmission>,
@@ -1733,15 +1734,25 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         surface: &PreparedNonStereo,
         component_order: ComponentOrder,
     ) -> Result<Consistency<Self>, S::Failure> {
+        Self::initial_with_regime(surface, WriterRegime::Generic { component_order })
+    }
+
+    pub(crate) fn initial_with_regime(
+        surface: &PreparedNonStereo,
+        regime: WriterRegime,
+    ) -> Result<Consistency<Self>, S::Failure> {
         Ok(
-            WriterState::initial_with_component_order(surface.molecule(), component_order)?.map(
-                |structural| Self {
-                    surface: surface.clone(),
-                    structural,
-                    labels: RingLabels::default(),
-                    pending: None,
-                },
-            ),
+            WriterState::initial_with_component_order(
+                surface.molecule(),
+                regime.component_order(),
+            )?
+            .map(|structural| Self {
+                surface: surface.clone(),
+                regime,
+                structural,
+                labels: RingLabels::default(),
+                pending: None,
+            }),
         )
     }
 
@@ -2096,6 +2107,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             };
             let successor = Self {
                 surface: self.surface.clone(),
+                regime: self.regime,
                 structural,
                 labels,
                 pending,
@@ -2255,6 +2267,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             assert_eq!(labels.allocate(incident.bond()), label_slot);
             let successor = Self {
                 surface: self.surface.clone(),
+                regime: self.regime,
                 structural,
                 labels,
                 pending: text.map(|_| PendingEmission::RingOpeningLabel {
@@ -2324,6 +2337,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     labels.release(label_slot, incident.bond());
                     Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural,
                         labels,
                         pending: None,
@@ -2331,6 +2345,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 }
                 Some(_) => Self {
                     surface: self.surface.clone(),
+                    regime: self.regime,
                     structural,
                     labels: self.labels.clone(),
                     pending: Some(PendingEmission::RingClosureLabel {
@@ -2410,6 +2425,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     labels.release(label_slot, incident.bond());
                     let successor = Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural,
                         labels,
                         pending: None,
@@ -2449,6 +2465,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         text.to_owned(),
                         Self {
                             surface: self.surface.clone(),
+                            regime: self.regime,
                             structural,
                             labels: self.labels.clone(),
                             pending: Some(PendingEmission::RingClosureLabel {
@@ -2612,6 +2629,76 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .collect())
             }
         }
+    }
+
+    fn directional_anchor_restrictions(
+        &self,
+        atom: AtomId,
+        from: AtomId,
+        entry_bond: Option<BondId>,
+    ) -> Result<Vec<(VariableId, Domain)>, WriterIncompleteness> {
+        if self.regime != WriterRegime::RdkitRandomNoncanonical {
+            return Ok(Vec::new());
+        }
+        let graph = self.surface.molecule().graph();
+        let mut restrictions = Vec::new();
+        for side in self
+            .surface
+            .directional_sides
+            .iter()
+            .filter(|side| side.endpoint == atom)
+        {
+            let double_bond = graph
+                .bond(side.double_bond)
+                .expect("prepared directional double bond must belong to the graph");
+            let other_endpoint = double_bond
+                .other(atom)
+                .expect("prepared directional side endpoint must be incident");
+            if self.structural.atom_is_visited(other_endpoint) {
+                continue;
+            }
+            let [carrier] = side.carriers.as_ref() else {
+                return Err(WriterIncompleteness::RdkitDirectionalAnchoring);
+            };
+            let shared = self
+                .surface
+                .directional_sides
+                .iter()
+                .flat_map(|side| side.carriers.iter())
+                .filter(|other| other.bond == carrier.bond)
+                .count()
+                > 1;
+            if shared {
+                return Err(WriterIncompleteness::RdkitDirectionalAnchoring);
+            }
+            let source = if entry_bond == Some(carrier.bond) {
+                from
+            } else {
+                atom
+            };
+            let carrier_topology = graph
+                .bond(carrier.bond)
+                .expect("prepared directional carrier must belong to the graph");
+            let from_fixed_a = if carrier_topology.a() == source {
+                true
+            } else if carrier_topology.b() == source {
+                false
+            } else {
+                panic!("directional anchor source must be incident to its carrier")
+            };
+            let mark = if from_fixed_a {
+                CarrierMark::SlashAtFixedA
+            } else {
+                CarrierMark::BackslashAtFixedA
+            };
+            let PreparedDirectionalBondStatus::CompiledSite(site) =
+                self.surface.directional_status(carrier.bond)
+            else {
+                return Err(WriterIncompleteness::RdkitDirectionalAnchoring);
+            };
+            restrictions.push((site.mark_variable, mark.singleton_domain()));
+        }
+        Ok(restrictions)
     }
 
     const fn incomplete_selection(
@@ -2834,8 +2921,17 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     self.labels.is_clean(),
                     "a connected component must start with clean ring-label spelling state"
                 );
+                let anchor = match self.directional_anchor_restrictions(atom, atom, None) {
+                    Ok(anchor) => anchor,
+                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
+                };
                 if self.structural.has_visited_atoms() {
-                    let structural = match self.structural.attempt_candidate(candidate) {
+                    let structural = match self.attempt_candidate_with_transition(
+                        candidate,
+                        None,
+                        anchor.as_slice(),
+                        &[],
+                    ) {
                         Ok(Consistency::Consistent(structural)) => structural,
                         Ok(Consistency::Contradiction) => {
                             return vec![CandidateAttempt::Rejected {
@@ -2848,6 +2944,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         ".".to_owned(),
                         Self {
                             surface: self.surface.clone(),
+                            regime: self.regime,
                             structural,
                             labels: self.labels.clone(),
                             pending: Some(PendingEmission::ComponentRootAtom(atom)),
@@ -2857,7 +2954,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     let context = self.structural.prospective_root_layout_context(atom);
                     collect_attempts_fail_fast(
                         self.atom_token_specs(atom, None, &context).into_iter().map(
-                            |(text, restriction, activate)| {
+                            |(text, mut restriction, activate)| {
+                                restriction.extend_from_slice(&anchor);
                                 let structural = match self.attempt_candidate_with_transition(
                                     candidate,
                                     None,
@@ -2876,6 +2974,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                     text,
                                     Self {
                                         surface: self.surface.clone(),
+                                        regime: self.regime,
                                         structural,
                                         labels: self.labels.clone(),
                                         pending: None,
@@ -2898,7 +2997,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .active_atom()
                     .expect("branch emission requires an active atom");
                 let incomplete = self.traversal_emission_specs(incident.bond(), parent).err();
-                let restrictions = self.parent_prefix_restriction(incident);
+                let mut restrictions = self.parent_prefix_restriction(incident);
+                let anchor = match self.directional_anchor_restrictions(
+                    incident.atom(),
+                    parent,
+                    Some(incident.bond()),
+                ) {
+                    Ok(anchor) => anchor,
+                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
+                };
+                restrictions.extend_from_slice(&anchor);
                 let structural = match self.attempt_candidate_with_transition(
                     candidate,
                     None,
@@ -2923,6 +3031,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     "(".to_owned(),
                     Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural,
                         labels,
                         pending: Some(PendingEmission::BranchTraversalEmission(incident)),
@@ -2934,7 +3043,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .structural
                     .active_atom()
                     .expect("inline emission requires an active atom");
-                let parent_restriction = self.parent_prefix_restriction(incident);
+                let mut parent_restriction = self.parent_prefix_restriction(incident);
+                let anchor = match self.directional_anchor_restrictions(
+                    incident.atom(),
+                    parent,
+                    Some(incident.bond()),
+                ) {
+                    Ok(anchor) => anchor,
+                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
+                };
+                parent_restriction.extend_from_slice(&anchor);
                 let emissions = match self.traversal_emission_specs(incident.bond(), parent) {
                     Ok(emissions) => emissions,
                     Err(incomplete) => {
@@ -3003,6 +3121,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 text,
                                 Self {
                                     surface: self.surface.clone(),
+                                    regime: self.regime,
                                     structural: structural.enter_committed_inline_child(incident),
                                     labels: self.labels.clone(),
                                     pending: None,
@@ -3051,6 +3170,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             emission.text.to_owned(),
                             Self {
                                 surface: self.surface.clone(),
+                                regime: self.regime,
                                 structural,
                                 labels: self.labels.clone(),
                                 pending: Some(PendingEmission::InlineAtom(incident)),
@@ -3088,6 +3208,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     ")".to_owned(),
                     Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural,
                         labels,
                         pending: None,
@@ -3162,6 +3283,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             emission.text.to_owned(),
                             Self {
                                 surface: self.surface.clone(),
+                                regime: self.regime,
                                 structural,
                                 labels: self.labels.clone(),
                                 pending: Some(PendingEmission::BranchAtom(incident)),
@@ -3200,6 +3322,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     label_slot,
                     Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural: self.structural.clone(),
                         labels: self.labels.clone(),
                         pending: None,
@@ -3221,6 +3344,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     label_slot,
                     Self {
                         surface: self.surface.clone(),
+                        regime: self.regime,
                         structural: self.structural.clone(),
                         labels,
                         pending: None,
@@ -3278,6 +3402,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         text,
                         Self {
                             surface: self.surface.clone(),
+                            regime: self.regime,
                             structural,
                             labels: self.labels.clone(),
                             pending: None,

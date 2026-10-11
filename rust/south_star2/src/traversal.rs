@@ -674,7 +674,6 @@ impl TraversalState {
         self.progress.ring_is_open(bond)
     }
 
-    #[cfg(test)]
     pub(crate) fn atom_is_visited(&self, atom: AtomId) -> bool {
         self.progress.atom_is_visited(atom)
     }

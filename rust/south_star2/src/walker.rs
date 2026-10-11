@@ -3,6 +3,7 @@
 //! Preparation supplies chemical spelling and stereo facts. This interface
 //! preserves kernel outcomes while keeping traversal and solver stores private.
 
+use std::collections::{BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt;
 
@@ -30,7 +31,7 @@ pub enum WriterRegime {
 }
 
 impl WriterRegime {
-    const fn component_order(self) -> ComponentOrder {
+    pub(crate) const fn component_order(self) -> ComponentOrder {
         match self {
             Self::Generic { component_order } => component_order,
             Self::RdkitRandomNoncanonical => ComponentOrder::InputOrder,
@@ -57,27 +58,83 @@ impl PreparedWriter {
             PreparedMolecule::new(graph),
             atoms,
             bonds,
-            directional,
+            directional.clone(),
         )
         .map_err(|error| WalkerFailure(FailureCause::Preparation(error)))?;
         if matches!(regime, WriterRegime::RdkitRandomNoncanonical) && has_directional_relations {
-            return Err(WalkerFailure(FailureCause::RegimeIncomplete(
-                WriterIncompleteness::RdkitDirectionalAnchoring,
-            )));
+            let isolated_relations = directional_relations_are_isolated(&directional);
+            let acyclic_directional_bonds =
+                directional_bonds_are_acyclic(surface.molecule().graph(), &directional);
+            if !isolated_relations || !acyclic_directional_bonds {
+                return Err(WalkerFailure(FailureCause::RegimeIncomplete(
+                    WriterIncompleteness::RdkitDirectionalAnchoring,
+                )));
+            }
         }
         Ok(Self { surface, regime })
     }
 
     pub fn initial(&self) -> Result<Walker, WalkerFailure> {
-        match NonStereoWriterState::initial_with_component_order(
-            &self.surface,
-            self.regime.component_order(),
-        ) {
+        match NonStereoWriterState::initial_with_regime(&self.surface, self.regime) {
             Ok(Consistency::Consistent(state)) => Ok(Walker(state)),
             Ok(Consistency::Contradiction) => Err(WalkerFailure(FailureCause::ContradictoryInput)),
             Err(error) => Err(WalkerFailure(FailureCause::InitialBackend(error))),
         }
     }
+}
+
+fn directional_relations_are_isolated(relations: &[DirectionalRelation]) -> bool {
+    let mut carrier_bonds = BTreeSet::new();
+    let mut endpoints = BTreeSet::new();
+    relations.iter().all(|relation| {
+        relation.left_carriers.len() == 1
+            && relation.right_carriers.len() == 1
+            && endpoints.insert(relation.left_endpoint)
+            && endpoints.insert(relation.right_endpoint)
+            && carrier_bonds.insert(relation.left_carriers[0].bond)
+            && carrier_bonds.insert(relation.right_carriers[0].bond)
+    })
+}
+
+fn directional_bonds_are_acyclic(graph: &PreparedGraph, relations: &[DirectionalRelation]) -> bool {
+    relations.iter().all(|relation| {
+        std::iter::once(relation.double_bond)
+            .chain(
+                relation
+                    .left_carriers
+                    .iter()
+                    .chain(relation.right_carriers.iter())
+                    .map(|carrier| carrier.bond),
+            )
+            .all(|bond| is_bridge(graph, bond))
+    })
+}
+
+fn is_bridge(graph: &PreparedGraph, bond: crate::BondId) -> bool {
+    let topology = graph
+        .bond(bond)
+        .expect("prepared directional bond must belong to the graph");
+    let start = topology.a();
+    let target = topology.b();
+    let mut visited = BTreeSet::from([start]);
+    let mut pending = VecDeque::from([start]);
+    while let Some(atom) = pending.pop_front() {
+        for incident in graph
+            .neighbors(atom)
+            .expect("prepared directional atom must have an adjacency row")
+        {
+            if incident.bond() == bond {
+                continue;
+            }
+            if incident.atom() == target {
+                return false;
+            }
+            if visited.insert(incident.atom()) {
+                pending.push_back(incident.atom());
+            }
+        }
+    }
+    true
 }
 
 #[derive(Clone, Debug)]
@@ -190,6 +247,75 @@ mod tests {
     use super::*;
     use crate::nonstereo_writer::{PreparedDirectionalCarrier, PreparedDirectionalRelation};
     use crate::PreparedGraphBuilder;
+    use std::collections::BTreeSet;
+
+    fn alkene_support(
+        regime: WriterRegime,
+        side_phase_xor: bool,
+        reverse_left_carrier: bool,
+        reverse_right_carrier: bool,
+        left_sibling: bool,
+    ) -> BTreeSet<String> {
+        fn collect(walker: Walker, prefix: String, support: &mut BTreeSet<String>) {
+            if walker.is_accepted() {
+                support.insert(prefix);
+                return;
+            }
+            for choice in walker.choices().unwrap() {
+                collect(
+                    choice.successor,
+                    format!("{prefix}{}", choice.text),
+                    support,
+                );
+            }
+        }
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..if left_sibling { 5 } else { 4 })
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let left_carrier = if reverse_left_carrier {
+            graph.add_bond(atoms[1], atoms[0]).unwrap()
+        } else {
+            graph.add_bond(atoms[0], atoms[1]).unwrap()
+        };
+        let double_bond = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let right_carrier = if reverse_right_carrier {
+            graph.add_bond(atoms[3], atoms[2]).unwrap()
+        } else {
+            graph.add_bond(atoms[2], atoms[3]).unwrap()
+        };
+        let mut bonds = vec![BondToken::Elided, BondToken::Double, BondToken::Elided];
+        if left_sibling {
+            graph.add_bond(atoms[1], atoms[4]).unwrap();
+            bonds.push(BondToken::Elided);
+        }
+        let relation = PreparedDirectionalRelation {
+            double_bond,
+            left_endpoint: atoms[1],
+            left_carriers: Box::new([PreparedDirectionalCarrier {
+                bond: left_carrier,
+                side_flip: false,
+            }]),
+            right_endpoint: atoms[2],
+            right_carriers: Box::new([PreparedDirectionalCarrier {
+                bond: right_carrier,
+                side_flip: false,
+            }]),
+            side_phase_xor,
+        };
+        let prepared = PreparedWriter::new(
+            graph.build(),
+            vec![AtomToken::Fixed("C".to_owned()); atoms.len()],
+            bonds,
+            vec![relation],
+            regime,
+        )
+        .unwrap();
+        let mut support = BTreeSet::new();
+        collect(prepared.initial().unwrap(), String::new(), &mut support);
+        support
+    }
 
     fn carbon_carbon_oxygen() -> PreparedWriter {
         let mut graph = PreparedGraphBuilder::new();
@@ -373,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn rdkit_regime_reports_directional_anchoring_incompleteness_at_relation() {
+    fn rdkit_regime_validates_directional_relations_before_other_incompleteness() {
         let prepare = |malformed_relation: bool| {
             let mut graph = PreparedGraphBuilder::new();
             let atoms = (0..4)
@@ -415,14 +541,304 @@ mod tests {
         assert_eq!(malformed.kind(), WalkerFailureKind::InvalidInput);
         assert!(malformed.to_string().contains("does not join"));
 
-        let incomplete = prepare(false).unwrap_err();
+        assert!(prepare(false).is_ok());
+    }
 
-        assert_eq!(incomplete.kind(), WalkerFailureKind::Incomplete);
-        assert!(incomplete
+    #[test]
+    fn rdkit_regime_keeps_multiple_carrier_anchoring_incomplete() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..5)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let double_bond = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let left_carrier_a = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let left_carrier_b = graph.add_bond(atoms[0], atoms[3]).unwrap();
+        let right_carrier = graph.add_bond(atoms[1], atoms[4]).unwrap();
+        let relation = PreparedDirectionalRelation {
+            double_bond,
+            left_endpoint: atoms[0],
+            left_carriers: Box::new([
+                PreparedDirectionalCarrier {
+                    bond: left_carrier_a,
+                    side_flip: false,
+                },
+                PreparedDirectionalCarrier {
+                    bond: left_carrier_b,
+                    side_flip: false,
+                },
+            ]),
+            right_endpoint: atoms[1],
+            right_carriers: Box::new([PreparedDirectionalCarrier {
+                bond: right_carrier,
+                side_flip: false,
+            }]),
+            side_phase_xor: true,
+        };
+        let error = PreparedWriter::new(
+            graph.build(),
+            ["C", "C", "C", "C", "C"]
+                .map(|text| AtomToken::Fixed(text.to_owned()))
+                .into(),
+            vec![
+                BondToken::Double,
+                BondToken::Elided,
+                BondToken::Elided,
+                BondToken::Elided,
+            ],
+            vec![relation],
+            WriterRegime::RdkitRandomNoncanonical,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), WalkerFailureKind::Incomplete);
+        assert!(error.to_string().contains("one carrier per endpoint"));
+    }
+
+    #[test]
+    fn rdkit_regime_keeps_shared_endpoint_anchoring_incomplete() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..7)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let first_double = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let first_left = graph.add_bond(atoms[0], atoms[3]).unwrap();
+        let first_right = graph.add_bond(atoms[1], atoms[5]).unwrap();
+        let second_double = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let second_left = graph.add_bond(atoms[1], atoms[6]).unwrap();
+        let second_right = graph.add_bond(atoms[2], atoms[4]).unwrap();
+        let carrier = |bond| PreparedDirectionalCarrier {
+            bond,
+            side_flip: false,
+        };
+        let relation = |double_bond, left_endpoint, left_carrier, right_endpoint, right_carrier| {
+            PreparedDirectionalRelation {
+                double_bond,
+                left_endpoint,
+                left_carriers: Box::new([carrier(left_carrier)]),
+                right_endpoint,
+                right_carriers: Box::new([carrier(right_carrier)]),
+                side_phase_xor: true,
+            }
+        };
+        let relations = vec![
+            relation(first_double, atoms[0], first_left, atoms[1], first_right),
+            relation(second_double, atoms[1], second_left, atoms[2], second_right),
+        ];
+        let error = PreparedWriter::new(
+            graph.build(),
+            vec![AtomToken::Fixed("C".to_owned()); atoms.len()],
+            vec![
+                BondToken::Double,
+                BondToken::Elided,
+                BondToken::Elided,
+                BondToken::Double,
+                BondToken::Elided,
+                BondToken::Elided,
+            ],
+            relations,
+            WriterRegime::RdkitRandomNoncanonical,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), WalkerFailureKind::Incomplete);
+        assert!(error.to_string().contains("distinct endpoints"));
+    }
+
+    #[test]
+    fn rdkit_regime_keeps_shared_carrier_anchoring_incomplete() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..6)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let first_double = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let shared_carrier = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let first_other_carrier = graph.add_bond(atoms[1], atoms[4]).unwrap();
+        let second_double = graph.add_bond(atoms[2], atoms[3]).unwrap();
+        let second_other_carrier = graph.add_bond(atoms[3], atoms[5]).unwrap();
+        let carrier = |bond| PreparedDirectionalCarrier {
+            bond,
+            side_flip: false,
+        };
+        let relation = |double_bond, left_endpoint, left_carrier, right_endpoint, right_carrier| {
+            PreparedDirectionalRelation {
+                double_bond,
+                left_endpoint,
+                left_carriers: Box::new([carrier(left_carrier)]),
+                right_endpoint,
+                right_carriers: Box::new([carrier(right_carrier)]),
+                side_phase_xor: true,
+            }
+        };
+        let relations = vec![
+            relation(
+                first_double,
+                atoms[0],
+                shared_carrier,
+                atoms[1],
+                first_other_carrier,
+            ),
+            relation(
+                second_double,
+                atoms[2],
+                shared_carrier,
+                atoms[3],
+                second_other_carrier,
+            ),
+        ];
+        let error = PreparedWriter::new(
+            graph.build(),
+            vec![AtomToken::Fixed("C".to_owned()); atoms.len()],
+            vec![
+                BondToken::Double,
+                BondToken::Elided,
+                BondToken::Elided,
+                BondToken::Double,
+                BondToken::Elided,
+            ],
+            relations,
+            WriterRegime::RdkitRandomNoncanonical,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), WalkerFailureKind::Incomplete);
+        assert!(error.to_string().contains("carrier bonds across relations"));
+    }
+
+    #[test]
+    fn rdkit_regime_keeps_ring_anchoring_incomplete() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..4)
+            .map(|_| graph.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let double_bond = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let right_carrier = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        graph.add_bond(atoms[2], atoms[3]).unwrap();
+        let left_carrier = graph.add_bond(atoms[3], atoms[0]).unwrap();
+        let relation = PreparedDirectionalRelation {
+            double_bond,
+            left_endpoint: atoms[0],
+            left_carriers: Box::new([PreparedDirectionalCarrier {
+                bond: left_carrier,
+                side_flip: false,
+            }]),
+            right_endpoint: atoms[1],
+            right_carriers: Box::new([PreparedDirectionalCarrier {
+                bond: right_carrier,
+                side_flip: false,
+            }]),
+            side_phase_xor: true,
+        };
+        let error = PreparedWriter::new(
+            graph.build(),
+            vec![AtomToken::Fixed("C".to_owned()); 4],
+            vec![
+                BondToken::Double,
+                BondToken::Elided,
+                BondToken::Elided,
+                BondToken::Elided,
+            ],
+            vec![relation],
+            WriterRegime::RdkitRandomNoncanonical,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), WalkerFailureKind::Incomplete);
+        assert!(error
             .to_string()
-            .contains("Cannot prepare the RDKit random noncanonical writer"));
-        assert!(incomplete
-            .to_string()
-            .contains("directional anchoring for configured double bonds"));
+            .contains("acyclic directional double/carrier bonds"));
+    }
+
+    #[test]
+    fn rdkit_anchor_removes_only_the_simultaneous_sign_inversion() {
+        let generic = alkene_support(
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
+            true,
+            false,
+            false,
+            false,
+        );
+        let rdkit = alkene_support(
+            WriterRegime::RdkitRandomNoncanonical,
+            true,
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(generic.len(), 6);
+        assert_eq!(rdkit.len(), 3);
+        assert!(generic.is_superset(&rdkit));
+    }
+
+    #[test]
+    fn rdkit_directional_anchor_preserves_e_z_discrimination() {
+        let e_support = alkene_support(
+            WriterRegime::RdkitRandomNoncanonical,
+            true,
+            false,
+            false,
+            false,
+        );
+        let z_support = alkene_support(
+            WriterRegime::RdkitRandomNoncanonical,
+            false,
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(e_support.len(), 3);
+        assert_eq!(z_support.len(), 3);
+        assert!(e_support.is_disjoint(&z_support));
+    }
+
+    #[test]
+    fn rdkit_anchor_tracks_stored_carrier_orientation_and_all_root_orientations() {
+        let original = alkene_support(
+            WriterRegime::RdkitRandomNoncanonical,
+            true,
+            false,
+            false,
+            false,
+        );
+        for (reverse_left, reverse_right) in [(true, false), (false, true), (true, true)] {
+            assert_eq!(
+                alkene_support(
+                    WriterRegime::RdkitRandomNoncanonical,
+                    true,
+                    reverse_left,
+                    reverse_right,
+                    false,
+                ),
+                original,
+                "stored carrier orientation {reverse_left}/{reverse_right} changed support"
+            );
+        }
+    }
+
+    #[test]
+    fn rdkit_anchor_persists_across_ordinary_sibling_choices() {
+        let generic = alkene_support(
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
+            true,
+            false,
+            false,
+            true,
+        );
+        let rdkit = alkene_support(
+            WriterRegime::RdkitRandomNoncanonical,
+            true,
+            false,
+            false,
+            true,
+        );
+
+        assert!(!rdkit.is_empty());
+        assert!(generic.is_superset(&rdkit));
+        assert!(rdkit.len() < generic.len());
     }
 }

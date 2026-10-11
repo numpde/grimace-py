@@ -1,0 +1,1466 @@
+{
+  "rdkit_version": "2026.03.4",
+  "source_commit": "8afba32ec539dcb2369bc84549d802aca3f7eb39",
+  "source_manifest": "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.4/manifest.json",
+  "tree_bound_formula": "sum_r[d(r)! product(v!=r)(degree(v)-1)!] = 2|E| product_v(degree(v)-1)!",
+  "source_claims": [
+    {
+      "path": "Code/GraphMol/Atom.cpp",
+      "lines": "748-760",
+      "claim": "Atom::getPerturbationOrder compares the proposed traversal bond order with the incoming-bond reference frame."
+    },
+    {
+      "path": "Code/GraphMol/Canon.cpp",
+      "lines": "338-345, 356-417, 553-563, 1198-1304, 1312-1344, 1460-1508",
+      "claim": "RDKit maps tetrahedral tags and double-bond stereo through traversal order, selects and directs carrier bonds, and removes only redundant directional marks."
+    },
+    {
+      "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+      "lines": "279-292",
+      "claim": "The writer maps up and down bond directions to slash and backslash in isomeric SMILES."
+    },
+    {
+      "path": "Code/GraphMol/Canon.cpp",
+      "lines": "841-965, 991-1025, 1033-1124, 1146-1154",
+      "claim": "The cycle-detection and writer DFS phases define finite root and continuation-child order choices; the random writer orders branch children within those choices."
+    },
+    {
+      "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+      "lines": "105-240, 279-311, 435-462, 503-530, 620-624, 681-696, 704-745, 834-849",
+      "claim": "These lines define atom and bond spellings, deterministic ring labels, random root selection when rootedAtAtom is -1, consumption of the concrete fragment atom-index mapping, restoration of source atom indices, noncanonical component assembly in vector order, and seeded random-vector replay."
+    },
+    {
+      "path": "Code/GraphMol/MolOps.cpp",
+      "lines": "723-755, 857-899",
+      "claim": "Fragment membership is grouped by component and source atom indices are appended in input order. For each fixed disconnected input, the recorded GetMolFrags atom-index tuples provide its concrete component order; the writer consumes this mapping directly."
+    }
+  ],
+  "cases": [
+    {
+      "input_smiles": "C[C@H](O)CC",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 2
+          },
+          {
+            "index": 4,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 1,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 1,
+            "incident_bonds": [
+              0,
+              1,
+              2
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+          }
+        ]
+      },
+      "id": "stereo_tetra_ccw_tree",
+      "schedule_upper_bound": 16,
+      "expected_distinct_outputs": 16,
+      "distinct_output_upper_bound": 16,
+      "bound_argument": "The fixed graph is a tree. The source-derived sum over roots and continuation orders bounds complete writer support; .4 seed witnesses attain every distinct spelling up to this bound.",
+      "source": "RDKit 2026.03.4 seeded witnesses attain the finite source-derived tree traversal bound.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "expected_support": [
+        "C(C)[C@@H](O)C",
+        "C(C)[C@H](C)O",
+        "C([C@@H](O)C)C",
+        "C([C@H](C)O)C",
+        "CC[C@@H](O)C",
+        "CC[C@H](C)O",
+        "C[C@@H](CC)O",
+        "C[C@H](O)CC",
+        "O[C@@H](C)CC",
+        "O[C@H](CC)C",
+        "[C@@H](C)(O)CC",
+        "[C@@H](CC)(C)O",
+        "[C@@H](O)(CC)C",
+        "[C@H](C)(CC)O",
+        "[C@H](CC)(O)C",
+        "[C@H](O)(C)CC"
+      ],
+      "witness_seeds": [
+        8,
+        3,
+        23,
+        13,
+        4,
+        14,
+        60,
+        5,
+        2,
+        27,
+        16,
+        31,
+        41,
+        1,
+        21,
+        6
+      ]
+    },
+    {
+      "input_smiles": "C[C@@H](O)CC",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 2
+          },
+          {
+            "index": 4,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 1,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 1,
+            "incident_bonds": [
+              0,
+              1,
+              2
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CW"
+          }
+        ]
+      },
+      "id": "stereo_tetra_cw_tree",
+      "schedule_upper_bound": 16,
+      "expected_distinct_outputs": 16,
+      "distinct_output_upper_bound": 16,
+      "bound_argument": "The fixed graph is a tree. The source-derived sum over roots and continuation orders bounds complete writer support; .4 seed witnesses attain every distinct spelling up to this bound.",
+      "source": "RDKit 2026.03.4 seeded witnesses attain the finite source-derived tree traversal bound.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "expected_support": [
+        "C(C)[C@@H](C)O",
+        "C(C)[C@H](O)C",
+        "C([C@@H](C)O)C",
+        "C([C@H](O)C)C",
+        "CC[C@@H](C)O",
+        "CC[C@H](O)C",
+        "C[C@@H](O)CC",
+        "C[C@H](CC)O",
+        "O[C@@H](CC)C",
+        "O[C@H](C)CC",
+        "[C@@H](C)(CC)O",
+        "[C@@H](CC)(O)C",
+        "[C@@H](O)(C)CC",
+        "[C@H](C)(O)CC",
+        "[C@H](CC)(C)O",
+        "[C@H](O)(CC)C"
+      ],
+      "witness_seeds": [
+        3,
+        8,
+        13,
+        23,
+        14,
+        4,
+        5,
+        60,
+        27,
+        2,
+        1,
+        21,
+        6,
+        16,
+        31,
+        41
+      ]
+    },
+    {
+      "input_smiles": "C/C=C/[C@H](O)C",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 4,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 5,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 4,
+            "begin": 3,
+            "end": 5,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 3,
+            "incident_bonds": [
+              2,
+              3,
+              4
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+          }
+        ]
+      },
+      "id": "stereo_mixed_alkene_tetra_tree",
+      "schedule_upper_bound": 20,
+      "expected_distinct_outputs": 20,
+      "distinct_output_upper_bound": 20,
+      "bound_argument": "The fixed graph is a tree. The source-derived sum over roots and continuation orders bounds complete writer support; .4 seed witnesses attain every distinct spelling up to this bound.",
+      "source": "RDKit 2026.03.4 seeded witnesses attain the finite source-derived tree traversal bound.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "expected_support": [
+        "C(/C)=C\\[C@@H](C)O",
+        "C(/C)=C\\[C@H](O)C",
+        "C(/[C@@H](C)O)=C\\C",
+        "C(/[C@H](O)C)=C\\C",
+        "C(=C\\C)/[C@@H](C)O",
+        "C(=C\\C)/[C@H](O)C",
+        "C(=C\\[C@@H](C)O)/C",
+        "C(=C\\[C@H](O)C)/C",
+        "C/C=C/[C@@H](C)O",
+        "C/C=C/[C@H](O)C",
+        "C[C@@H](O)/C=C/C",
+        "C[C@H](/C=C/C)O",
+        "O[C@@H](/C=C/C)C",
+        "O[C@H](C)/C=C/C",
+        "[C@@H](/C=C/C)(O)C",
+        "[C@@H](C)(/C=C/C)O",
+        "[C@@H](O)(C)/C=C/C",
+        "[C@H](/C=C/C)(C)O",
+        "[C@H](C)(O)/C=C/C",
+        "[C@H](O)(/C=C/C)C"
+      ],
+      "witness_seeds": [
+        25,
+        7,
+        26,
+        44,
+        2,
+        32,
+        1,
+        19,
+        12,
+        6,
+        5,
+        11,
+        22,
+        4,
+        51,
+        123,
+        21,
+        15,
+        9,
+        3
+      ]
+    },
+    {
+      "input_smiles": "C/C=C/C",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          }
+        ],
+        "tetrahedral_centers": []
+      },
+      "id": "stereo_e_butene_tree",
+      "schedule_upper_bound": 6,
+      "expected_distinct_outputs": 3,
+      "distinct_output_upper_bound": 6,
+      "bound_argument": "The graph is a fixed four-atom tree. The source-derived root and continuation-order schedules enumerate the complete bound; each schedule has a fresh .4 seed replay. Some schedule reversals serialize identically, so the number of distinct outputs can be below the schedule upper bound.",
+      "source": "Every root/child-order schedule is witnessed and replayed with RDKit 2026.03.4.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "source_schedule_rows": [
+        {
+          "root": 0,
+          "root_children": [
+            1
+          ],
+          "visit_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 0,
+            "to_atom": 1,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C/C=C/C",
+          "seed": 4,
+          "atom_output_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ],
+          "control_flipped": false,
+          "other_flipped": false
+        },
+        {
+          "root": 1,
+          "root_children": [
+            0,
+            2
+          ],
+          "visit_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(/C)=C\\C",
+          "seed": 15,
+          "atom_output_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 1,
+          "root_children": [
+            2,
+            0
+          ],
+          "visit_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(=C\\C)/C",
+          "seed": 3,
+          "atom_output_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "bond_output_order": [
+            1,
+            2,
+            0
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 2,
+          "root_children": [
+            1,
+            3
+          ],
+          "visit_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(=C\\C)/C",
+          "seed": 10,
+          "atom_output_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "bond_output_order": [
+            1,
+            0,
+            2
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 2,
+          "root_children": [
+            3,
+            1
+          ],
+          "visit_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C(/C)=C\\C",
+          "seed": 2,
+          "atom_output_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 3,
+          "root_children": [
+            2
+          ],
+          "visit_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 3,
+            "to_atom": 2,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C/C=C/C",
+          "seed": 1,
+          "atom_output_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ],
+          "control_flipped": false,
+          "other_flipped": false
+        }
+      ]
+    },
+    {
+      "input_smiles": "C/C=C\\C",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOZ",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDDOWNRIGHT"
+          }
+        ],
+        "tetrahedral_centers": []
+      },
+      "id": "stereo_z_butene_tree",
+      "schedule_upper_bound": 6,
+      "expected_distinct_outputs": 3,
+      "distinct_output_upper_bound": 6,
+      "bound_argument": "The graph is a fixed four-atom tree. The source-derived root and continuation-order schedules enumerate the complete bound; each schedule has a fresh .4 seed replay. Some schedule reversals serialize identically, so the number of distinct outputs can be below the schedule upper bound.",
+      "source": "Every root/child-order schedule is witnessed and replayed with RDKit 2026.03.4.",
+      "support_authority": "source_bounded_writer_schedule_and_seeded_witnesses",
+      "evidence_kind": "complete_bounded_writer_support",
+      "source_schedule_rows": [
+        {
+          "root": 0,
+          "root_children": [
+            1
+          ],
+          "visit_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 0,
+            "to_atom": 1,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C/C=C\\C",
+          "seed": 4,
+          "atom_output_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ],
+          "control_flipped": false,
+          "other_flipped": false
+        },
+        {
+          "root": 1,
+          "root_children": [
+            0,
+            2
+          ],
+          "visit_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C(/C)=C/C",
+          "seed": 15,
+          "atom_output_order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "bond_output_order": [
+            0,
+            1,
+            2
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 1,
+          "root_children": [
+            2,
+            0
+          ],
+          "visit_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "first_endpoint": 1,
+          "control_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C(=C/C)/C",
+          "seed": 3,
+          "atom_output_order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "bond_output_order": [
+            1,
+            2,
+            0
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 2,
+          "root_children": [
+            1,
+            3
+          ],
+          "visit_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C(=C/C)/C",
+          "seed": 10,
+          "atom_output_order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "bond_output_order": [
+            1,
+            0,
+            2
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 2,
+          "root_children": [
+            3,
+            1
+          ],
+          "visit_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 2,
+            "to_atom": 3,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "/"
+          },
+          "rendered_smiles": "C(/C)=C/C",
+          "seed": 2,
+          "atom_output_order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ],
+          "control_flipped": true,
+          "other_flipped": false
+        },
+        {
+          "root": 3,
+          "root_children": [
+            2
+          ],
+          "visit_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "first_endpoint": 2,
+          "control_carrier": {
+            "bond_index": 2,
+            "from_atom": 3,
+            "to_atom": 2,
+            "glyph": "/"
+          },
+          "other_carrier": {
+            "bond_index": 0,
+            "from_atom": 1,
+            "to_atom": 0,
+            "glyph": "\\"
+          },
+          "rendered_smiles": "C/C=C\\C",
+          "seed": 1,
+          "atom_output_order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "bond_output_order": [
+            2,
+            1,
+            0
+          ],
+          "control_flipped": false,
+          "other_flipped": false
+        }
+      ]
+    },
+    {
+      "input_smiles": "CC=C[C@H](O)C",
+      "unspecified_stereo": [
+        {
+          "kind": "alkene",
+          "bond_index": 1,
+          "expected": "STEREONONE"
+        }
+      ],
+      "id": "unspecified_alkene_with_tetrahedral_stereo",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 4,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 5,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 4,
+            "begin": 3,
+            "end": 5,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": [
+          {
+            "atom": 3,
+            "incident_bonds": [
+              2,
+              3,
+              4
+            ],
+            "non_graph_hydrogens": 1,
+            "input_chiral_tag": "CHI_TETRAHEDRAL_CCW"
+          }
+        ]
+      },
+      "source": "Fresh RDKit 2026.03.4 seeded writer membership witnesses with semantic parse-back controls; no support completeness is claimed.",
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C(=C[C@@H](C)O)C"
+        },
+        {
+          "seed": 2,
+          "smiles": "C(=CC)[C@@H](C)O"
+        }
+      ],
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "unspecified_stereo_semantic_control"
+    },
+    {
+      "input_smiles": "C/C=C/C(O)C",
+      "unspecified_stereo": [
+        {
+          "kind": "tetrahedral",
+          "atom_index": 3,
+          "expected": "CHI_UNSPECIFIED"
+        }
+      ],
+      "alkenes": [
+        {
+          "bond_index": 1,
+          "begin": 1,
+          "end": 2,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            0,
+            3
+          ]
+        }
+      ],
+      "id": "unspecified_tetrahedron_with_e_alkene",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 3,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 4,
+            "element": "O",
+            "degree": 1,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 5,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREOE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "ENDUPRIGHT"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 4,
+            "begin": 3,
+            "end": 5,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": []
+      },
+      "source": "Fresh RDKit 2026.03.4 seeded writer membership witnesses with semantic parse-back controls; no support completeness is claimed.",
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C(=C\\C(C)O)/C"
+        },
+        {
+          "seed": 2,
+          "smiles": "C(=C\\C)/C(C)O"
+        }
+      ],
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "unspecified_stereo_semantic_control"
+    },
+    {
+      "input_smiles": "CC=CC=CC=CC",
+      "configured_bonds": [
+        {
+          "index": 1,
+          "begin": 1,
+          "end": 2,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            0,
+            3
+          ]
+        },
+        {
+          "index": 3,
+          "begin": 3,
+          "end": 4,
+          "stereo": "STEREONONE",
+          "stereo_atoms": []
+        },
+        {
+          "index": 5,
+          "begin": 5,
+          "end": 6,
+          "stereo": "STEREOE",
+          "stereo_atoms": [
+            4,
+            7
+          ]
+        }
+      ],
+      "clear_all_bond_directions_before_write": true,
+      "id": "unspecified_middle_alkene_receives_writer_directional_marks",
+      "graph_facts": {
+        "atoms": [
+          {
+            "index": 0,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          },
+          {
+            "index": 1,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 2,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 3,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 4,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 5,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 6,
+            "element": "C",
+            "degree": 2,
+            "non_graph_hydrogens": 1
+          },
+          {
+            "index": 7,
+            "element": "C",
+            "degree": 1,
+            "non_graph_hydrogens": 3
+          }
+        ],
+        "bonds": [
+          {
+            "index": 0,
+            "begin": 0,
+            "end": 1,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 1,
+            "begin": 1,
+            "end": 2,
+            "type": "DOUBLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 2,
+            "begin": 2,
+            "end": 3,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 3,
+            "begin": 3,
+            "end": 4,
+            "type": "DOUBLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 4,
+            "begin": 4,
+            "end": 5,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 5,
+            "begin": 5,
+            "end": 6,
+            "type": "DOUBLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          },
+          {
+            "index": 6,
+            "begin": 6,
+            "end": 7,
+            "type": "SINGLE",
+            "stereo": "STEREONONE",
+            "direction": "NONE"
+          }
+        ],
+        "tetrahedral_centers": []
+      },
+      "source": "Fresh RDKit 2026.03.4 seeded membership witnesses record the directional-mark parse-back discrepancy; no support completeness is claimed.",
+      "source_lines": "Code/GraphMol/Canon.cpp:1198-1304",
+      "evidence_scope": "Positive writer membership and parse-back discrepancy only; no support completeness or negative parity claim.",
+      "witnesses": [
+        {
+          "seed": 1,
+          "smiles": "C/C=C/C=C/C=C/C",
+          "parsed_middle_stereo": "STEREOE"
+        },
+        {
+          "seed": 2,
+          "smiles": "C(/C)=C\\C=C/C=C/C",
+          "parsed_middle_stereo": "STEREOZ"
+        }
+      ],
+      "support_authority": "seeded_writer_membership_and_semantic_parseback",
+      "evidence_kind": "known_writer_quirk"
+    }
+  ]
+}

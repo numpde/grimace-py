@@ -1,0 +1,185 @@
+{
+  "rdkit_version": "2026.03.4",
+  "writer_policy": {
+    "input": "Fresh RDKit MolFromSmiles input with atom indexing preserved; renumbered cases apply the listed Chem.RenumberAtoms order to a fresh parse",
+    "rooted_at_atom": -1,
+    "canonical": false,
+    "do_random": true,
+    "isomeric_smiles": true,
+    "kekule": false,
+    "all_bonds_explicit": false,
+    "all_hs_explicit": false,
+    "component_order": "For disconnected cases, the fixture records the actual .4 GetMolFrags atom-index tuples for this fixed parsed input; the pinned source shows those tuples are passed to the noncanonical writer and assembled in vector order. This is per-input evidence, not a general component-label theorem."
+  },
+  "completeness_basis": {
+    "kind": "source_bounded_writer_permutations",
+    "source_manifest": "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.4/manifest.json",
+    "source_commit": "8afba32ec539dcb2369bc84549d802aca3f7eb39",
+    "argument": "For these fixed parsed graphs and writer parameters, the tagged writer has a finite set of root and child-order traversals. The complete output spelling set is enumerated structurally per input, including deterministic cycle labels and the actual .4 GetMolFrags atom-index tuples for each disconnected input. The pinned writer source consumes those tuples and assembles fragments in vector order. Fresh .4 positive seed replays attain each listed spelling, so the finite bound is attained.",
+    "source_claims": [
+      {
+        "path": "Code/GraphMol/Canon.cpp",
+        "lines": "841-965, 991-1025, 1033-1124, 1146-1154",
+        "claim": "The cycle-detection and writer DFS phases define finite root and continuation-child order choices; the random writer orders branch children within those choices."
+      },
+      {
+        "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+        "lines": "105-240, 279-311, 435-462, 503-530, 620-624, 681-696, 704-745, 834-849",
+        "claim": "These lines define atom and bond spellings, deterministic ring labels, random root selection when rootedAtAtom is -1, consumption of the concrete fragment atom-index mapping, restoration of source atom indices, noncanonical component assembly in vector order, and seeded random-vector replay."
+      },
+      {
+        "path": "Code/GraphMol/MolOps.cpp",
+        "lines": "723-755, 857-899",
+        "claim": "Fragment membership is grouped by component and source atom indices are appended in input order. For each fixed disconnected input, the recorded GetMolFrags atom-index tuples provide its concrete component order; the writer consumes this mapping directly."
+      }
+    ],
+    "witnesses": "Each case records one positive seeded MolToRandomSmilesVect replay per expected spelling, captured under RDKit 2026.03.4. The source-derived upper bound establishes completeness; sampled or seeded membership alone does not."
+  },
+  "cases": [
+    {
+      "id": "ss2_c_o_linear_ethanol",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "CCO",
+      "upper_bound": 4,
+      "bound_cases": [
+        "Either terminal root forces one orientation, yielding CCO or OCC.",
+        "The central root has two child orders, yielding C(C)O or C(O)C."
+      ],
+      "expected_support": [
+        "C(C)O",
+        "C(O)C",
+        "CCO",
+        "OCC"
+      ],
+      "witness_seeds": [
+        1,
+        10,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "ss2_c_o_isopropanol",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "CC(C)O",
+      "upper_bound": 6,
+      "bound_cases": [
+        "The tertiary carbon root has three distinct child orders because its two carbon children are identical.",
+        "Either equivalent methyl root allows two orders for the remaining carbon and oxygen children at the tertiary carbon.",
+        "The oxygen root has one order for the two equivalent carbon children at the tertiary carbon."
+      ],
+      "expected_support": [
+        "C(C)(C)O",
+        "C(C)(O)C",
+        "C(O)(C)C",
+        "CC(C)O",
+        "CC(O)C",
+        "OC(C)C"
+      ],
+      "witness_seeds": [
+        11,
+        7,
+        3,
+        16,
+        2,
+        1
+      ]
+    },
+    {
+      "id": "ss2_c_cycle_triangle",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "C1CC1",
+      "upper_bound": 1,
+      "bound_cases": [
+        "Every root and either direction around the cycle yields the same deterministic ring-label spelling."
+      ],
+      "expected_support": [
+        "C1CC1"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_carbon_oxygen",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "C.O",
+      "fragment_atom_indices": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ],
+      "upper_bound": 1,
+      "bound_cases": [
+        "Each atom component has one spelling; fixed input-order fragment construction yields C.O."
+      ],
+      "expected_support": [
+        "C.O"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_cc_o_ethane_component_first",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "CC.O",
+      "atom_order": [
+        0,
+        2,
+        1
+      ],
+      "fragment_atom_indices": [
+        [
+          0,
+          2
+        ],
+        [
+          1
+        ]
+      ],
+      "upper_bound": 1,
+      "bound_cases": [
+        "The ethane and oxygen components each have one spelling; this input atom order assembles CC.O."
+      ],
+      "expected_support": [
+        "CC.O"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    },
+    {
+      "id": "ss2_disconnected_cc_o_oxygen_component_first",
+      "source": "Fresh RDKit 2026.03.4 writer witnesses attain the finite source-derived root and child-order bound.",
+      "input_smiles": "CC.O",
+      "atom_order": [
+        2,
+        1,
+        0
+      ],
+      "fragment_atom_indices": [
+        [
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "upper_bound": 1,
+      "bound_cases": [
+        "The ethane and oxygen components each have one spelling; this input atom order assembles O.CC."
+      ],
+      "expected_support": [
+        "O.CC"
+      ],
+      "witness_seeds": [
+        1
+      ]
+    }
+  ]
+}

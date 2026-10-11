@@ -53,7 +53,7 @@ runs:
     - name: Install package into source-tree test environment
       if: ${{ inputs.source-tree-test-env == 'true' }}
       shell: bash
-      run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+      run: env -u CONDA_PREFIX .venv/bin/python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env -u CONDA_PREFIX .venv/bin/maturin develop --release
     - name: Expose source-tree test Python
       if: ${{ inputs.source-tree-test-env == 'true' }}
       shell: bash

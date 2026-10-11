@@ -86,24 +86,43 @@ larger.
 
 Common commands:
 
-- Default Python suite:
-  `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
+- Default Python suite (full budget):
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
 - Exact public invariants:
-  `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Pinned RDKit parity:
-  `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Slow stereo-constraint diagnostics:
-  `PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
 - South Star semantic suite:
-  `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
 - South Star derived-support diagnostics:
-  `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_derived_support_diagnostics -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_south_star_derived_support_diagnostics -q`
 - Installed-artifact correctness:
-  `python3 -m unittest tests.run_installed_package_correctness -q`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python3 -m unittest tests.run_installed_package_correctness -q`
 - Rust unit tests:
-  `cargo test --lib`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- cargo test --lib`
 - Performance timings, opt-in only:
-  `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
+  `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
+
+The shared local runner serializes repository test and build commands across
+checkouts. It applies inherited CPU and per-process address-space limits and
+enforces a wall-clock limit that includes lock wait, runner startup, and command
+execution; the finite cleanup allowance is additional. Its process-tree RSS value is a sampled sum from
+Linux `/proc` (shared pages may count more than once and brief peaks between
+samples may be missed); it detects and terminates an over-budget command but is
+not a hard kernel memory ceiling. The runner fails closed when its own `/proc`
+view is unavailable or an owned descendant cannot be accounted for, including
+a cross-namespace descendant. Because `/proc` enumeration is not atomic, it
+reconciles owned-parent child lists with fresh PID, start-time, and namespace
+identities within the active budget. It verifies that its process tree has no live
+members before it reports verified cleanup. If cleanup is unverified, stop
+launching repository tests/builds and inspect the actual host process tree for
+the command's owned descendants before retrying; an empty sandbox process view
+is not proof that cleanup succeeded. A runner killed with SIGKILL cannot clean
+up its process tree. Run its own supervisor
+tests with the independent GNU `timeout` and shell-limit bootstrap exposed by
+`make test-bounded-runner`.
 
 Testing rules:
 

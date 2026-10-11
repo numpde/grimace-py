@@ -23,10 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - name: Test bounded runner under an independent bootstrap bound
+        run: make test-bounded-runner
       - name: Run Rust tests
-        run: cargo test --lib
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- cargo test --lib
       - name: Run South Star 2 Rust tests
-        run: cargo test -p grimace-south-star2 --lib
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- cargo test -p grimace-south-star2 --lib
 
   tests:
     runs-on: ubuntu-latest
@@ -61,19 +63,19 @@ jobs:
           python-version: "3.12"
           source-tree-test-env: "true"
       - name: Verify pinned RDKit upstream source fixtures
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.contract.test_rdkit_upstream_sources -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.contract.test_rdkit_upstream_sources -q
       - name: Run pinned RDKit parity suite
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_pinned_rdkit_parity -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_pinned_rdkit_parity -q
       - name: Run bounded South Star 2 exact support
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star2_rdkit_exact_support -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star2_rdkit_exact_support -q
       - name: Run South Star 2 source evidence for installed RDKit
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m tests.run_pinned_stereo_evidence
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m tests.run_pinned_stereo_evidence
       - name: Run public prefix contract
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.integration.test_public_prefix_api -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.integration.test_public_prefix_api -q
       - name: Run bounded OpenSMILES semantic examples
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_standard_smiles_semantics -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_standard_smiles_semantics -q
       - name: Run South Star 2 bridge and preparation regressions
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_native_bridge tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_native_bridge tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics -q
 
   exact-public-invariants:
     runs-on: ubuntu-latest
@@ -84,7 +86,7 @@ jobs:
           python-version: "3.12"
           source-tree-test-env: "true"
       - name: Run exact public invariant suite
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_exact_public_invariants -q
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_exact_public_invariants -q
 
   package:
     runs-on: ubuntu-latest
@@ -102,13 +104,13 @@ jobs:
       - name: Install pinned RDKit fixture version
         run: python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Build wheel
-        run: maturin build --release --out dist -i python${{ matrix.python-version }}
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- maturin build --release --out dist -i python${{ matrix.python-version }}
       - name: Check distribution metadata
         run: python -m twine check dist/*.whl
       - name: Install built wheel
         run: python -m pip install dist/*.whl
       - name: Run installed-package correctness subset
-        run: python -m unittest tests.run_installed_package_correctness -q
+        run: python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.run_installed_package_correctness -q
       - name: Test installed South Star 2 gates with RDKit 2026.03.4
         if: ${{ matrix.python-version == '3.12' }}
         run: |
@@ -133,8 +135,8 @@ jobs:
               assert any(module_path.is_relative_to(root) for root in site_roots), module_path
               print(f"{module.__name__}: {module_path}")
           PY
-          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
-          python -m tests.run_pinned_stereo_evidence
+          python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
+          python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m tests.run_pinned_stereo_evidence
 
   sdist:
     runs-on: ubuntu-latest
@@ -148,13 +150,13 @@ jobs:
       - name: Install pinned RDKit fixture version
         run: python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Build source distribution
-        run: maturin build --release --sdist --out dist -i python3.12
+        run: python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- maturin build --release --sdist --out dist -i python3.12
       - name: Check source distribution metadata
         run: python -m twine check dist/*.tar.gz
       - name: Install built source distribution
         run: python -m pip install dist/*.tar.gz
       - name: Run installed-package correctness subset from source distribution
-        run: python -m unittest tests.run_installed_package_correctness -q
+        run: python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.run_installed_package_correctness -q
       - name: Test installed South Star 2 gates with RDKit 2026.03.4
         run: |
           python -m pip install --upgrade --force-reinstall "rdkit==2026.3.4"
@@ -178,5 +180,5 @@ jobs:
               assert any(module_path.is_relative_to(root) for root in site_roots), module_path
               print(f"{module.__name__}: {module_path}")
           PY
-          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
-          python -m tests.run_pinned_stereo_evidence
+          python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
+          python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m tests.run_pinned_stereo_evidence

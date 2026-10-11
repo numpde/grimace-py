@@ -42,7 +42,7 @@ jobs:
       - name: Install built wheel
         run: python -m pip install dist/*.whl
       - name: Run installed-package correctness subset
-        run: python -m unittest tests.run_installed_package_correctness -q
+        run: python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.name }}-cp${{ matrix.python-version }}
@@ -65,7 +65,7 @@ jobs:
       - name: Install built source distribution
         run: python -m pip install dist/*.tar.gz
       - name: Run installed-package correctness subset
-        run: python -m unittest tests.run_installed_package_correctness -q
+        run: python scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@v7
         with:
           name: sdist

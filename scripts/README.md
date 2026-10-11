@@ -12,6 +12,45 @@ Performance and profiling diagnostics should live here or under `tests/perf/`,
 not as `#[ignore]` probes inside the Rust test binary. `cargo test` is kept for
 bounded correctness checks; heavier profiling runs should be explicit.
 
+## Bounded test and build commands
+
+On Linux, run repository-owned tests and builds through
+`run_bounded_tests.py`. It serializes commands across checkouts, applies CPU
+and per-process address-space limits inherited by descendants, enforces a wall
+deadline covering lock wait, runner startup, and command execution, sums
+sampled process RSS from `/proc`, and verifies process-tree cleanup within a
+separate finite cleanup allowance (`--cleanup-seconds`, default 5). Shared
+pages may be counted more than once, short peaks between
+samples may be missed, and sampled RSS is not a kernel memory ceiling. Since a
+`/proc` enumeration is not atomic, the runner reconciles the owned parents'
+current child lists against fresh PID, start-time, and namespace identities
+within the active command or cleanup deadline. Unresolved ownership fails
+closed. The runner
+refuses to start when its own `/proc` accounting is unavailable; it fails and cleans
+up if an owned descendant cannot be accounted for or crosses PID namespaces. A
+terminal `cleanup_unverified` report is nonzero: stop launching further tests
+or builds and inspect the actual host process tree for that command's owned
+descendants before retrying. An empty sandbox process view does not prove
+cleanup. A
+runner killed with
+SIGKILL cannot clean up its process tree. The `make test-bounded-runner` target
+bootstraps its supervisor tests with GNU `timeout` and shell CPU/address-space
+limits independent of the runner.
+
+Focused example:
+
+```bash
+python3 scripts/run_bounded_tests.py \
+  --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 \
+  --address-space-mib 4096 -- \
+  env PYTHONPATH=python:. python3 -m unittest tests.integration.test_public_prefix_api -q
+```
+
+Use the budget appropriate to the command: 60 seconds / 1 GiB for the small
+runner bootstrap, 120 seconds / 2 GiB for focused suites, and 300 seconds / 4
+GiB for full suites and builds. The address-space ceiling is set separately by
+`--address-space-mib`.
+
 ## Performance Tooling
 
 - `tests/perf/test_readme_timings.py`

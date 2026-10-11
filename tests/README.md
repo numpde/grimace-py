@@ -17,14 +17,31 @@ The test suite is organized by intent first, then by feature.
 
 ## Commands
 
-- Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
-- South Star 1 source-tree semantics: `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
-- Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
-- Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
-- Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
-- Known stereo-gap diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
-- Stereo constraint diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
-- Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
+- Default suite: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
+- South Star 1 source-tree semantics: `python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
+- Exact public invariants: `python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- env PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
+- Installed-artifact correctness subset: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- python3 -m unittest tests.run_installed_package_correctness -q`
+- Pinned RDKit parity subset: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
+- Known stereo-gap diagnostics: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
+- Stereo constraint diagnostics: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
+- Perf suite: `python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- env RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
+- Runner supervisor self-tests: `make test-bounded-runner` (bootstrapped independently with GNU `timeout` and shell CPU/address-space limits).
+
+The runner's wall budget includes lock wait, startup, and command execution;
+cleanup has a separate finite allowance. If it reports `cleanup_unverified`,
+stop launching repository tests or builds and inspect the command's owned
+processes on the host before retrying. An empty sandbox process view does not
+prove cleanup.
+
+The runner serializes these commands across checkouts, applies inherited CPU
+and per-process address-space limits, and enforces a wall-clock limit. Its
+process-tree RSS is a sampled sum from Linux `/proc`; shared pages may count
+more than once, short peaks between samples may be missed, and the value is not
+a hard kernel memory cap. The runner fails closed when its own `/proc` view is
+unavailable or an owned descendant cannot be accounted for, including a
+cross-namespace descendant. It verifies that no live process-tree members remain
+before reporting completion. A runner killed with
+SIGKILL cannot clean up its process tree.
 
 CI intentionally runs named layers instead of reusing full source-tree discovery
 for every pull request. The source-tree job runs the South Star 1 semantics

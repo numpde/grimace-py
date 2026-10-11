@@ -235,7 +235,14 @@ a local commit or local test result.
 | --- | --- | --- |
 | Roadmap | Independently reviewed | Source audit and fresh reader teach-back passed; root-frontier cost scope clarified. |
 | CI coverage | Implemented and independently audited | Explicit new-crate step; 86 root and 224 South Star 2 tests passed locally. Remote CI not observed. |
-| Molecular preparation and mixed validation | Pending | Define the first independent molecular input and bounded cases. |
+| Molecular preparation and mixed validation | In progress | Native cross-crate interface audited; 227 crate tests pass. Molecular adapter and Python bridge remain pending. |
 | Text-prefix decoder | Pending | Preserve both initial carbon roots for unrooted `CCO`. |
 | Semantics and cost closure | Pending | Establish separate parse-back, exact parity, and measurement lanes. |
 | Python interface and installed artifacts | Pending | Follow the private molecular and prefix gates. |
+
+The native interface preserves typed spelling and stereo inputs and publishes
+text with its validated successor. Solver and traversal stores remain private.
+Independent code-beauty and error-contract audits found no actionable issues.
+Formatting and diff checks pass. Ordinary Clippy completes, but a strict
+`-D warnings` run fails on existing implementation diagnostics (dead code and
+four Clippy lints outside the new interface); that strict gate remains open.

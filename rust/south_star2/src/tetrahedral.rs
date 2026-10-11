@@ -6,7 +6,7 @@ use crate::ids::BondId;
 pub(crate) const TETRAHEDRAL_ORDER_COUNT: usize = 24;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum TetrahedralLigand {
+pub enum TetrahedralLigand {
     Bond(BondId),
     VirtualHydrogen,
 }

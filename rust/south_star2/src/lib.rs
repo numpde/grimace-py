@@ -19,6 +19,7 @@ mod prepared;
 mod solver;
 mod tetrahedral;
 mod traversal;
+mod walker;
 mod writer_state;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
@@ -28,7 +29,14 @@ pub use model::{
     DirectionalRingPlacementFactor, EdgeRolePartition, FactorDefinition, SpanningTreeEdge,
     SpanningTreeFactor, VariableDefinition,
 };
+pub use nonstereo_writer::{
+    NonStereoBondToken as BondToken, PreparedAtomToken as AtomToken,
+    PreparedDirectionalCarrier as DirectionalCarrier,
+    PreparedDirectionalRelation as DirectionalRelation,
+};
 pub use prepared::{
     AdjacentBond, PreparedBond, PreparedGraph, PreparedGraphBuilder, PreparedGraphError,
     PreparedMolecule,
 };
+pub use tetrahedral::TetrahedralLigand;
+pub use walker::{PreparedWriter, Walker, WalkerChoice, WalkerFailure, WalkerFailureKind};

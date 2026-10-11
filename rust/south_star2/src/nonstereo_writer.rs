@@ -193,7 +193,7 @@ impl DirectionalRingPlan {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NonStereoBondToken {
+pub enum NonStereoBondToken {
     Elided,
     Aromatic,
     Single,
@@ -244,9 +244,9 @@ impl NonStereoBondToken {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PreparedDirectionalCarrier {
-    pub(crate) bond: BondId,
-    pub(crate) side_flip: bool,
+pub struct PreparedDirectionalCarrier {
+    pub bond: BondId,
+    pub side_flip: bool,
 }
 
 impl PreparedDirectionalCarrier {
@@ -259,13 +259,13 @@ impl PreparedDirectionalCarrier {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct PreparedDirectionalRelation {
-    pub(crate) double_bond: BondId,
-    pub(crate) left_endpoint: AtomId,
-    pub(crate) left_carriers: Box<[PreparedDirectionalCarrier]>,
-    pub(crate) right_endpoint: AtomId,
-    pub(crate) right_carriers: Box<[PreparedDirectionalCarrier]>,
-    pub(crate) side_phase_xor: bool,
+pub struct PreparedDirectionalRelation {
+    pub double_bond: BondId,
+    pub left_endpoint: AtomId,
+    pub left_carriers: Box<[PreparedDirectionalCarrier]>,
+    pub right_endpoint: AtomId,
+    pub right_carriers: Box<[PreparedDirectionalCarrier]>,
+    pub side_phase_xor: bool,
 }
 
 #[repr(u8)]
@@ -382,7 +382,7 @@ struct WriterWorkCounters {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum PreparedAtomToken {
+pub enum PreparedAtomToken {
     Fixed(String),
     Tetrahedral {
         reference_order: [TetrahedralLigand; 4],

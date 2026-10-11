@@ -1,0 +1,13 @@
+{
+  "rdkit_version": "2026.03.4",
+  "cases": [
+    {
+      "id": "deuterium_leading_zero_isotope_parser",
+      "source": "Observed with RDKit 2026.03.4 MolFromSmiles on the source-listed OpenSMILES 1.0 isotope aliases; records parser behavior only, not syntax validity.",
+      "normative_reference": "OpenSMILES 1.0",
+      "reference_case_id": "deuterium_leading_zero_isotope_alias",
+      "accepted_alias_indices": [0],
+      "rejected_alias_indices": [1, 2]
+    }
+  ]
+}

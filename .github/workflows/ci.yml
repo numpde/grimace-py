@@ -70,6 +70,8 @@ jobs:
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m tests.run_pinned_stereo_evidence
       - name: Run public prefix contract
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.integration.test_public_prefix_api -q
+      - name: Run bounded OpenSMILES semantic examples
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_standard_smiles_semantics -q
       - name: Run South Star 2 bridge and preparation regressions
         run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.south_star2.test_native_bridge tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics -q
 
@@ -131,7 +133,7 @@ jobs:
               assert any(module_path.is_relative_to(root) for root in site_roots), module_path
               print(f"{module.__name__}: {module_path}")
           PY
-          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests -q
+          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
           python -m tests.run_pinned_stereo_evidence
 
   sdist:
@@ -176,5 +178,5 @@ jobs:
               assert any(module_path.is_relative_to(root) for root in site_roots), module_path
               print(f"{module.__name__}: {module_path}")
           PY
-          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests -q
+          python -m unittest tests.integration.test_public_prefix_api tests.run_south_star2_rdkit_exact_support tests.south_star2.test_preparation tests.south_star2.test_preparation_semantics.SouthStar2PreparationSemanticTests tests.south_star2.test_standard_smiles_semantics -q
           python -m tests.run_pinned_stereo_evidence

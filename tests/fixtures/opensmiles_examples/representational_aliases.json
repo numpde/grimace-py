@@ -1,0 +1,103 @@
+{
+  "source": {
+    "name": "OpenSMILES Specification",
+    "url": "https://opensmiles.org/opensmiles.html",
+    "version": "1.0",
+    "date": "2016-05-15",
+    "style_guidance": "Section 4.3 describes preferred forms separately from the syntax examples. This fixture records positive syntax examples and does not filter them by style preference."
+  },
+  "cases": [
+    {
+      "id": "cyclohexene_ring_bond_placement",
+      "source_section": "3.4 Rings",
+      "source_claim": "The specification lists these three spellings for cyclohexene, with the double-bond symbol placed at the first ring label, both labels, or the closing label.",
+      "example_smiles": [
+        "C=1CCCCC1",
+        "C=1CCCCC=1",
+        "C1CCCCC=1"
+      ],
+      "graph_facts": {
+        "atom_count": 6,
+        "elements_sorted": ["C", "C", "C", "C", "C", "C"],
+        "degrees_sorted": [2, 2, 2, 2, 2, 2],
+        "component_count": 1,
+        "cycle_rank": 1,
+        "bond_count": 6,
+        "bond_type_counts": {"SINGLE": 5, "DOUBLE": 1},
+        "implicit_hydrogens_sorted": [1, 1, 2, 2, 2, 2],
+        "explicit_hydrogens_total": 0,
+        "formal_charges_sorted": [0, 0, 0, 0, 0, 0],
+        "isotopes_sorted": [0, 0, 0, 0, 0, 0],
+        "aromatic_atoms": 0,
+        "assigned_atom_stereo": false,
+        "assigned_bond_stereo": false
+      }
+    },
+    {
+      "id": "ethane_ring_and_dot_alias",
+      "source_section": "3.7.1 Other Uses of Ring Numbers and Dot Bond",
+      "source_claim": "The specification shows that ring numbers used with the dot-bond can encode a bond between atoms separated by the dot.",
+      "example_smiles": ["CC", "C1.C1"],
+      "graph_facts": {
+        "atom_count": 2,
+        "elements_sorted": ["C", "C"],
+        "degrees_sorted": [1, 1],
+        "component_count": 1,
+        "cycle_rank": 0,
+        "bond_count": 1,
+        "bond_type_counts": {"SINGLE": 1},
+        "implicit_hydrogens_sorted": [3, 3],
+        "explicit_hydrogens_total": 0,
+        "formal_charges_sorted": [0, 0],
+        "isotopes_sorted": [0, 0],
+        "aromatic_atoms": 0,
+        "assigned_atom_stereo": false,
+        "assigned_bond_stereo": false
+      }
+    },
+    {
+      "id": "propane_ring_and_dot_alias",
+      "source_section": "3.7.1 Other Uses of Ring Numbers and Dot Bond",
+      "source_claim": "The specification gives a three-carbon example using ring numbers and dot bonds to join the chain.",
+      "example_smiles": ["CCC", "C1.C12.C2"],
+      "graph_facts": {
+        "atom_count": 3,
+        "elements_sorted": ["C", "C", "C"],
+        "degrees_sorted": [1, 1, 2],
+        "component_count": 1,
+        "cycle_rank": 0,
+        "bond_count": 2,
+        "bond_type_counts": {"SINGLE": 2},
+        "implicit_hydrogens_sorted": [2, 3, 3],
+        "explicit_hydrogens_total": 0,
+        "formal_charges_sorted": [0, 0, 0],
+        "isotopes_sorted": [0, 0, 0],
+        "aromatic_atoms": 0,
+        "assigned_atom_stereo": false,
+        "assigned_bond_stereo": false
+      }
+    },
+    {
+      "id": "deuterium_leading_zero_isotope_alias",
+      "source_section": "3.1.4 Isotopes",
+      "source_claim": "The specification states that isotope numbers may have leading zeroes and equates three spellings for the isotope of hydrogen.",
+      "example_smiles": ["[2H]", "[02H]", "[002H]"],
+      "graph_facts": {
+        "atom_count": 1,
+        "elements_sorted": ["H"],
+        "degrees_sorted": [0],
+        "component_count": 1,
+        "cycle_rank": 0,
+        "bond_count": 0,
+        "bond_type_counts": {},
+        "implicit_hydrogens_sorted": [0],
+        "explicit_hydrogens_total": 0,
+        "formal_charges_sorted": [0],
+        "isotopes_sorted": [2],
+        "aromatic_atoms": 0,
+        "assigned_atom_stereo": false,
+        "assigned_bond_stereo": false
+      }
+    }
+  ]
+}

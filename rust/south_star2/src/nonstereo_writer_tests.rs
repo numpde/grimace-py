@@ -1262,7 +1262,10 @@ fn reachable_terminal_states(state: State) -> Vec<State> {
             continue;
         }
         let choices = state.choices().unwrap();
-        assert!(!choices.is_empty());
+        assert!(
+            !choices.is_empty(),
+            "nonaccepted writer state has no continuation"
+        );
         pending.extend(choices.into_iter().map(Choice::into_successor));
     }
     complete
@@ -2451,7 +2454,12 @@ fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
             }
             saw_waiting_closure |= !context.waiting_ring_bonds.is_empty();
         }
-        for choice in state.choices().unwrap() {
+        let choices = state.choices().unwrap();
+        assert!(
+            !choices.is_empty(),
+            "nonaccepted ring-coupled tetrahedral state has no continuation"
+        );
+        for choice in choices {
             pending.push((
                 choice.successor().clone(),
                 format!("{prefix}{}", choice.text()),
@@ -2590,6 +2598,58 @@ fn disconnected_ring_coupled_centers_keep_factors_local_and_reuse_labels() {
                     .map(|(_, factor)| *factor)
             )
             .any(|factor| accepted.structural.factor_is_active(factor)));
+    }
+}
+
+#[test]
+fn disconnected_ring_coupled_suffix_resolves_after_first_component() {
+    let (surface, atoms) = disconnected_ring_coupled_tetrahedral_fixture();
+    let second_center = surface.tetrahedral_center(atoms[4]).unwrap();
+    let mut pending = vec![initial(&surface)];
+    let mut boundary = None;
+    let mut explored = 0;
+    while let Some(state) = pending.pop() {
+        explored += 1;
+        assert!(explored < 100_000);
+        let visited = state
+            .observe_raw()
+            .structural
+            .traversal
+            .visited_atoms
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if visited == BTreeSet::from([atoms[0], atoms[1], atoms[2], atoms[3]])
+            && state.active_atom().is_none()
+            && state.pending.is_none()
+        {
+            boundary = Some(state);
+            break;
+        }
+        if !state.is_accepted() {
+            let choices = state.choices().unwrap();
+            assert!(
+                !choices.is_empty(),
+                "nonaccepted disconnected ring-coupled state has no continuation"
+            );
+            pending.extend(choices.into_iter().map(Choice::into_successor));
+        }
+    }
+
+    let boundary = boundary.expect("first component must complete before the second root");
+    assert!(boundary.labels.is_clean());
+    let terminals = reachable_terminal_states(boundary);
+    assert!(!terminals.is_empty());
+    for terminal in terminals {
+        assert!(terminal.is_accepted());
+        assert!(terminal.labels.is_clean());
+        assert!(terminal
+            .structural
+            .semantic_domain(second_center.order_variable)
+            .is_singleton());
+        assert!(terminal
+            .structural
+            .semantic_domain(second_center.role_pattern_variable)
+            .is_singleton());
     }
 }
 
@@ -5705,6 +5765,41 @@ fn contradictory_explicit_plain_mark_does_not_suppress_directional_siblings() {
 }
 
 #[test]
+fn selectable_directional_ring_walks_have_bounded_complete_suffixes() {
+    let (surface, _, bonds) = selectable_directional_ring_fixture();
+    let terminals = reachable_terminal_states(initial(&surface));
+    assert!(!terminals.is_empty());
+
+    for terminal in terminals {
+        assert!(terminal.is_accepted());
+        assert!(terminal.labels.is_clean());
+        for bond in [bonds[0], bonds[2]] {
+            let PreparedDirectionalBondStatus::CompiledSite(site) =
+                surface.directional_status(bond)
+            else {
+                panic!("selectable ring carrier must remain compiled");
+            };
+            assert!(terminal
+                .structural
+                .semantic_domain(site.mark_variable)
+                .is_singleton());
+            let role = terminal.structural.bond_decision_domain(bond);
+            if role == BondRole::Ring.singleton_domain() {
+                assert!(terminal.structural.factor_is_active(site.ring_plan_factor));
+                assert!(terminal
+                    .structural
+                    .semantic_domain(site.ring_plan_variable)
+                    .is_singleton());
+            }
+        }
+        assert!(surface.directional_sides.iter().all(|side| terminal
+            .structural
+            .semantic_domain(side.pattern_variable)
+            .is_singleton()));
+    }
+}
+
+#[test]
 fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
     let (surface, atoms, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
@@ -5756,7 +5851,7 @@ fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
 
 #[test]
 fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
-    let (surface, atoms, _) = selectable_tetrahedral_child_fixture();
+    let (surface, atoms, bonds) = selectable_tetrahedral_child_fixture();
     let rooted = initial(&surface)
         .choices()
         .unwrap()
@@ -5781,15 +5876,88 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
             .find(|choice| choice.text() == token)
             .unwrap()
             .into_successor();
+        let choices = pending.choices().unwrap();
         assert_eq!(
-            pending
-                .choices()
-                .unwrap()
-                .iter()
-                .map(Choice::text)
-                .collect::<BTreeSet<_>>(),
+            choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
             BTreeSet::from(["[L@H]", "[L@@H]"])
         );
+
+        let center = surface.tetrahedral_center(atoms[1]).unwrap();
+        let reference = &center.reference_order;
+        let PreparedDirectionalBondStatus::CompiledSite(site) =
+            surface.directional_status(bonds[0])
+        else {
+            panic!("selected child carrier must compile");
+        };
+        let expected_mark = match token {
+            "/" => CarrierMark::SlashAtFixedA,
+            "\\" => CarrierMark::BackslashAtFixedA,
+            _ => unreachable!(),
+        };
+        for choice in choices {
+            let parity_index = usize::from(choice.text() == "[L@@H]");
+            let expected_orders = (0..24_u8)
+                .filter(|value| {
+                    let order = independent_tetrahedral_order(reference, *value);
+                    order[..2]
+                        == [
+                            TetrahedralLigand::Bond(bonds[0]),
+                            TetrahedralLigand::VirtualHydrogen,
+                        ]
+                        && independent_tetrahedral_order_is_even(reference, *value)
+                            == (parity_index == 0)
+                })
+                .collect::<BTreeSet<_>>();
+            let successor = choice.successor();
+            assert_eq!(successor.pending, None);
+            assert_eq!(successor.active_atom(), Some(atoms[1]));
+            let observed_orders = successor.structural.semantic_domain(center.order_variable);
+            assert_eq!(
+                (0..24_u8)
+                    .filter(|value| observed_orders.contains(*value))
+                    .collect::<BTreeSet<_>>(),
+                expected_orders,
+                "{} after {token} must identify its exact ligand-order successor",
+                choice.text()
+            );
+            assert_eq!(
+                successor.structural.semantic_domain(site.mark_variable),
+                expected_mark.singleton_domain(),
+                "{token} must identify its exact carrier-mark successor"
+            );
+        }
+    }
+}
+
+#[test]
+fn selectable_tetrahedral_child_has_bounded_complete_mixed_walks() {
+    let (surface, atoms, bonds) = selectable_tetrahedral_child_fixture();
+    let terminals = reachable_terminal_states(initial(&surface));
+    assert!(!terminals.is_empty());
+    let center = surface.tetrahedral_center(atoms[1]).unwrap();
+    let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
+    else {
+        panic!("selectable child fixture carrier must compile");
+    };
+
+    for terminal in terminals {
+        assert!(terminal.is_accepted());
+        assert!(terminal
+            .structural
+            .semantic_domain(center.order_variable)
+            .is_singleton());
+        assert!(terminal
+            .structural
+            .semantic_domain(center.role_pattern_variable)
+            .is_singleton());
+        assert!(terminal
+            .structural
+            .semantic_domain(site.mark_variable)
+            .is_singleton());
+        assert!(surface.directional_sides.iter().all(|side| terminal
+            .structural
+            .semantic_domain(side.pattern_variable)
+            .is_singleton()));
     }
 }
 
@@ -6427,22 +6595,34 @@ fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection(
         .into_successor();
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
     let before = rooted.structural.semantic_domain(center.order_variable);
-    let branch = rooted
-        .choices()
-        .unwrap()
+    let choices = rooted.choices().unwrap();
+    let branch_choices = choices
         .into_iter()
-        .find(|choice| {
+        .filter(|choice| {
             choice.text() == "("
                 && choice.successor().pending
                     == Some(PendingEmission::BranchTraversalEmission(incident(
                         &surface, atoms[0], bonds[0],
                     )))
         })
-        .unwrap()
-        .into_successor();
+        .collect::<Vec<_>>();
+    assert_eq!(branch_choices.len(), 1);
+    let branch = branch_choices.into_iter().next().unwrap().into_successor();
     let after = branch.structural.semantic_domain(center.order_variable);
+    let expected_orders = (0..24_u8)
+        .filter(|value| {
+            let order = independent_tetrahedral_order(&center.reference_order, *value);
+            order[0] == TetrahedralLigand::Bond(bonds[0])
+                && independent_tetrahedral_order_is_even(&center.reference_order, *value)
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        (0..24_u8)
+            .filter(|value| after.contains(*value))
+            .collect::<BTreeSet<_>>(),
+        expected_orders
+    );
     assert!(after.is_subset_of(before));
-    assert!(after.len() < before.len());
     let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
     else {
         panic!("tetrahedral parent carrier must be compiled");

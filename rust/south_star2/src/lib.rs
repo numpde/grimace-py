@@ -15,6 +15,7 @@ mod native_oracle;
 mod native_solver;
 mod nonstereo_writer;
 mod persistent;
+mod prefix;
 mod prepared;
 mod solver;
 mod tetrahedral;
@@ -34,6 +35,7 @@ pub use nonstereo_writer::{
     PreparedDirectionalCarrier as DirectionalCarrier,
     PreparedDirectionalRelation as DirectionalRelation,
 };
+pub use prefix::{PrefixSelectionError, TextPrefix, TextPrefixChoice};
 pub use prepared::{
     AdjacentBond, PreparedBond, PreparedGraph, PreparedGraphBuilder, PreparedGraphError,
     PreparedMolecule,

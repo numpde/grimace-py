@@ -236,8 +236,8 @@ a local commit or local test result.
 | --- | --- | --- |
 | Roadmap | Independently reviewed | Source audit and fresh reader teach-back passed; root-frontier cost scope clarified. |
 | CI coverage | Implemented and independently audited | Explicit new-crate step; 86 root and 224 South Star 2 tests passed locally. Remote CI not observed. |
-| Molecular preparation and mixed validation | In progress | Native cross-crate interface audited; 227 crate tests pass. Molecular adapter and mixed-state validation remain pending. |
-| Text-prefix decoder | Pending | Preserve both initial carbon roots for unrooted `CCO`. |
+| Molecular preparation and mixed validation | In progress | Native cross-crate interface audited; 230 crate tests pass. Molecular adapter and mixed-state validation remain pending. |
+| Text-prefix decoder | Native client implemented and independently audited | For unrooted `CCO`, selecting `C` retains both carbon roots, unions next-token texts, and accepts EOS when any retained state accepts. The 230 South Star 2 tests pass locally. The seeded mixed-frontier EOS test checks only client choice/acceptance behavior across deliberately unrelated prepared graphs; it establishes no reachable-prefix liveness claim. Private Python prefix binding, ordinary symmetry-growth measurements, and exact pinned support comparison remain pending. |
 | Private native Python bridge probe | Implemented and independently reviewed | Private `_core` classes expose fixed atom/bond preparation, accepted state, and owned successor choices. Five bridge tests and both Rust test packages pass locally. Direct wheel and sdist-rebuilt wheel installations each passed those five bridge tests plus 15 public smoke tests, with imports verified from site-packages. This validates the private bridge packaging path, not molecular preparation, text-prefix decoding, or the complete molecular path. |
 | Semantics and cost closure | Pending | Establish separate parse-back, exact parity, and measurement lanes. |
 | Python interface and installed artifacts | Pending | Follow the private molecular and prefix gates. |

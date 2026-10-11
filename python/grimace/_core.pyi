@@ -1,8 +1,17 @@
-from typing import Any
+from typing import Any, Literal
 
 
 class _SouthStar2PreparedWriter:
-    def __init__(self, atoms: list[str], bonds: list[tuple[int, int, str]]) -> None: ...
+    def __init__(
+        self,
+        atoms: list[str],
+        bonds: list[tuple[int, int, str]],
+        writer_regime: Literal[
+            "generic_any_order",
+            "generic_input_order",
+            "rdkit_random_noncanonical",
+        ],
+    ) -> None: ...
     def initial_state(self) -> "_SouthStar2Walker": ...
     def initial_prefix(self) -> "_SouthStar2TextPrefix": ...
 

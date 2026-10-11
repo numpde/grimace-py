@@ -134,6 +134,7 @@ def _measure_case(
     max_tokens: int,
     max_seconds: float,
     selection_repeats: int,
+    writer_regime: str,
 ) -> dict[str, Any]:
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -148,7 +149,7 @@ def _measure_case(
         "source_smiles": smiles,
         "atom_count": len(raw_atoms),
         "bond_count": len(raw_bonds),
-        "ordering_policy": "native AnyOrder; the adapter has no InputOrder option",
+        "writer_regime": writer_regime,
         "limits": {
             "max_frontier_states_before_choices": max_frontier,
             "max_tokens": max_tokens,
@@ -182,7 +183,7 @@ def _measure_case(
             bonds = list(bond_facts)
             timings["native_input_materialization_ns"].append(time.perf_counter_ns() - stage)
             stage = time.perf_counter_ns()
-            writer = core._SouthStar2PreparedWriter(atoms, bonds)
+            writer = core._SouthStar2PreparedWriter(atoms, bonds, writer_regime)
             timings["native_writer_construction_ns"].append(time.perf_counter_ns() - stage)
             stage = time.perf_counter_ns()
             initial = writer.initial_prefix()
@@ -289,6 +290,15 @@ def _measure_case(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--writer-regime",
+        choices=(
+            "generic_any_order",
+            "generic_input_order",
+            "rdkit_random_noncanonical",
+        ),
+        required=True,
+    )
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--max-frontier", type=int, default=2500)
     parser.add_argument("--max-tokens", type=int, default=256)
@@ -303,14 +313,14 @@ def main() -> None:
     core = importlib.import_module("grimace._core")
     core_path = Path(core.__file__).resolve()
     document = {
-        "schema": "south_star2_prefix_frontier_measurement_v1",
+        "schema": "south_star2_prefix_frontier_measurement_v2",
         "python": sys.version,
         "rdkit_version": Chem.rdBase.rdkitVersion,
         "core_extension_path": str(core_path),
         "core_extension_size_bytes": core_path.stat().st_size,
         "core_extension_sha256": hashlib.sha256(core_path.read_bytes()).hexdigest(),
         "measurement_scope": "raw neutral C/O facts over private native bridge versus same facts through real RDKit molecular preparation",
-        "native_policy": "AnyOrder; no InputOrder bridge policy is measured",
+        "native_writer_regime": args.writer_regime,
         "frontier_meaning": "retained physical native states; not support multiplicity and no equivalent-state merging is asserted",
         "selection_meaning": "choices() builds grouped successors; selected pair retrieval is Python-side consumption and does not re-run native transition logic",
         "cap_meaning": "the retained chosen path and post-call generated successor batch stop at max-frontier; one choices() call constructs successors before the cap can be checked and cannot be interrupted; time is checked between native calls",
@@ -324,6 +334,7 @@ def main() -> None:
                 max_tokens=args.max_tokens,
                 max_seconds=args.max_seconds,
                 selection_repeats=args.selection_repeats,
+                writer_regime=args.writer_regime,
             )
             for name, smiles in _cases()
         ],

@@ -5,12 +5,14 @@ from __future__ import annotations
 import unittest
 
 from grimace._core import _SouthStar2PreparedWriter
+from grimace._south_star2.preparation import prepare_molecule
+from rdkit import Chem
 
 
 class NativeBridgeTests(unittest.TestCase):
     def test_equal_text_keeps_distinct_owned_root_successors(self) -> None:
         prepared = _SouthStar2PreparedWriter(
-            ["C", "C", "O"], [(0, 1, ""), (1, 2, "")]
+            ["C", "C", "O"], [(0, 1, ""), (1, 2, "")], "generic_any_order"
         )
         initial = prepared.initial_state()
         carbons = [state for text, state in initial.choices() if text == "C"]
@@ -24,7 +26,7 @@ class NativeBridgeTests(unittest.TestCase):
             self.assertTrue(state.choices())
 
     def test_empty_graph_is_accepted(self) -> None:
-        initial = _SouthStar2PreparedWriter([], []).initial_state()
+        initial = _SouthStar2PreparedWriter([], [], "generic_any_order").initial_state()
         self.assertTrue(initial.is_accepted)
         self.assertEqual(initial.choices(), [])
 
@@ -32,6 +34,7 @@ class NativeBridgeTests(unittest.TestCase):
         prepared = _SouthStar2PreparedWriter(
             ["C", "C", "O", "C"],
             [(0, 1, ""), (1, 2, ""), (2, 3, "")],
+            "generic_any_order",
         )
         source = prepared.initial_prefix()
         first_choices = source.choices()
@@ -56,7 +59,7 @@ class NativeBridgeTests(unittest.TestCase):
 
     def test_text_prefix_width_counts_retained_states(self) -> None:
         prepared = _SouthStar2PreparedWriter(
-            ["C", "C", "C"], []
+            ["C", "C", "C"], [], "generic_any_order"
         )
         prefix = next(
             candidate
@@ -81,21 +84,94 @@ class NativeBridgeTests(unittest.TestCase):
         ):
             with self.subTest(bonds=bonds):
                 with self.assertRaises(ValueError) as caught:
-                    _SouthStar2PreparedWriter(["C", "O"], bonds)
+                    _SouthStar2PreparedWriter(["C", "O"], bonds, "generic_any_order")
                 self.assertIn("Cannot prepare bond", str(caught.exception))
                 self.assertIn(reason, str(caught.exception))
 
     def test_bond_spelling_is_not_guessed(self) -> None:
         with self.assertRaises(ValueError) as caught:
-            _SouthStar2PreparedWriter(["C", "O"], [(0, 1, "~")])
+            _SouthStar2PreparedWriter(
+                ["C", "O"], [(0, 1, "~")], "generic_any_order"
+            )
         self.assertIn("bond 0", str(caught.exception))
         self.assertIn('"~"', str(caught.exception))
 
     def test_empty_atom_text_is_rejected(self) -> None:
         with self.assertRaises(ValueError) as caught:
-            _SouthStar2PreparedWriter([""], [])
+            _SouthStar2PreparedWriter([""], [], "generic_any_order")
         self.assertIn("Cannot prepare the writer", str(caught.exception))
         self.assertIn("must not be empty", str(caught.exception))
+
+    def test_component_order_is_required_and_validated(self) -> None:
+        with self.assertRaises(TypeError):
+            _SouthStar2PreparedWriter(["C"], [])
+        with self.assertRaisesRegex(ValueError, "writer_regime"):
+            _SouthStar2PreparedWriter(["C"], [], "sometimes")
+
+    def test_raw_any_order_keeps_both_disconnected_permutations(self) -> None:
+        prepared = _SouthStar2PreparedWriter(
+            ["C", "O"], [], "generic_any_order"
+        )
+        self.assertEqual(
+            {text for text, _ in prepared.initial_state().choices()}, {"C", "O"}
+        )
+        self.assertEqual(
+            {text for text, _ in prepared.initial_prefix().choices()}, {"C", "O"}
+        )
+        accepted = set()
+        pending = [(prepared.initial_state(), "")]
+        while pending:
+            state, text = pending.pop()
+            if state.is_accepted:
+                accepted.add(text)
+            else:
+                pending.extend(
+                    (successor, text + token) for token, successor in state.choices()
+                )
+        self.assertEqual(accepted, {"C.O", "O.C"})
+
+    def test_input_order_prefix_retains_both_carbon_roots_through_period(self) -> None:
+        molecule = Chem.MolFromSmiles("CCO.O")
+        assert molecule is not None
+        prepared = prepare_molecule(molecule).build_writer()
+        prefix = next(
+            candidate
+            for text, candidate in prepared.initial_prefix().choices()
+            if text == "C"
+        )
+        self.assertEqual(prefix.frontier_size, 2)
+        initial = dict(prepared.initial_prefix().choices())
+        self.assertEqual(set(initial), {"C", "O"})
+        self.assertEqual(initial["C"].frontier_size, 2)
+        self.assertEqual(initial["O"].frontier_size, 1)
+
+        accepted = set()
+        pending = [(prefix, "C")]
+        while pending:
+            current, text = pending.pop()
+            if current.is_accepted:
+                accepted.add(text)
+                continue
+            choices = current.choices()
+            for token, successor in choices:
+                if token == ".":
+                    self.assertTrue(text.startswith("C"))
+                    self.assertEqual(
+                        {next_text for next_text, _ in successor.choices()}, {"O"}
+                    )
+                pending.append((successor, text + token))
+        self.assertTrue(accepted)
+        self.assertTrue(all(text.endswith(".O") for text in accepted))
+
+    def test_generic_input_order_keeps_all_roots_in_earliest_component(self) -> None:
+        prepared = _SouthStar2PreparedWriter(
+            ["C", "C", "O", "O"],
+            [(0, 1, ""), (1, 2, "")],
+            "generic_input_order",
+        )
+        initial = dict(prepared.initial_prefix().choices())
+        self.assertEqual(initial["C"].frontier_size, 2)
+        self.assertEqual(initial["O"].frontier_size, 1)
 
 
 if __name__ == "__main__":

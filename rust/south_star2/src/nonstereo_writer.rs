@@ -1657,6 +1657,7 @@ impl std::error::Error for WriterInvariantFailure {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WriterIncompleteness {
+    RdkitDirectionalAnchoring,
     DirectionalCarrierSelection {
         double_bond: BondId,
         endpoint: AtomId,
@@ -1666,6 +1667,9 @@ pub(crate) enum WriterIncompleteness {
 impl fmt::Display for WriterIncompleteness {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::RdkitDirectionalAnchoring => formatter.write_str(
+                "RDKit directional anchoring for configured double bonds is not implemented",
+            ),
             Self::DirectionalCarrierSelection {
                 double_bond,
                 endpoint,

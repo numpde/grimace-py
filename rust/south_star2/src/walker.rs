@@ -10,6 +10,7 @@ use crate::native::NativeSolverState;
 use crate::native_solver::NativeSolverFailure;
 use crate::nonstereo_writer::{
     ChoiceFailure, NonStereoWriterState, PreparedNonStereo, PreparedNonStereoError,
+    WriterIncompleteness,
 };
 use crate::solver::Consistency;
 use crate::{AtomToken, BondToken, DirectionalRelation, PreparedGraph, PreparedMolecule};
@@ -22,10 +23,25 @@ pub enum ComponentOrder {
     InputOrder,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum WriterRegime {
+    Generic { component_order: ComponentOrder },
+    RdkitRandomNoncanonical,
+}
+
+impl WriterRegime {
+    const fn component_order(self) -> ComponentOrder {
+        match self {
+            Self::Generic { component_order } => component_order,
+            Self::RdkitRandomNoncanonical => ComponentOrder::InputOrder,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PreparedWriter {
     surface: PreparedNonStereo,
-    component_order: ComponentOrder,
+    regime: WriterRegime,
 }
 
 impl PreparedWriter {
@@ -34,25 +50,28 @@ impl PreparedWriter {
         atoms: Vec<AtomToken>,
         bonds: Vec<BondToken>,
         directional: Vec<DirectionalRelation>,
-        component_order: ComponentOrder,
+        regime: WriterRegime,
     ) -> Result<Self, WalkerFailure> {
-        PreparedNonStereo::with_atom_tokens_and_directional(
+        let has_directional_relations = !directional.is_empty();
+        let surface = PreparedNonStereo::with_atom_tokens_and_directional(
             PreparedMolecule::new(graph),
             atoms,
             bonds,
             directional,
         )
-        .map(|surface| Self {
-            surface,
-            component_order,
-        })
-        .map_err(|error| WalkerFailure(FailureCause::Preparation(error)))
+        .map_err(|error| WalkerFailure(FailureCause::Preparation(error)))?;
+        if matches!(regime, WriterRegime::RdkitRandomNoncanonical) && has_directional_relations {
+            return Err(WalkerFailure(FailureCause::RegimeIncomplete(
+                WriterIncompleteness::RdkitDirectionalAnchoring,
+            )));
+        }
+        Ok(Self { surface, regime })
     }
 
     pub fn initial(&self) -> Result<Walker, WalkerFailure> {
         match NonStereoWriterState::initial_with_component_order(
             &self.surface,
-            self.component_order,
+            self.regime.component_order(),
         ) {
             Ok(Consistency::Consistent(state)) => Ok(Walker(state)),
             Ok(Consistency::Contradiction) => Err(WalkerFailure(FailureCause::ContradictoryInput)),
@@ -104,6 +123,7 @@ pub enum WalkerFailureKind {
 #[derive(Debug)]
 enum FailureCause {
     Preparation(PreparedNonStereoError),
+    RegimeIncomplete(WriterIncompleteness),
     ContradictoryInput,
     InitialBackend(NativeSolverFailure),
     Choices(ChoiceFailure<NativeSolverFailure>),
@@ -118,6 +138,7 @@ impl WalkerFailure {
             FailureCause::Preparation(_) | FailureCause::ContradictoryInput => {
                 WalkerFailureKind::InvalidInput
             }
+            FailureCause::RegimeIncomplete(_) => WalkerFailureKind::Incomplete,
             FailureCause::InitialBackend(_) | FailureCause::Choices(ChoiceFailure::Backend(_)) => {
                 WalkerFailureKind::Backend
             }
@@ -133,6 +154,12 @@ impl fmt::Display for WalkerFailure {
         match &self.0 {
             FailureCause::Preparation(error) => {
                 write!(formatter, "Cannot prepare the writer: {error}")
+            }
+            FailureCause::RegimeIncomplete(error) => {
+                write!(
+                    formatter,
+                    "Cannot prepare the RDKit random noncanonical writer: {error}"
+                )
             }
             FailureCause::ContradictoryInput => formatter
                 .write_str("Cannot start the writer: the prepared constraints have no assignment"),
@@ -150,6 +177,7 @@ impl Error for WalkerFailure {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self.0 {
             FailureCause::Preparation(error) => Some(error),
+            FailureCause::RegimeIncomplete(error) => Some(error),
             FailureCause::ContradictoryInput => None,
             FailureCause::InitialBackend(error) => Some(error),
             FailureCause::Choices(error) => Some(error),
@@ -160,6 +188,7 @@ impl Error for WalkerFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nonstereo_writer::{PreparedDirectionalCarrier, PreparedDirectionalRelation};
     use crate::PreparedGraphBuilder;
 
     fn carbon_carbon_oxygen() -> PreparedWriter {
@@ -176,7 +205,9 @@ mod tests {
                 .into(),
             vec![BondToken::Elided; 2],
             Vec::new(),
-            ComponentOrder::AnyOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
         )
         .unwrap()
     }
@@ -222,7 +253,9 @@ mod tests {
                 .into(),
             vec![BondToken::Elided],
             Vec::new(),
-            ComponentOrder::InputOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::InputOrder,
+            },
         )
         .unwrap();
 
@@ -246,7 +279,9 @@ mod tests {
                 .into(),
             vec![BondToken::Elided; 2],
             Vec::new(),
-            ComponentOrder::InputOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::InputOrder,
+            },
         )
         .unwrap();
 
@@ -288,7 +323,9 @@ mod tests {
                 .into(),
             Vec::new(),
             Vec::new(),
-            ComponentOrder::AnyOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
         )
         .unwrap();
 
@@ -309,7 +346,9 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            ComponentOrder::AnyOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
         )
         .unwrap();
         let initial = prepared.initial().unwrap();
@@ -324,10 +363,66 @@ mod tests {
             vec![AtomToken::Fixed("C".to_owned())],
             Vec::new(),
             Vec::new(),
-            ComponentOrder::AnyOrder,
+            WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
         )
         .unwrap_err();
         assert_eq!(error.kind(), WalkerFailureKind::InvalidInput);
         assert!(error.source().unwrap().to_string().contains("atom text"));
+    }
+
+    #[test]
+    fn rdkit_regime_reports_directional_anchoring_incompleteness_at_relation() {
+        let prepare = |malformed_relation: bool| {
+            let mut graph = PreparedGraphBuilder::new();
+            let atoms = (0..4)
+                .map(|_| graph.add_atom().unwrap())
+                .collect::<Vec<_>>();
+            let double_bond = graph.add_bond(atoms[0], atoms[1]).unwrap();
+            let left_carrier = graph.add_bond(atoms[0], atoms[2]).unwrap();
+            let right_carrier = graph.add_bond(atoms[1], atoms[3]).unwrap();
+            let relation = PreparedDirectionalRelation {
+                double_bond,
+                left_endpoint: if malformed_relation {
+                    atoms[2]
+                } else {
+                    atoms[0]
+                },
+                left_carriers: Box::new([PreparedDirectionalCarrier {
+                    bond: left_carrier,
+                    side_flip: false,
+                }]),
+                right_endpoint: atoms[1],
+                right_carriers: Box::new([PreparedDirectionalCarrier {
+                    bond: right_carrier,
+                    side_flip: false,
+                }]),
+                side_phase_xor: false,
+            };
+            PreparedWriter::new(
+                graph.build(),
+                ["C", "C", "C", "C"]
+                    .map(|text| AtomToken::Fixed(text.to_owned()))
+                    .into(),
+                vec![BondToken::Double, BondToken::Elided, BondToken::Elided],
+                vec![relation],
+                WriterRegime::RdkitRandomNoncanonical,
+            )
+        };
+
+        let malformed = prepare(true).unwrap_err();
+        assert_eq!(malformed.kind(), WalkerFailureKind::InvalidInput);
+        assert!(malformed.to_string().contains("does not join"));
+
+        let incomplete = prepare(false).unwrap_err();
+
+        assert_eq!(incomplete.kind(), WalkerFailureKind::Incomplete);
+        assert!(incomplete
+            .to_string()
+            .contains("Cannot prepare the RDKit random noncanonical writer"));
+        assert!(incomplete
+            .to_string()
+            .contains("directional anchoring for configured double bonds"));
     }
 }

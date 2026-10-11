@@ -48,7 +48,9 @@ class PreparedMolecule:
                 "grimace._core extension is unavailable."
             ) from exc
 
-        return core._SouthStar2PreparedWriter(list(self.atoms), list(self.bonds))
+        return core._SouthStar2PreparedWriter(
+            list(self.atoms), list(self.bonds), "rdkit_random_noncanonical"
+        )
 
 
 def prepare_molecule(mol: object) -> PreparedMolecule:

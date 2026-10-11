@@ -2,7 +2,7 @@
 
 use grimace_south_star2::{
     AtomId, AtomToken, BondToken, ComponentOrder, PreparedGraphBuilder, PreparedWriter, TextPrefix,
-    Walker, WalkerFailure, WalkerFailureKind,
+    Walker, WalkerFailure, WalkerFailureKind, WriterRegime,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -15,7 +15,25 @@ pub struct PySouthStar2PreparedWriter {
 #[pymethods]
 impl PySouthStar2PreparedWriter {
     #[new]
-    fn new(atoms: Vec<String>, bonds: Vec<(u32, u32, String)>) -> PyResult<Self> {
+    fn new(
+        atoms: Vec<String>,
+        bonds: Vec<(u32, u32, String)>,
+        writer_regime: &str,
+    ) -> PyResult<Self> {
+        let regime = match writer_regime {
+            "generic_any_order" => WriterRegime::Generic {
+                component_order: ComponentOrder::AnyOrder,
+            },
+            "generic_input_order" => WriterRegime::Generic {
+                component_order: ComponentOrder::InputOrder,
+            },
+            "rdkit_random_noncanonical" => WriterRegime::RdkitRandomNoncanonical,
+            _ => {
+                return Err(PyValueError::new_err(
+                    "writer_regime must be 'generic_any_order', 'generic_input_order', or 'rdkit_random_noncanonical'",
+                ));
+            }
+        };
         let mut graph = PreparedGraphBuilder::new();
         for _ in &atoms {
             graph
@@ -36,7 +54,7 @@ impl PySouthStar2PreparedWriter {
             atoms.into_iter().map(AtomToken::Fixed).collect(),
             tokens,
             Vec::new(),
-            ComponentOrder::AnyOrder,
+            regime,
         )
         .map_err(python_failure)?;
         Ok(Self { prepared })

@@ -43,4 +43,5 @@ pub use prepared::{
 pub use tetrahedral::TetrahedralLigand;
 pub use walker::{
     ComponentOrder, PreparedWriter, Walker, WalkerChoice, WalkerFailure, WalkerFailureKind,
+    WriterRegime,
 };

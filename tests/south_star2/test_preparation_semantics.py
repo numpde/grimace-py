@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import unittest
 
-from rdkit import Chem
+from rdkit import Chem, rdBase
 
 from grimace._south_star2.preparation import prepare_molecule
+from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
+from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
+
+
+PINNED_RDKIT_VERSION = "2026.03.1"
+PINNED_STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evidence")
 
 
 def _accepted_strings(mol: Chem.Mol) -> set[str]:
@@ -25,9 +32,57 @@ def _accepted_strings(mol: Chem.Mol) -> set[str]:
     return accepted
 
 
+def _tetrahedral_stereo_cases():
+    cases = load_pinned_rdkit_fixture_cases(
+        fixture_root=PINNED_STEREO_FIXTURES,
+        rdkit_version=PINNED_RDKIT_VERSION,
+        fixture_label="South Star 2 stereo evidence",
+    )
+    by_id = {case.case_id: case for case in cases}
+    return (
+        by_id["stereo_tetra_ccw_tree"],
+        by_id["stereo_tetra_cw_tree"],
+    )
+
+
+class SouthStar2PreparationWriterParityTests(unittest.TestCase):
+    """Compare native output sets with pinned RDKit writer support fixtures."""
+
+    @unittest.skipUnless(
+        rdBase.rdkitVersion == PINNED_RDKIT_VERSION,
+        f"Exact stereo support is pinned to RDKit {PINNED_RDKIT_VERSION}",
+    )
+    def test_exact_tetrahedral_support_and_renumbering_for_both_enantiomers(self) -> None:
+        supports: list[set[str]] = []
+        for case in _tetrahedral_stereo_cases():
+            with self.subTest(case=case.case_id):
+                expected = set(
+                    normalized_unique_sorted_strings(
+                        case.raw["expected_support"],
+                        field_name="expected_support",
+                        fixture_path=case.fixture_path,
+                        case_id=case.case_id,
+                    )
+                )
+                source = Chem.MolFromSmiles(case.raw["input_smiles"])
+                self.assertIsNotNone(source)
+                assert source is not None
+                self.assertEqual(expected, _accepted_strings(source))
+                supports.append(expected)
+
+                # Exact RDKit support is invariant to atom and bond ID changes.
+                renumbered = Chem.RenumberAtoms(
+                    source, list(reversed(range(source.GetNumAtoms())))
+                )
+                self.assertEqual(expected, _accepted_strings(renumbered))
+
+        self.assertTrue(supports[0].isdisjoint(supports[1]))
+
+
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
+    """Check parsed molecular meaning independently from writer support parity."""
     def test_native_outputs_parse_to_each_source_graph(self) -> None:
-        for smiles in ("CCO", "CC(C)O", "C1CC1"):
+        for smiles in ("CCO", "CC(C)O", "C1CC1", "CC(O)CO"):
             with self.subTest(smiles=smiles):
                 source = Chem.MolFromSmiles(smiles)
                 assert source is not None
@@ -56,11 +111,73 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                     )
                     self.assertTrue(
                         all(
-                            atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED
-                            for atom in parsed.GetAtoms()
+                            all(
+                                parsed.GetAtomWithIdx(mapping[source_atom.GetIdx()]).GetChiralTag()
+                                == Chem.ChiralType.CHI_UNSPECIFIED
+                                for source_atom in source.GetAtoms()
+                                if source_atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED
+                            )
+                            for mapping in mappings
                         ),
                         f"output assigned unspecified atom stereo: {output!r}",
                     )
+
+    def test_tetrahedral_outputs_preserve_graph_hydrogens_and_chirality(self) -> None:
+        for case in _tetrahedral_stereo_cases():
+            source = Chem.MolFromSmiles(case.raw["input_smiles"])
+            self.assertIsNotNone(source)
+            assert source is not None
+            outputs = _accepted_strings(source)
+            self.assertTrue(outputs)
+            for output in outputs:
+                with self.subTest(case=case.case_id, output=output):
+                    parsed = Chem.MolFromSmiles(output)
+                    self.assertIsNotNone(parsed, output)
+                    assert parsed is not None
+                    self.assertEqual(source.GetNumAtoms(), parsed.GetNumAtoms(), output)
+                    self.assertEqual(source.GetNumBonds(), parsed.GetNumBonds(), output)
+                    mappings = parsed.GetSubstructMatches(source, useChirality=True)
+                    self.assertTrue(mappings, f"stereo or graph differs: {output!r}")
+                    self.assertTrue(
+                        any(
+                            all(
+                                parsed.GetAtomWithIdx(parsed_index).GetSymbol()
+                                == source.GetAtomWithIdx(source_index).GetSymbol()
+                                and parsed.GetAtomWithIdx(parsed_index).GetTotalNumHs()
+                                == source.GetAtomWithIdx(source_index).GetTotalNumHs()
+                                for source_index, parsed_index in enumerate(mapping)
+                            )
+                            for mapping in mappings
+                        ),
+                        f"element or non-graph hydrogen facts differ: {output!r}",
+                    )
+
+    def test_tetrahedral_prefix_retains_ambiguous_roots_and_sibling_ownership(self) -> None:
+        for case in _tetrahedral_stereo_cases():
+            source = Chem.MolFromSmiles(case.raw["input_smiles"])
+            self.assertIsNotNone(source)
+            assert source is not None
+            prepared = prepare_molecule(source).build_writer()
+            prefix = prepared.initial_prefix()
+            initial_native = prepared.initial_state().choices()
+            root_texts = {}
+            for text, successor in prefix.choices():
+                root_texts[text] = successor
+            for text in set(text for text, _ in initial_native):
+                native_count = sum(candidate == text for candidate, _ in initial_native)
+                self.assertEqual(root_texts[text].frontier_size, native_count)
+            self.assertGreater(root_texts["C"].frontier_size, 1)
+            sibling = root_texts.get("O")
+            if sibling is not None:
+                self.assertEqual(sibling.frontier_size, 1)
+                self.assertFalse(sibling.is_accepted)
+                sibling_choices = tuple(text for text, _ in sibling.choices())
+            del prepared, prefix
+            self.assertTrue(root_texts["C"].choices())
+            if sibling is not None:
+                self.assertEqual(
+                    tuple(text for text, _ in sibling.choices()), sibling_choices
+                )
 
 
 if __name__ == "__main__":

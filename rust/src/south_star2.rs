@@ -1,11 +1,12 @@
 //! Private Python transport for the independent South Star 2 native walker.
 
 use grimace_south_star2::{
-    AtomId, AtomToken, BondToken, ComponentOrder, PreparedGraphBuilder, PreparedWriter, TextPrefix,
-    Walker, WalkerFailure, WalkerFailureKind, WriterRegime,
+    AtomId, AtomToken, BondId, BondToken, ComponentOrder, PreparedGraphBuilder, PreparedWriter,
+    TetrahedralLigand, TextPrefix, Walker, WalkerFailure, WalkerFailureKind, WriterRegime,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::{PyBool, PyInt, PyString, PyTuple};
 
 #[pyclass(name = "_SouthStar2PreparedWriter", module = "grimace._core", frozen)]
 pub struct PySouthStar2PreparedWriter {
@@ -16,7 +17,8 @@ pub struct PySouthStar2PreparedWriter {
 impl PySouthStar2PreparedWriter {
     #[new]
     fn new(
-        atoms: Vec<String>,
+        py: Python<'_>,
+        atoms: Vec<Py<PyAny>>,
         bonds: Vec<(u32, u32, String)>,
         writer_regime: &str,
     ) -> PyResult<Self> {
@@ -49,14 +51,13 @@ impl PySouthStar2PreparedWriter {
                 })?;
             tokens.push(bond_token(index, &spelling)?);
         }
-        let prepared = PreparedWriter::new(
-            graph.build(),
-            atoms.into_iter().map(AtomToken::Fixed).collect(),
-            tokens,
-            Vec::new(),
-            regime,
-        )
-        .map_err(python_failure)?;
+        let atom_tokens = atoms
+            .iter()
+            .enumerate()
+            .map(|(index, atom)| atom_token(atom.bind(py), index))
+            .collect::<PyResult<Vec<_>>>()?;
+        let prepared = PreparedWriter::new(graph.build(), atom_tokens, tokens, Vec::new(), regime)
+            .map_err(python_failure)?;
         Ok(Self { prepared })
     }
 
@@ -72,6 +73,100 @@ impl PySouthStar2PreparedWriter {
             .map(|prefix| PySouthStar2TextPrefix { prefix })
             .map_err(python_failure)
     }
+}
+
+fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken> {
+    if atom.is_instance_of::<PyString>() {
+        return atom.extract::<String>().map(AtomToken::Fixed).map_err(|_| {
+            PyValueError::new_err(format!("Cannot read fixed atom text at {atom_index}"))
+        });
+    }
+    let fact = atom.cast::<PyTuple>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: expected fixed text or a tagged tetrahedral atom fact"
+        ))
+    })?;
+    if fact.len() != 3 {
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: tetrahedral fact must contain its tag, reference order, and parity spellings"
+        )));
+    }
+    let kind = fact.get_item(0)?.extract::<String>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: invalid atom-fact tag"
+        ))
+    })?;
+    if kind != "tetrahedral" {
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: unsupported atom-fact tag {kind:?}"
+        )));
+    }
+    let reference_order = fact.get_item(1)?;
+    let references = reference_order.cast::<PyTuple>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "Cannot prepare tetrahedral atom {atom_index}: reference order must be a tuple"
+        ))
+    })?;
+    let mut ligands = Vec::with_capacity(references.len());
+    for position in 0..references.len() {
+        let reference = references.get_item(position)?;
+        if reference.is_instance_of::<PyInt>() && !reference.is_instance_of::<PyBool>() {
+            let bond = reference.extract::<u32>().map_err(|_| {
+                PyValueError::new_err(format!(
+                    "Cannot prepare tetrahedral atom {atom_index}: reference at position \
+                     {position} must be an unsigned 32-bit bond ID"
+                ))
+            })?;
+            ligands.push(TetrahedralLigand::Bond(BondId::new(bond)));
+            continue;
+        }
+        if reference.is_instance_of::<PyString>() {
+            let ligand = reference.extract::<String>()?;
+            if ligand == "virtual_hydrogen" {
+                ligands.push(TetrahedralLigand::VirtualHydrogen);
+                continue;
+            }
+        }
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare tetrahedral atom {atom_index}: reference {position} \
+             must be a bond ID or VirtualHydrogen"
+        )));
+    }
+    let reference_order = ligands
+        .try_into()
+        .map_err(|ligands: Vec<TetrahedralLigand>| {
+            PyValueError::new_err(format!(
+            "Cannot prepare tetrahedral atom {atom_index}: expected four ligand references, got {}",
+            ligands.len()
+        ))
+        })?;
+    let parity_spellings = fact.get_item(2)?;
+    let spellings = parity_spellings.cast::<PyTuple>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "Cannot prepare tetrahedral atom {atom_index}: parity spellings must be a tuple"
+        ))
+    })?;
+    if spellings.len() != 2 {
+        return Err(PyValueError::new_err(format!(
+            "Cannot prepare tetrahedral atom {atom_index}: expected two parity spellings"
+        )));
+    }
+    let text_by_parity = [
+        spellings.get_item(0)?.extract::<String>().map_err(|_| {
+            PyValueError::new_err(format!(
+                "Cannot prepare tetrahedral atom {atom_index}: parity spelling 0 must be text"
+            ))
+        })?,
+        spellings.get_item(1)?.extract::<String>().map_err(|_| {
+            PyValueError::new_err(format!(
+                "Cannot prepare tetrahedral atom {atom_index}: parity spelling 1 must be text"
+            ))
+        })?,
+    ];
+    Ok(AtomToken::Tetrahedral {
+        reference_order,
+        text_by_parity,
+    })
 }
 
 #[pyclass(name = "_SouthStar2TextPrefix", module = "grimace._core", frozen)]

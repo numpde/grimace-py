@@ -3,22 +3,55 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from importlib import import_module
+from typing import TypeAlias
+
+
+class VirtualHydrogen(Enum):
+    """A tetrahedral ligand that is not an atom or bond in the prepared graph."""
+
+    INSTANCE = "virtual_hydrogen"
+
+
+TetrahedralLigandReference: TypeAlias = int | VirtualHydrogen
+
+
+@dataclass(frozen=True, slots=True)
+class TetrahedralAtom:
+    """Native bond identities followed by non-graph ligands and parity spellings."""
+
+    reference_order: tuple[TetrahedralLigandReference, ...]
+    text_by_parity: tuple[str, str]
+
+    def __post_init__(self) -> None:
+        if type(self.reference_order) is not tuple or type(self.text_by_parity) is not tuple:
+            raise TypeError("tetrahedral atom facts must use immutable tuples")
+        if any(
+            type(value) is not int and type(value) is not VirtualHydrogen
+            for value in self.reference_order
+        ):
+            raise TypeError("tetrahedral reference order must contain bond IDs or VirtualHydrogen")
+        if any(type(value) is not str for value in self.text_by_parity):
+            raise TypeError("tetrahedral parity spellings must be strings")
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedMolecule:
-    """Immutable atom spelling and indexed bonds for the Rust writer."""
+    """Immutable atom facts and indexed bonds for the Rust writer."""
 
-    atoms: tuple[str, ...]
+    atoms: tuple[str | TetrahedralAtom, ...]
     bonds: tuple[tuple[int, int, str], ...]
 
     def __post_init__(self) -> None:
         if any(type(value) is not tuple for value in (self.atoms, self.bonds)):
             raise TypeError("prepared molecule facts must use immutable tuples")
-        if any(type(value) is not str for value in self.atoms):
-            raise TypeError("prepared atom spellings must be strings")
-        if any(value not in ("C", "O") for value in self.atoms):
+        if any(
+            type(value) is not str and type(value) is not TetrahedralAtom
+            for value in self.atoms
+        ):
+            raise TypeError("prepared atoms must be fixed spellings or TetrahedralAtom facts")
+        if any(type(value) is str and value not in ("C", "O") for value in self.atoms):
             raise ValueError("prepared atom spellings must be fixed aliphatic C or O tokens")
         for bond in self.bonds:
             if (
@@ -48,8 +81,20 @@ class PreparedMolecule:
                 "grimace._core extension is unavailable."
             ) from exc
 
+        atom_facts = []
+        for atom in self.atoms:
+            if type(atom) is str:
+                atom_facts.append(atom)
+            else:
+                reference_order = tuple(
+                    "virtual_hydrogen"
+                    if ligand is VirtualHydrogen.INSTANCE
+                    else ligand
+                    for ligand in atom.reference_order
+                )
+                atom_facts.append(("tetrahedral", reference_order, atom.text_by_parity))
         return core._SouthStar2PreparedWriter(
-            list(self.atoms), list(self.bonds), "rdkit_random_noncanonical"
+            atom_facts, list(self.bonds), "rdkit_random_noncanonical"
         )
 
 
@@ -58,7 +103,7 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
 
     In this slice, the neutral C/O single-bond graph determines implicit
     hydrogens by standard valence. This checks RDKit's count against that rule
-    and hands only the graph and fixed atom text to Rust. Atom spelling does
+    and hands the graph and atom facts to Rust. Atom spelling does
     not come from an RDKit SMILES writer.
     """
 
@@ -89,7 +134,7 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             )
         bonds.append((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx(), ""))
 
-    atom_texts: list[str] = []
+    atom_facts: list[str | TetrahedralAtom] = []
     for index, atom in enumerate(mol.GetAtoms()):
         if atom.GetAtomicNum() not in (6, 8):
             raise ValueError(
@@ -98,31 +143,42 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             )
         if atom.GetIsAromatic():
             raise ValueError(f"South Star 2 preparation does not yet spell aromatic atom {index}")
-        if atom.GetFormalCharge() != 0:
-            raise ValueError(f"South Star 2 preparation requires neutral atom {index}")
-        if atom.GetIsotope() != 0:
+        formal_charge = atom.GetFormalCharge()
+        if formal_charge != 0:
             raise ValueError(
-                f"South Star 2 preparation does not yet preserve isotope on atom {index}"
+                f"Cannot prepare atom {index} with {formal_charge = }; expected a neutral atom"
             )
-        if atom.GetAtomMapNum() != 0:
+        isotope = atom.GetIsotope()
+        if isotope != 0:
             raise ValueError(
-                f"South Star 2 preparation does not yet preserve atom map on atom {index}"
+                f"Cannot prepare atom {index} with {isotope = }; isotope spelling is unsupported"
             )
-        if atom.GetNumRadicalElectrons() != 0:
+        atom_map_num = atom.GetAtomMapNum()
+        if atom_map_num != 0:
             raise ValueError(
-                f"South Star 2 preparation does not yet preserve radicals on atom {index}"
+                f"Cannot prepare atom {index} with {atom_map_num = }; atom-map spelling is unsupported"
             )
-        if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED:
+        radical_electrons = atom.GetNumRadicalElectrons()
+        if radical_electrons != 0:
             raise ValueError(
-                f"South Star 2 preparation does not yet represent configured "
-                f"stereo on atom {index}"
+                f"Cannot prepare atom {index} with {radical_electrons = }; radical spelling is unsupported"
             )
-        if atom.GetNumExplicitHs() != 0:
+        chiral_tag = atom.GetChiralTag()
+        if chiral_tag not in (
+            Chem.ChiralType.CHI_UNSPECIFIED,
+            Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+            Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+        ):
             raise ValueError(
-                f"South Star 2 preparation does not yet spell explicit hydrogen "
-                f"state on atom {index}"
+                f"Cannot prepare atom {index} with {chiral_tag = !r}; stereo spelling is unsupported"
             )
-        if atom.GetNoImplicit():
+        tetrahedral = chiral_tag != Chem.ChiralType.CHI_UNSPECIFIED
+        if atom.GetNumExplicitHs() and not tetrahedral:
+            raise ValueError(
+                "South Star 2 preparation does not yet spell explicit hydrogen state "
+                f"on atom {index}"
+            )
+        if atom.GetNoImplicit() and not tetrahedral:
             raise ValueError(
                 f"South Star 2 preparation does not yet spell "
                 f"no-implicit-hydrogen state on atom {index}"
@@ -131,12 +187,37 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
         valence = 4 if atom.GetAtomicNum() == 6 else 2
         graph_implicit_hydrogens = valence - atom.GetDegree()
         rdkit_implicit_hydrogens = atom.GetNumImplicitHs()
-        if graph_implicit_hydrogens < 0 or rdkit_implicit_hydrogens != graph_implicit_hydrogens:
+        non_graph_hydrogens = atom.GetTotalNumHs()
+        if (
+            graph_implicit_hydrogens < 0
+            or rdkit_implicit_hydrogens + atom.GetNumExplicitHs() != graph_implicit_hydrogens
+            or non_graph_hydrogens != graph_implicit_hydrogens
+        ):
             raise ValueError(
                 f"Cannot prepare atom {index}: the supported single-bond graph implies "
-                f"{graph_implicit_hydrogens} hydrogens, but RDKit reports "
-                f"{rdkit_implicit_hydrogens} implicit hydrogens"
+                f"{graph_implicit_hydrogens} non-graph hydrogens, but RDKit reports "
+                f"{non_graph_hydrogens} total non-graph hydrogens"
             )
-        atom_texts.append("C" if atom.GetAtomicNum() == 6 else "O")
+        if tetrahedral:
+            incident_bonds = tuple(bond.GetIdx() for bond in atom.GetBonds())
+            if atom.GetAtomicNum() != 6 or len(incident_bonds) != 3 or non_graph_hydrogens != 1:
+                raise ValueError(
+                    f"Cannot prepare tetrahedral atom {index}: expected degree-three carbon "
+                    "with exactly one non-graph hydrogen"
+                )
+            # RDKit's tetrahedral tag is relative to its incident-bond order;
+            # the non-graph hydrogen occupies the final reference position.
+            order: tuple[TetrahedralLigandReference, ...] = (
+                *incident_bonds,
+                VirtualHydrogen.INSTANCE,
+            )
+            spellings: tuple[str, str] = (
+                ("[C@H]", "[C@@H]")
+                if chiral_tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW
+                else ("[C@@H]", "[C@H]")
+            )
+            atom_facts.append(TetrahedralAtom(order, spellings))
+        else:
+            atom_facts.append("C" if atom.GetAtomicNum() == 6 else "O")
 
-    return PreparedMolecule(atoms=tuple(atom_texts), bonds=tuple(bonds))
+    return PreparedMolecule(atoms=tuple(atom_facts), bonds=tuple(bonds))

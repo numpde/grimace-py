@@ -1,10 +1,17 @@
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
+
+
+_TetrahedralAtomToken: TypeAlias = tuple[
+    Literal["tetrahedral"],
+    tuple[int | Literal["virtual_hydrogen"], ...],
+    tuple[str, str],
+]
 
 
 class _SouthStar2PreparedWriter:
     def __init__(
         self,
-        atoms: list[str],
+        atoms: list[str | _TetrahedralAtomToken],
         bonds: list[tuple[int, int, str]],
         writer_regime: Literal[
             "generic_any_order",

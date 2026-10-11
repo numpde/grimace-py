@@ -5,7 +5,12 @@ from __future__ import annotations
 import unittest
 
 from grimace._core import _SouthStar2PreparedWriter
-from grimace._south_star2.preparation import prepare_molecule
+from grimace._south_star2.preparation import (
+    PreparedMolecule,
+    TetrahedralAtom,
+    VirtualHydrogen,
+    prepare_molecule,
+)
 from rdkit import Chem
 
 
@@ -101,6 +106,73 @@ class NativeBridgeTests(unittest.TestCase):
             _SouthStar2PreparedWriter([""], [], "generic_any_order")
         self.assertIn("Cannot prepare the writer", str(caught.exception))
         self.assertIn("must not be empty", str(caught.exception))
+
+    def test_tetrahedral_fact_diagnostics_stay_at_the_graph_boundary(self) -> None:
+        cases = (
+            (
+                TetrahedralAtom((0, 1, 2), ("[C@H]", "[C@@H]")),
+                "expected four ligand references",
+            ),
+            (
+                TetrahedralAtom(
+                    (2**40, 1, 2, VirtualHydrogen.INSTANCE), ("[C@H]", "[C@@H]")
+                ),
+                "position 0 must be an unsigned 32-bit bond ID",
+            ),
+            (
+                TetrahedralAtom((0, 0, 2, VirtualHydrogen.INSTANCE), ("[C@H]", "[C@@H]")),
+                "repeat",
+            ),
+            (
+                TetrahedralAtom((0, 1, 4, VirtualHydrogen.INSTANCE), ("[C@H]", "[C@@H]")),
+                "graph incidences",
+            ),
+            (
+                TetrahedralAtom((0, 1, 2, VirtualHydrogen.INSTANCE), ("[C@H]", "[C@H]")),
+                "must be distinct",
+            ),
+        )
+        for atom, reason in cases:
+            with self.subTest(atom=atom):
+                with self.assertRaises(ValueError) as caught:
+                    PreparedMolecule(
+                        ("C", atom, "O", "C", "C"),
+                        ((0, 1, ""), (1, 2, ""), (1, 3, ""), (3, 4, "")),
+                    ).build_writer()
+                self.assertIn(reason, str(caught.exception))
+
+    def test_native_bridge_rejects_foreign_descriptors_without_invoking_them(self) -> None:
+        calls = []
+
+        class ForeignAtomFact:
+            @property
+            def reference_order(self):
+                calls.append("reference_order")
+                raise RuntimeError("descriptor exploded")
+
+        with self.assertRaisesRegex(ValueError, "tagged tetrahedral atom fact") as caught:
+            _SouthStar2PreparedWriter(
+                [ForeignAtomFact()], [], "rdkit_random_noncanonical"
+            )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertEqual(calls, [])
+
+    def test_native_bridge_reports_malformed_immutable_tetrahedral_facts(self) -> None:
+        cases = (
+            (("unknown", (0, 1, 2, "virtual_hydrogen"), ("[C@H]", "[C@@H]")), "unsupported atom-fact tag"),
+            (("tetrahedral", [0, 1, 2, "virtual_hydrogen"], ("[C@H]", "[C@@H]")), "reference order must be a tuple"),
+            (("tetrahedral", (False, 1, 2, "virtual_hydrogen"), ("[C@H]", "[C@@H]")), "must be a bond ID or VirtualHydrogen"),
+            (("tetrahedral", (0, 1, 2, "virtual_hydrogen"), ["[C@H]", "[C@@H]"]), "parity spellings must be a tuple"),
+        )
+        for atom_fact, reason in cases:
+            with self.subTest(atom_fact=atom_fact):
+                with self.assertRaises(ValueError) as caught:
+                    _SouthStar2PreparedWriter(
+                        ["C", atom_fact, "C", "C", "C"],
+                        [(0, 1, ""), (1, 2, ""), (1, 3, ""), (3, 4, "")],
+                        "rdkit_random_noncanonical",
+                    )
+                self.assertIn(reason, str(caught.exception))
 
     def test_component_order_is_required_and_validated(self) -> None:
         with self.assertRaises(TypeError):

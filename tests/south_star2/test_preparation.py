@@ -6,7 +6,12 @@ from unittest.mock import patch
 
 from rdkit import Chem
 
-from grimace._south_star2.preparation import PreparedMolecule, prepare_molecule
+from grimace._south_star2.preparation import (
+    PreparedMolecule,
+    TetrahedralAtom,
+    VirtualHydrogen,
+    prepare_molecule,
+)
 
 
 class SouthStar2PreparationTests(unittest.TestCase):
@@ -66,11 +71,22 @@ class SouthStar2PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "elided single-bond token"):
             PreparedMolecule(("C", "C"), ((0, 1, "-"),))
 
+        with self.assertRaisesRegex(TypeError, "immutable tuples"):
+            TetrahedralAtom(
+                [0, 1, 2, VirtualHydrogen.INSTANCE], ("[C@H]", "[C@@H]")  # type: ignore[arg-type]
+            )
+
         mol = Chem.MolFromSmiles("C")
         assert mol is not None
         prepared = prepare_molecule(mol)
         with self.assertRaises(FrozenInstanceError):
             prepared.atoms = ("O",)  # type: ignore[misc]
+
+        tetrahedral = TetrahedralAtom(
+            (0, 1, 2, VirtualHydrogen.INSTANCE), ("[C@H]", "[C@@H]")
+        )
+        with self.assertRaises(FrozenInstanceError):
+            tetrahedral.text_by_parity = ("[C@@H]", "[C@H]")  # type: ignore[misc]
 
     def test_rejects_non_molecules(self) -> None:
         with self.assertRaisesRegex(TypeError, "RDKit Mol"):
@@ -131,10 +147,30 @@ class SouthStar2PreparationTests(unittest.TestCase):
             ),
         )
 
-    def test_rejects_configured_tetrahedral_stereo(self) -> None:
-        mol = Chem.MolFromSmiles("C[C@](O)(N)F")
+    def test_prepares_supported_tetrahedral_stereo_from_incident_bond_order(self) -> None:
+        ccw = Chem.MolFromSmiles("C[C@H](O)CC")
+        cw = Chem.MolFromSmiles("C[C@@H](O)CC")
+        assert ccw is not None and cw is not None
+        ccw_fact = prepare_molecule(ccw).atoms[1]
+        cw_fact = prepare_molecule(cw).atoms[1]
+        self.assertIsInstance(ccw_fact, TetrahedralAtom)
+        self.assertIsInstance(cw_fact, TetrahedralAtom)
+        assert isinstance(ccw_fact, TetrahedralAtom)
+        assert isinstance(cw_fact, TetrahedralAtom)
+        self.assertEqual(
+            ccw_fact.reference_order,
+            (
+                *tuple(bond.GetIdx() for bond in ccw.GetAtomWithIdx(1).GetBonds()),
+                VirtualHydrogen.INSTANCE,
+            ),
+        )
+        self.assertEqual(ccw_fact.text_by_parity, ("[C@H]", "[C@@H]"))
+        self.assertEqual(cw_fact.text_by_parity, ("[C@@H]", "[C@H]"))
+
+    def test_rejects_tetrahedral_stereo_outside_the_supported_hydrogen_scope(self) -> None:
+        mol = Chem.MolFromSmiles("C[C@](O)(CC)CCC")
         assert mol is not None
-        with self.assertRaisesRegex(ValueError, "configured stereo"):
+        with self.assertRaisesRegex(ValueError, "degree-three carbon"):
             prepare_molecule(mol)
 
     def test_rejects_unsaturated_and_aromatic_bonds(self) -> None:
@@ -177,6 +213,29 @@ class SouthStar2PreparationTests(unittest.TestCase):
                 assert mol is not None
                 with self.assertRaises(ValueError):
                     prepare_molecule(mol)
+
+    def test_atom_feature_rejections_report_the_offending_scalar_or_tag(self) -> None:
+        cases = (
+            ("[O-]C", "formal_charge = -1"),
+            ("[13CH4]", "isotope = 13"),
+            ("[CH3:7]", "atom_map_num = 7"),
+            ("[CH3]", "radical_electrons = 1"),
+        )
+        for smiles, evidence in cases:
+            with self.subTest(smiles=smiles):
+                mol = Chem.MolFromSmiles(smiles)
+                assert mol is not None
+                with self.assertRaises(ValueError) as caught:
+                    prepare_molecule(mol)
+                self.assertIn(evidence, str(caught.exception))
+
+        mol = Chem.MolFromSmiles("CCO")
+        assert mol is not None
+        unsupported_tag = Chem.ChiralType.CHI_OTHER
+        mol.GetAtomWithIdx(1).SetChiralTag(unsupported_tag)
+        with self.assertRaises(ValueError) as caught:
+            prepare_molecule(mol)
+        self.assertIn(repr(unsupported_tag), str(caught.exception))
 
     def test_rejects_no_implicit_hydrogen_and_explicit_hydrogen_states(self) -> None:
         no_implicit = Chem.MolFromSmiles("CCO")

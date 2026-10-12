@@ -440,6 +440,44 @@ mod tests {
     }
 
     #[test]
+    fn forest_dot_branches_preserve_enclosing_scopes() {
+        let general = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        let mut disconnected = PreparedGraphBuilder::new();
+        disconnected.add_atom().unwrap();
+        disconnected.add_atom().unwrap();
+        let disconnected = PreparedWriter::new(
+            disconnected.build(), vec![AtomToken::Fixed("C".into()); 2],
+            Vec::new(), Vec::new(), general,
+        ).unwrap();
+        assert!(reaches_text(disconnected.initial().unwrap(), "", "C(.C)", &mut 5000));
+        assert!(!reaches_text(carbon_chain(2, general).initial().unwrap(), "", "C(.C)", &mut 5000));
+        assert!(reaches_text(carbon_chain(2, general).initial().unwrap(), "", "C1(.C1)", &mut 5000));
+        assert!(reaches_text(carbon_chain(4, general).initial().unwrap(), "", "C(C1.C1)C", &mut 5000));
+        assert!(!reaches_text(carbon_chain(3, general).initial().unwrap(), "", "C(.CC)", &mut 5000));
+        assert!(reaches_text(carbon_chain(3, general).initial().unwrap(), "", "C(.C1)C1", &mut 5000));
+        let mut ring = PreparedGraphBuilder::new();
+        let atoms = (0..3).map(|_| ring.add_atom().unwrap()).collect::<Vec<_>>();
+        ring.add_bond(atoms[0], atoms[1]).unwrap();
+        ring.add_bond(atoms[1], atoms[2]).unwrap();
+        ring.add_bond(atoms[2], atoms[0]).unwrap();
+        let ring = PreparedWriter::new(
+            ring.build(), vec![AtomToken::Fixed("C".into()), AtomToken::Fixed("C".into()), AtomToken::Fixed("O".into())],
+            vec![BondToken::Elided; 3], Vec::new(), general,
+        ).unwrap();
+        assert!(reaches_text(ring.initial().unwrap(), "", "C0CO0", &mut 5000));
+        assert!(!reaches_text(ring.initial().unwrap(), "", "C0(.C00)1.O10", &mut 5000));
+        assert!(!reaches_text(carbon_chain(4, general).initial().unwrap(), "", "C(C1.C1", &mut 5000));
+        let mut nested = PreparedGraphBuilder::new();
+        for _ in 0..3 { nested.add_atom().unwrap(); }
+        let nested = PreparedWriter::new(
+            nested.build(), vec![AtomToken::Fixed("C".into()), AtomToken::Fixed("C".into()), AtomToken::Fixed("O".into())],
+            Vec::new(), Vec::new(), general,
+        ).unwrap();
+        assert!(reaches_text(nested.initial().unwrap(), "", "C(.C(.O))", &mut 5000));
+        assert!(!reaches_text(nested.initial().unwrap(), "", "C(.)", &mut 5000));
+    }
+
+    #[test]
     fn tree_regimes_do_not_split_a_connected_bridge() {
         for regime in [
             WriterRegime::Generic { component_order: ComponentOrder::InputOrder },

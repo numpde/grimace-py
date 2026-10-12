@@ -71,6 +71,26 @@ choices) and decoder transitions, with semantic constraints maintained through
 the whole path. Bounded fixtures and parse-back checks test examples; they
 cannot establish universal coverage, especially for unbounded lexical forms.
 
+### Leading-dot branches and their semantic witness
+
+The [OpenSMILES v1.0 grammar and §3.7.1](https://opensmiles.org/opensmiles.html)
+allow `branch ::= '(' dot chain ')'`. Thus `C(.C)` is a standard spelling
+for two disconnected carbon atoms, equivalent in graph identity to `C.C`.
+RDKit 2026.03.4 was observed to reject `C(.C)` as SMILES input. That parser
+result does not remove the spelling from the target language, and neither
+parser acceptance nor graph equivalence establishes RDKit writer support.
+
+The compact C/O fixture is checked by a temporary test-only interpreter in
+[`tests/south_star2/test_compact_language.py`](../../tests/south_star2/test_compact_language.py).
+It handles only C and O atoms, implicit single bonds, single-digit ring labels,
+branches, and dots, including a leading dot inside a branch. It rejects other
+tokens and malformed syntax. It reconstructs and sanitizes an RDKit graph
+without asking RDKit to parse the emitted SMILES, then compares canonical
+graph identity with the source. This is a scoped semantic witness, not a full
+OpenSMILES validator, an exhaustive support oracle, or a proof that all
+accepted prefixes remain live. The witness should fold into the shared
+fact/event/constraint model; it is not a runtime fallback.
+
 `COMPACT` is a restricted spelling policy applied to otherwise valid paths:
 bare atoms where possible, unpadded numbers, omitted default fields, and the
 smallest available ring label. It cannot repair missing traversal or dot-event
@@ -84,18 +104,19 @@ relax spelling only; it cannot stand in for the structural contract.
 | Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `GENERAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
 | Roots, branches, traversal | Connected traversal choices and terminal branches on admitted nonaromatic, stereo-free forest inputs implemented | Map all standard serialization events both ways |
-| Dot segments | Top-level connected-dot ring references qualified for admitted nonaromatic, stereo-free graphs in `GENERAL` and `COMPACT`; chemical component separation remains supported | Extend grammar and qualification to dots in nested branches and aromatic or stereo inputs |
+| Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted nonaromatic, stereo-free graphs in `GENERAL` and `COMPACT`; chemical component separation remains supported | Extend qualification to aromatic or stereo inputs and other unqualified syntax |
 | Aromaticity | Aromatic or whole-component Kekule choices for supported inputs | Valid mixed lowercase/uppercase spellings within a component |
 | Stereo | Supported tetrahedral and E/Z cases have semantic checks | Define and cover every admitted configuration and preserve unspecified stereo |
 
-The native forest path now admits top-level dot segments with ring obligations
-crossing segment boundaries on admitted nonaromatic, stereo-free graphs.
-It also admits terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)`
-for those inputs in `GENERAL` and `COMPACT`.
+The native forest path now admits top-level and branch-local dot segments,
+including leading-dot branches, with ring obligations crossing segment
+boundaries on admitted nonaromatic, stereo-free graphs. It also admits
+terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)` for those inputs in
+`GENERAL` and `COMPACT`.
 Public semantic witnesses include `C1.C1` for `CC` and `C1.C12.C2` for `CCC`;
 `COMPACT` also admits corresponding smallest-label spellings. This is a
-qualified subset of the target grammar: dots in nested branches and aromatic
-or stereo inputs remain open. A fixed-budget diagnostic may report that its
+qualified subset of the target grammar: aromatic or stereo inputs and other
+unqualified syntax remain open. A fixed-budget diagnostic may report that its
 enumeration is incomplete; bounded results do not establish global exhaustive
 support or prefix liveness. The current `GENERAL` name is provisional; naming
 can follow a demonstrated contract.

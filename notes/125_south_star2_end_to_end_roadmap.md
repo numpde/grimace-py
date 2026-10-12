@@ -845,5 +845,39 @@ and `C1CO1` yielded 2, 19, and 236 prefix states, respectively, with every
 accepted output parsing back and the prior expected sets retained. The compact
 fixture adds 23 parenthesized strings for `CO` and `C1CO1`. The qualified
 candidate wheel passed the focused public compact-language file (13 tests).
-Nested branch dots, leading dots, and aromatic or stereo cases remain open;
-these checks do not establish maximal support.
+That candidate did not yet cover nested branch dots or leading dots; aromatic
+or stereo cases also remained open. These checks did not establish maximal
+support.
+
+The next qualification must distinguish standard syntax from RDKit parser
+acceptance and RDKit writer parity. [OpenSMILES v1.0's branch grammar and
+§3.7.1](https://opensmiles.org/opensmiles.html) allow `branch ::= '(' dot chain ')'`:
+`C(.C)` has the graph of `C.C`. RDKit 2026.03.4 was observed to reject that
+spelling as input, so its parser cannot be the sole validity check for these
+outputs. The temporary test-only `_small_compact_graph` witness in
+`tests/south_star2/test_compact_language.py` interprets only C/O, implicit
+single bonds, single-digit ring labels, branches, and dots. It rejects other
+tokens, constructs and sanitizes an RDKit graph without parsing the emitted
+SMILES through RDKit, and compares canonical identity to the source. It should
+eventually fold into the shared fact/event/constraint model. The witness is
+neither a runtime fallback nor a full OpenSMILES validator, exhaustive support
+oracle, or prefix-liveness proof. It caught the invalid `C0(.C00)1.O10`:
+ring tokens after a branch violate this grammar even if graph reconstruction
+would yield the intended graph. The branch phase was then corrected.
+
+The expanded candidate qualified admitted nonaromatic, stereo-free top-level
+and branch-local dots, including leading-dot branches, in `GENERAL` and
+`COMPACT`. The compact fixture's bounded output counts were 1 for `C`, 8 for
+`CO`, and 228 for `C1CO1`, from 2, 27, and 963 prefix states respectively
+(limits: 1,000 outputs and 10,000 states per molecule). Every output passed
+the grammar witness and reconstructed the source graph; the previous fixture
+sets remain subsets. The candidate public compact-language file passed 14
+tests; native library tests passed 289 with one ignored. These are bounded
+candidate results, not global maximal-support or prefix-liveness proof. The
+integrated root checkout then passed the bounded native South Star 2 library
+suite (289 passed, one ignored), root Rust library tests (86 passed), and 30 selected public tests from
+`tests.south_star2.test_compact_language` and
+`tests.integration.test_public_prefix_api`. Both runners reported verified
+process cleanup. The compiled extension used for the root public test came
+from the qualified candidate wheel with SHA256
+`b06e9e3144d170d09c36fe3a81d1663858e186934a3a3ca34aa6658e39a1eb69`.

@@ -323,7 +323,11 @@ fn bounded_support_growth() {
                         .keys()
                         .map(String::as_str)
                         .collect::<BTreeSet<_>>(),
-                    BTreeSet::from(["CCO", "OCC", "C(C)O", "C(O)C"])
+                    BTreeSet::from([
+                        "CCO", "CC(O)", "C(CO)", "C(C(O))", "C(C)(O)",
+                        "C(O)C", "C(O)(C)", "OCC", "OC(C)", "O(CC)",
+                        "O(C(C))", "C(C)O",
+                    ])
                 );
             }
             if name == "C1CO1" {
@@ -355,6 +359,9 @@ fn bounded_support_growth() {
                                 [("C", "C", "O"), ("C", "O", "C"), ("O", "C", "C")]
                             {
                                 expected.insert(format!("{root}{opening}{middle}{last}{closing}"));
+                                expected.insert(format!("{root}{opening}{middle}({last}{closing})"));
+                                expected.insert(format!("{root}{opening}({middle}{last}{closing})"));
+                                expected.insert(format!("{root}{opening}({middle}({last}{closing}))"));
                             }
                         }
                     }
@@ -375,13 +382,21 @@ fn bounded_support_growth() {
                         .collect::<BTreeSet<_>>(),
                     BTreeSet::from([
                         "CO",
+                        "C(O)",
                         "C[OH]",
+                        "C([OH])",
                         "[CH3]O",
+                        "[CH3](O)",
                         "[CH3][OH]",
+                        "[CH3]([OH])",
                         "OC",
+                        "O(C)",
                         "O[CH3]",
+                        "O([CH3])",
                         "[OH]C",
+                        "[OH](C)",
                         "[OH][CH3]",
+                        "[OH]([CH3])",
                     ])
                 );
                 assert_eq!(
@@ -389,7 +404,7 @@ fn bounded_support_growth() {
                         .keys()
                         .map(String::as_str)
                         .collect::<BTreeSet<_>>(),
-                    BTreeSet::from(["CO", "OC"])
+                    BTreeSet::from(["CO", "C(O)", "OC", "O(C)"])
                 );
             }
             for (atoms, c) in [("bare", bare), ("brackets", expanded)] {

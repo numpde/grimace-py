@@ -2115,7 +2115,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         self.pending.is_none()
             && self.atom_spelling.is_none()
             && self.labels.is_clean()
-            && self.structural.active_atom().is_none()
+            && self.structural.scope_is_complete()
             && self.structural.graph_is_complete()
     }
 
@@ -3467,6 +3467,36 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         candidate: StructuralCandidate,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         match candidate {
+            StructuralCandidate::DotBranchRoot { atom }
+            | StructuralCandidate::DotSegmentRoot { atom } => {
+                let anchor = match self.directional_anchor_restrictions(atom, atom, None) {
+                    Ok(anchor) => anchor,
+                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
+                };
+                let structural = match self.attempt_candidate_with_transition(
+                    candidate, None, anchor.as_slice(), &[],
+                ) {
+                    Ok(Consistency::Consistent(structural)) => structural,
+                    Ok(Consistency::Contradiction) => return vec![CandidateAttempt::Rejected {
+                        reason: CandidateRejection::Contradiction,
+                    }],
+                    Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+                };
+                let text = match candidate {
+                    StructuralCandidate::DotBranchRoot { .. } => "(.",
+                    StructuralCandidate::DotSegmentRoot { .. } => ".",
+                    _ => unreachable!(),
+                };
+                vec![self.finish_attempt(
+                    text.to_owned(),
+                    Self {
+                        surface: self.surface.clone(), regime: self.regime, structural,
+                        labels: self.labels.clone(),
+                        pending: Some(PendingEmission::SegmentRootAtom(atom)),
+                        atom_spelling: None,
+                    },
+                )]
+            }
             StructuralCandidate::Root { atom } => {
                 assert!(
                     self.structural.prepared_topology()

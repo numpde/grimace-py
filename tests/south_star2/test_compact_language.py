@@ -82,6 +82,77 @@ def _canonical_semantics(smiles: str) -> str:
     return Chem.MolToSmiles(parsed, canonical=True, isomericSmiles=True)
 
 
+def _small_compact_graph(smiles: str) -> str:
+    """Interpret the fixture's C/O, branch, dot, and one-digit ring grammar.
+
+    This temporary witness builds a graph independently of both the production
+    decoder and RDKit's SMILES parser. It belongs in the shared fact/event/
+    constraint model once that model can interpret emitted syntax.
+    """
+    graph = Chem.RWMol()
+    rings: dict[str, int] = {}
+    offset = 0
+
+    def fail(reason: str) -> None:
+        raise ValueError(f"small compact graph witness rejected {smiles!r}: {reason}")
+
+    def chain(attachment: int | None, *, branch: bool) -> None:
+        nonlocal offset
+        if branch and offset < len(smiles) and smiles[offset] == ".":
+            attachment = None
+            offset += 1
+        current = attachment
+        needs_atom = True
+        while offset < len(smiles) and smiles[offset] != ")":
+            symbol = smiles[offset]
+            if symbol not in "CO":
+                fail(f"expected C or O atom at offset {offset}; unsupported token {symbol!r}")
+            atom = graph.AddAtom(Chem.Atom(symbol))
+            if current is not None:
+                graph.AddBond(current, atom, Chem.BondType.SINGLE)
+            current = atom
+            offset += 1
+            needs_atom = False
+
+            while offset < len(smiles) and smiles[offset].isdigit():
+                label = smiles[offset]
+                if label not in "0123456789":
+                    fail(f"unsupported ring label {label!r}")
+                if label in rings:
+                    start = rings.pop(label)
+                    if start == atom:
+                        fail(f"ring label {label!r} closes on the same atom")
+                    if graph.GetBondBetweenAtoms(start, atom) is not None:
+                        fail(f"ring label {label!r} duplicates an existing bond")
+                    graph.AddBond(start, atom, Chem.BondType.SINGLE)
+                else:
+                    rings[label] = atom
+                offset += 1
+
+            while offset < len(smiles) and smiles[offset] == "(":
+                offset += 1
+                chain(current, branch=True)
+                if offset >= len(smiles) or smiles[offset] != ")":
+                    fail("unclosed branch")
+                offset += 1
+
+            if offset < len(smiles) and smiles[offset] == ".":
+                offset += 1
+                current = None
+                needs_atom = True
+        if needs_atom:
+            fail("empty chain or trailing dot")
+
+    chain(None, branch=False)
+    if offset != len(smiles):
+        fail(f"unexpected closing branch at offset {offset}")
+    if rings:
+        fail(f"unclosed ring labels {sorted(rings)!r}")
+    molecule = graph.GetMol()
+    Chem.SanitizeMol(molecule)
+    return Chem.MolToSmiles(molecule, canonical=True, isomericSmiles=True)
+
+
 class CompactLanguageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -109,8 +180,17 @@ class CompactLanguageTests(unittest.TestCase):
                 self.assertEqual(frozenset(case["expected_outputs"]), outputs)
                 expected_graph = _canonical_semantics(case["source_smiles"])
                 for output in outputs:
-                    self.assertEqual(expected_graph, _canonical_semantics(output), output)
+                    self.assertEqual(expected_graph, _small_compact_graph(output), output)
                     self.assertIsNotNone(_walk(source, output), output)
+
+    def test_small_compact_graph_witness_handles_dot_branches(self) -> None:
+        for source, spelling in (("C.C", "C(.C)"), ("CC", "C1(.C1)"), ("CCC", "C(.C1)C1")):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(_canonical_semantics(source), _small_compact_graph(spelling))
+        for invalid in ("C(.)", "C(.C", "C.", "C1", "C11", "C1C1", "C)C", "C(O)1", "C=N"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    _small_compact_graph(invalid)
 
     def test_compact_atoms_preserve_isotope_map_charge_hydrogens_and_stereo(self) -> None:
         examples = (

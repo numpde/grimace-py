@@ -518,6 +518,7 @@ struct WriterFrame {
     emitted_bonds: Vec<BondId>,
     ring_occurrence_count: usize,
     attachments: Vec<ResidualAttachment>,
+    branch_started: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -562,6 +563,7 @@ impl WriterFrame {
             emitted_bonds: Vec::new(),
             ring_occurrence_count: 0,
             attachments,
+            branch_started: false,
         }
     }
 
@@ -581,6 +583,7 @@ impl WriterFrame {
     }
 
     fn commit_ring(&mut self, incident: AdjacentBond) {
+        assert!(!self.branch_started, "ring occurrences must precede branches");
         assert_eq!(
             self.ring_occurrence_count,
             self.emitted_bonds.len(),
@@ -697,6 +700,25 @@ impl TraversalState {
         self.progress.is_complete()
     }
 
+    pub(crate) fn scope_is_complete(&self) -> bool {
+        self.active.is_none() && self.branch_returns.is_none()
+    }
+
+    pub(crate) fn can_enter_atom(
+        &self, graph: &PreparedGraph, atom: AtomId, entry_bond: Option<BondId>,
+    ) -> bool {
+        self.residual.atom_is_unvisited(atom)
+            && graph.neighbors(atom).unwrap().iter().copied().all(|incident| {
+                Some(incident.bond()) == entry_bond
+                    || self.progress.classify_incident(graph, atom, incident)
+                        != IncidentBondState::UnrepresentedToVisitedAtom
+            })
+    }
+
+    pub(crate) fn can_finish_active_segment(&self) -> bool {
+        self.active.as_ref().is_some_and(|frame| frame.attachments.is_empty())
+    }
+
     pub(crate) const fn has_visited_atoms(&self) -> bool {
         self.progress.has_visited_atoms()
     }
@@ -787,9 +809,10 @@ impl TraversalState {
     }
 
     pub(crate) fn begin_segment(&mut self, graph: &PreparedGraph, root: AtomId) {
+        assert!(self.can_enter_atom(graph, root, None));
         assert!(
             self.active.is_none()
-                && self.branch_returns.is_none()
+                && (self.segments || self.branch_returns.is_none())
                 && (self.segments || !self.progress.has_open_rings()),
             "a component can begin only after the previous component is closed"
         );
@@ -804,6 +827,24 @@ impl TraversalState {
         )));
     }
 
+    pub(crate) fn begin_dot_branch(&mut self, graph: &PreparedGraph, root: AtomId) {
+        assert!(self.can_enter_atom(graph, root, None));
+        let mut parent = self.active.take().expect("a dot branch needs a parent atom");
+        Arc::make_mut(&mut parent).branch_started = true;
+        self.branch_returns = Some(Arc::new(FrameNode {
+            frame: parent,
+            parent: self.branch_returns.take(),
+        }));
+        self.begin_segment(graph, root);
+    }
+
+    pub(crate) fn begin_dot_segment(&mut self, graph: &PreparedGraph, root: AtomId) {
+        assert!(self.can_enter_atom(graph, root, None));
+        let active = self.active.take().expect("a dot segment needs a preceding atom");
+        assert!(active.attachments.is_empty());
+        self.begin_segment(graph, root);
+    }
+
     pub(crate) fn active_local_bond_order(&self) -> LocalBondOrder {
         let frame = self
             .active
@@ -815,6 +856,11 @@ impl TraversalState {
             emitted_bonds: frame.emitted_bonds.clone(),
             ring_occurrence_count: frame.ring_occurrence_count,
         }
+    }
+
+    pub(crate) fn active_can_emit_ring(&self) -> bool {
+        let frame = self.active.as_ref().expect("ring order needs an active frame");
+        !frame.branch_started && frame.ring_occurrence_count == frame.emitted_bonds.len()
     }
 
     pub(crate) fn active_local_layout_context(&self, graph: &PreparedGraph) -> LocalLayoutContext {
@@ -975,6 +1021,7 @@ impl TraversalState {
         incident: AdjacentBond,
         placement: ChildPlacement,
     ) {
+        assert!(self.can_enter_atom(graph, incident.atom(), Some(incident.bond())));
         let mut parent = self
             .active
             .take()
@@ -995,6 +1042,7 @@ impl TraversalState {
 
         match placement {
             ChildPlacement::Branch => {
+                Arc::make_mut(&mut parent).branch_started = true;
                 assert!(
                     self.segments || !parent.attachments.is_empty(),
                     "a tree branch requires another residual attachment for the main continuation"

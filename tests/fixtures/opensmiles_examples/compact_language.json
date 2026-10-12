@@ -7,8 +7,71 @@
   },
   "scope": "Compact policy examples derived from the public language rules and graph facts; these are semantic examples, not RDKit writer support claims.",
   "cases": [
-    {"id": "one_carbon", "source_smiles": "C", "expected_outputs": ["C"]},
-    {"id": "carbon_oxygen", "source_smiles": "CO", "expected_outputs": ["CO", "OC"]},
-    {"id": "three_member_ether_ring", "source_smiles": "C1CO1", "expected_outputs": ["C0CO0", "C0OC0", "O0CC0"]}
-  ]
+    {
+      "id": "one_carbon",
+      "source_smiles": "C",
+      "expected_outputs": [
+        "C"
+      ]
+    },
+    {
+      "id": "carbon_oxygen",
+      "source_smiles": "CO",
+      "expected_outputs": [
+        "C0.O0",
+        "CO",
+        "O0.C0",
+        "OC"
+      ]
+    },
+    {
+      "id": "three_member_ether_ring",
+      "source_smiles": "C1CO1",
+      "expected_outputs": [
+        "C01.C00.O01",
+        "C01.C00.O10",
+        "C01.C0O1",
+        "C01.C11.O01",
+        "C01.C11.O10",
+        "C01.C1O0",
+        "C01.C20.O12",
+        "C01.C20.O21",
+        "C01.C21.O02",
+        "C01.C21.O20",
+        "C01.O00.C01",
+        "C01.O00.C10",
+        "C01.O0C1",
+        "C01.O11.C01",
+        "C01.O11.C10",
+        "C01.O1C0",
+        "C01.O20.C12",
+        "C01.O20.C21",
+        "C01.O21.C02",
+        "C01.O21.C20",
+        "C0C1.O01",
+        "C0C1.O10",
+        "C0CO0",
+        "C0O1.C01",
+        "C0O1.C10",
+        "C0OC0",
+        "O01.C00.C01",
+        "O01.C00.C10",
+        "O01.C0C1",
+        "O01.C11.C01",
+        "O01.C11.C10",
+        "O01.C1C0",
+        "O01.C20.C12",
+        "O01.C20.C21",
+        "O01.C21.C02",
+        "O01.C21.C20",
+        "O0C1.C01",
+        "O0C1.C10",
+        "O0CC0"
+      ]
+    }
+  ],
+  "support_provenance": {
+    "kind": "bounded_candidate_runtime_observation",
+    "qualification": "For CO and C1CO1, all accepted compact outputs were enumerated with at most 10000 prefix states and 1000 outputs per molecule, and every output was parsed by RDKit and compared with the source graph. The previous expected outputs remained included; all additions contain a top-level dot. This records observed regression support, not an independent exhaustive language oracle."
+  }
 }

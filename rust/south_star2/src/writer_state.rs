@@ -82,7 +82,7 @@ pub(crate) enum StructuralCandidate {
         incident: AdjacentBond,
     },
     CloseBranch,
-    FinishComponent,
+    FinishSegment,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -135,7 +135,10 @@ impl<S: ConstraintSolver> WriterState<S> {
                 Self {
                     prepared: prepared.clone(),
                     component_order,
-                    traversal: TraversalState::new(prepared.graph()),
+                    traversal: TraversalState::new_with_segments(
+                        prepared.graph(),
+                        prepared.topology() == crate::model::TraversalTopologyRequirement::Forest,
+                    ),
                     constraints,
                     #[cfg(test)]
                     candidate_batch_derivations: Arc::new(AtomicUsize::new(0)),
@@ -146,6 +149,10 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     pub(crate) fn active_atom(&self) -> Option<AtomId> {
         self.traversal.active_atom()
+    }
+
+    pub(crate) fn prepared_topology(&self) -> crate::model::TraversalTopologyRequirement {
+        self.prepared.topology()
     }
 
     pub(crate) const fn graph_is_complete(&self) -> bool {
@@ -235,6 +242,8 @@ impl<S: ConstraintSolver> WriterState<S> {
         let mut frontier = StructuralFrontier::default();
         let mut ring_phase = false;
         let mut children = Vec::new();
+        let local_order = self.traversal.active_local_bond_order();
+        let can_emit_ring = local_order.ring_occurrence_count == local_order.emitted_bonds.len();
 
         for incident in graph
             .neighbors(active)
@@ -244,6 +253,10 @@ impl<S: ConstraintSolver> WriterState<S> {
         {
             match self.traversal.classify_active_incident(graph, incident) {
                 IncidentBondState::RingOpenAtOtherAtom => {
+                    if !can_emit_ring {
+                        frontier.contradiction = true;
+                        continue;
+                    }
                     ring_phase = true;
                     frontier.ring_closures.push(incident);
                 }
@@ -275,24 +288,40 @@ impl<S: ConstraintSolver> WriterState<S> {
                 .filter(|(_, domain)| domain.contains(BondRole::Traversal.value_index()))
                 .count();
 
-            if traversal_capable_count == 0 {
+            let segments = self.prepared.topology()
+                == crate::model::TraversalTopologyRequirement::Forest;
+            if traversal_capable_count == 0 && !segments {
                 frontier.contradiction = true;
                 continue;
             }
 
             if incidences.len() == 1 {
-                children.push(incidences[0]);
+                if traversal_capable_count == 1 {
+                    children.push(incidences[0]);
+                }
+                let ring_opening_count = frontier.ring_openings.len();
+                if segments
+                    && can_emit_ring
+                    && role_domains[0].1.contains(BondRole::Ring.value_index())
+                {
+                    frontier.ring_openings.push(incidences[0]);
+                }
+                if traversal_capable_count == 0
+                    && frontier.ring_openings.len() == ring_opening_count
+                {
+                    frontier.contradiction = true;
+                }
                 continue;
             }
 
             ring_phase = true;
             let ring_opening_count = frontier.ring_openings.len();
             for (candidate, domain) in role_domains {
-                if !domain.contains(BondRole::Ring.value_index()) {
+                if !can_emit_ring || !domain.contains(BondRole::Ring.value_index()) {
                     continue;
                 }
                 let candidate_can_traverse = domain.contains(BondRole::Traversal.value_index());
-                if traversal_capable_count > usize::from(candidate_can_traverse) {
+                if segments || traversal_capable_count > usize::from(candidate_can_traverse) {
                     frontier.ring_openings.push(candidate);
                 }
             }
@@ -372,8 +401,8 @@ impl<S: ConstraintSolver> WriterState<S> {
             Some(PathCompletion::CloseBranch) => {
                 candidates.push(StructuralCandidate::CloseBranch);
             }
-            Some(PathCompletion::FinishComponent) => {
-                candidates.push(StructuralCandidate::FinishComponent);
+            Some(PathCompletion::FinishSegment) => {
+                candidates.push(StructuralCandidate::FinishSegment);
             }
             None => {}
         }
@@ -464,7 +493,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             | StructuralCandidate::InlineChild { incident } => Some(incident.bond()),
             StructuralCandidate::Root { .. }
             | StructuralCandidate::CloseBranch
-            | StructuralCandidate::FinishComponent => None,
+            | StructuralCandidate::FinishSegment => None,
         };
         let role = match candidate {
             StructuralCandidate::RingOpen { .. } => Some(BondRole::Ring),
@@ -474,7 +503,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             StructuralCandidate::Root { .. }
             | StructuralCandidate::RingClose { .. }
             | StructuralCandidate::CloseBranch
-            | StructuralCandidate::FinishComponent => None,
+            | StructuralCandidate::FinishSegment => None,
         };
         if allowed_representations.is_some() {
             assert!(matches!(
@@ -496,7 +525,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 let mut traversal = self.traversal.clone();
                 match candidate {
                     StructuralCandidate::Root { atom } => {
-                        traversal.begin_component(self.prepared.graph(), atom);
+                        traversal.begin_segment(self.prepared.graph(), atom);
                     }
                     StructuralCandidate::RingOpen { incident } => {
                         traversal.open_ring_endpoint(self.prepared.graph(), incident);
@@ -525,7 +554,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                             "closing a branch must restore its suspended parent"
                         );
                     }
-                    StructuralCandidate::FinishComponent => {
+                    StructuralCandidate::FinishSegment => {
                         assert_eq!(
                             traversal.complete_path(self.prepared.graph()),
                             None,
@@ -669,7 +698,7 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     pub(crate) fn prospective_root_layout_context(&self, atom: AtomId) -> LocalLayoutContext {
         let mut traversal = self.traversal.clone();
-        traversal.begin_component(self.prepared.graph(), atom);
+        traversal.begin_segment(self.prepared.graph(), atom);
         traversal.active_local_layout_context(self.prepared.graph())
     }
 
@@ -1055,10 +1084,10 @@ mod tests {
         assert!(!rooted.graph_is_complete());
         assert_eq!(
             rooted.derive_candidates().candidates(),
-            &[StructuralCandidate::FinishComponent]
+            &[StructuralCandidate::FinishSegment]
         );
 
-        let finished = attempt(&rooted, StructuralCandidate::FinishComponent);
+        let finished = attempt(&rooted, StructuralCandidate::FinishSegment);
         assert_eq!(finished.active_atom(), None);
         assert_eq!(
             finished.derive_candidates().candidates(),
@@ -1140,9 +1169,9 @@ mod tests {
         assert!(closed.graph_is_complete());
         assert_eq!(
             closed.structural_frontier().path_completion(),
-            Some(PathCompletion::FinishComponent)
+            Some(PathCompletion::FinishSegment)
         );
-        let finished = attempt(&closed, StructuralCandidate::FinishComponent);
+        let finished = attempt(&closed, StructuralCandidate::FinishSegment);
         assert_eq!(finished.active_atom(), None);
     }
 

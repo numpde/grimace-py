@@ -56,12 +56,18 @@ impl PreparedWriter {
         regime: WriterRegime,
     ) -> Result<Self, WalkerFailure> {
         let has_directional_relations = !directional.is_empty();
-        let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_regime(
+        let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
             PreparedMolecule::new(graph),
             atoms,
             bonds,
             directional.clone(),
             regime == WriterRegime::GenericCompact,
+            matches!(
+                regime,
+                WriterRegime::Generic {
+                    component_order: ComponentOrder::AnyOrder
+                } | WriterRegime::GenericCompact
+            ),
         )
         .map_err(|error| WalkerFailure(FailureCause::Preparation(error)))?;
         if matches!(regime, WriterRegime::RdkitRandomNoncanonical) && has_directional_relations {
@@ -259,18 +265,13 @@ mod tests {
         reverse_right_carrier: bool,
         left_sibling: bool,
     ) -> BTreeSet<String> {
-        fn collect(
-            walker: Walker,
-            prefix: String,
-            support: &mut BTreeSet<String>,
-        ) {
+        fn collect(walker: Walker, prefix: String, support: &mut BTreeSet<String>) {
             if walker.is_accepted() {
                 support.insert(prefix);
                 return;
             }
             for choice in walker.choices().unwrap() {
-                if (walker.0.is_spelling_atom()
-                    || choice.successor.0.is_spelling_atom())
+                if (walker.0.is_spelling_atom() || choice.successor.0.is_spelling_atom())
                     && choice.text != "C"
                 {
                     continue;
@@ -351,6 +352,86 @@ mod tests {
         .unwrap()
     }
 
+    fn carbon_chain(length: usize, regime: WriterRegime) -> PreparedWriter {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..length).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+        for pair in atoms.windows(2) {
+            graph.add_bond(pair[0], pair[1]).unwrap();
+        }
+        PreparedWriter::new(
+            graph.build(),
+            vec![AtomToken::Fixed("C".to_owned()); length],
+            vec![BondToken::Elided; length - 1],
+            Vec::new(),
+            regime,
+        )
+        .unwrap()
+    }
+
+    fn reaches_state(
+        walker: Walker,
+        prefix: &str,
+        target: &str,
+        accepted: bool,
+        budget: &mut usize,
+    ) -> bool {
+        assert!(*budget > 0, "target witness exceeded its state budget");
+        *budget -= 1;
+        if prefix == target {
+            return walker.is_accepted() == accepted;
+        }
+        if !target.starts_with(prefix) {
+            return false;
+        }
+        walker.choices().unwrap().into_iter().any(|choice| {
+            let next = format!("{prefix}{}", choice.text);
+            target.starts_with(&next)
+                && reaches_state(choice.successor, &next, target, accepted, budget)
+        })
+    }
+
+    fn reaches_text(walker: Walker, prefix: &str, target: &str, budget: &mut usize) -> bool {
+        reaches_state(walker, prefix, target, true, budget)
+    }
+
+    #[test]
+    fn connected_carbon_segments_reach_complete_strings() {
+        let general = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        for (length, regime, text) in [
+            (2, general, "CC"),
+            (2, general, "C1.C1"),
+            (3, general, "CCC"),
+            (3, general, "C1.C12.C2"),
+            (2, WriterRegime::GenericCompact, "C0.C0"),
+            (4, WriterRegime::GenericCompact, "C0.C0C0.C0"),
+        ] {
+            assert!(
+                reaches_text(carbon_chain(length, regime).initial().unwrap(), "", text, &mut 5000),
+                "{text} must reach an accepted state"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_regimes_do_not_split_a_connected_bridge() {
+        for regime in [
+            WriterRegime::Generic { component_order: ComponentOrder::InputOrder },
+            WriterRegime::RdkitRandomNoncanonical,
+        ] {
+            assert!(!reaches_text(
+                carbon_chain(2, regime).initial().unwrap(), "", "C1.C1", &mut 5000,
+            ));
+        }
+    }
+
+    #[test]
+    fn unfinished_cross_segment_ring_is_not_accepted() {
+        let regime = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        assert!(reaches_state(
+            carbon_chain(2, regime).initial().unwrap(), "", "C1.", false, &mut 5000,
+        ));
+    }
+
     #[test]
     fn equal_text_keeps_distinct_root_successors_and_source_unchanged() {
         let source = carbon_carbon_oxygen().initial().unwrap();
@@ -401,7 +482,10 @@ mod tests {
         let choices = prepared.initial().unwrap().choices().unwrap();
         assert_eq!(choices.len(), 4);
         assert_eq!(
-            choices.iter().map(|choice| choice.text.as_str()).collect::<Vec<_>>(),
+            choices
+                .iter()
+                .map(|choice| choice.text.as_str())
+                .collect::<Vec<_>>(),
             ["[", "C", "[", "C"]
         );
     }
@@ -449,9 +533,9 @@ mod tests {
         for separator in separators {
             let next_component_roots = separator.successor.choices().unwrap();
             assert!(next_component_roots.iter().any(|choice| choice.text == "O"));
-            assert!(next_component_roots.iter().all(|choice| {
-                choice.text == "[" || choice.text == "O"
-            }));
+            assert!(next_component_roots
+                .iter()
+                .all(|choice| { choice.text == "[" || choice.text == "O" }));
         }
     }
 

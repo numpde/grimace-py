@@ -1213,7 +1213,7 @@ fn only_choice<S: ConstraintSolver>(
         || matches!(
             state.pending,
             Some(
-                PendingEmission::ComponentRootAtom(_)
+                PendingEmission::SegmentRootAtom(_)
                     | PendingEmission::InlineAtom(_)
                     | PendingEmission::BranchAtom(_)
             )
@@ -1300,7 +1300,7 @@ fn pending_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
         .as_ref()
         .map(|progress| progress.atom)
         .or_else(|| match state.pending {
-            Some(PendingEmission::ComponentRootAtom(atom)) => Some(atom),
+            Some(PendingEmission::SegmentRootAtom(atom)) => Some(atom),
             Some(PendingEmission::InlineAtom(edge) | PendingEmission::BranchAtom(edge)) => {
                 Some(edge.atom())
             }
@@ -1446,7 +1446,7 @@ fn only_component_separator<S: ConstraintSolver>(
         .into_iter()
         .filter(|choice| {
             choice.text() == "."
-                && choice.successor().pending == Some(PendingEmission::ComponentRootAtom(root))
+                && choice.successor().pending == Some(PendingEmission::SegmentRootAtom(root))
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -4660,7 +4660,7 @@ fn branch_closure_and_component_separator_have_distinct_tokens() {
     let (separator, pending_root) = only_component_separator(&boundary, atoms[3]);
     assert_eq!(
         pending_root.pending,
-        Some(PendingEmission::ComponentRootAtom(atoms[3]))
+        Some(PendingEmission::SegmentRootAtom(atoms[3]))
     );
     let (last_atom, accepted) = only_choice(&pending_root, "D");
 

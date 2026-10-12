@@ -175,6 +175,34 @@ class CompactLanguageTests(unittest.TestCase):
         source = _parse("C1CC1C2CC2")
         self.assertIsNotNone(_walk(source, "C0CC0C0CC0"))
 
+    def test_top_level_dot_segments_preserve_bonded_graphs(self) -> None:
+        # Ring labels can join atoms across top-level segments; these are
+        # semantic witnesses, not claims about RDKit writer support.
+        examples = (
+            ("CC", "C1.C1", decoding.SmilesLanguage.GENERAL),
+            ("CCC", "C1.C12.C2", decoding.SmilesLanguage.GENERAL),
+            ("CC", "C0.C0", LANGUAGE),
+            ("CCCC", "C0.C0C0.C0", LANGUAGE),
+        )
+        for source_text, candidate, language in examples:
+            with self.subTest(source=source_text, candidate=candidate, language=language):
+                source = _parse(source_text)
+                self.assertIsNotNone(_walk_language(source, candidate, language))
+                self.assertEqual(_canonical_semantics(source_text), _canonical_semantics(candidate))
+
+    def test_top_level_dot_segments_require_completed_bonds(self) -> None:
+        source = _parse("CC")
+        for language, incomplete in (
+            (decoding.SmilesLanguage.GENERAL, "C1"),
+            (LANGUAGE, "C0"),
+        ):
+            with self.subTest(language=language, incomplete=incomplete):
+                prefix = _walk_language(source, incomplete, language, complete=False)
+                self.assertIsNotNone(prefix)
+                assert prefix is not None
+                self.assertFalse(prefix.is_accepted)
+                self.assertIsNone(_walk_language(source, incomplete, language))
+
     def test_nondefault_ring_bond_uses_one_marker_at_either_endpoint(self) -> None:
         source = _parse("C1=CCC1")
         for text in ("C0=CCC0", "C0CCC=0"):

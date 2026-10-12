@@ -595,14 +595,14 @@ impl WriterFrame {
         self.ring_occurrence_count += 1;
     }
 
-    fn remove_ring_incidence(&mut self, incident: AdjacentBond) {
+    fn remove_ring_incidence(&mut self, incident: AdjacentBond, segments: bool) {
         let attachment = self
             .attachments
             .iter_mut()
             .find(|attachment| attachment.incidences.contains(&incident))
             .expect("a ring opening to an unvisited atom must belong to an active attachment");
         assert!(
-            attachment.incidences.len() > 1,
+            segments || attachment.incidences.len() > 1,
             "one traversal entry must remain for every residual attachment"
         );
         let offset = attachment
@@ -611,6 +611,9 @@ impl WriterFrame {
             .position(|candidate| *candidate == incident)
             .expect("active attachment must contain its ring incidence");
         attachment.incidences.remove(offset);
+        if attachment.incidences.is_empty() {
+            self.attachments.retain(|attachment| !attachment.incidences.is_empty());
+        }
     }
 
     fn consume_child_attachment(&mut self, incident: AdjacentBond) {
@@ -637,7 +640,7 @@ pub(crate) enum IncidentBondState {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PathCompletion {
     CloseBranch,
-    FinishComponent,
+    FinishSegment,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -646,15 +649,21 @@ pub(crate) struct TraversalState {
     residual: ResidualPartition,
     active: Option<Arc<WriterFrame>>,
     branch_returns: Option<Arc<FrameNode>>,
+    segments: bool,
 }
 
 impl TraversalState {
     pub(crate) fn new(graph: &PreparedGraph) -> Self {
+        Self::new_with_segments(graph, false)
+    }
+
+    pub(crate) fn new_with_segments(graph: &PreparedGraph, segments: bool) -> Self {
         Self {
             progress: GraphProgress::new(graph),
             residual: ResidualPartition::new(graph),
             active: None,
             branch_returns: None,
+            segments,
         }
     }
 
@@ -754,10 +763,10 @@ impl TraversalState {
         self.active.as_ref()?;
         if self.branch_returns.is_some() {
             Some(PathCompletion::CloseBranch)
-        } else if self.progress.has_open_rings() {
+        } else if self.progress.has_open_rings() && !self.segments {
             None
         } else {
-            Some(PathCompletion::FinishComponent)
+            Some(PathCompletion::FinishSegment)
         }
     }
 
@@ -777,11 +786,11 @@ impl TraversalState {
             .filter(|atom| self.residual.atom_is_unvisited(*atom))
     }
 
-    pub(crate) fn begin_component(&mut self, graph: &PreparedGraph, root: AtomId) {
+    pub(crate) fn begin_segment(&mut self, graph: &PreparedGraph, root: AtomId) {
         assert!(
             self.active.is_none()
                 && self.branch_returns.is_none()
-                && !self.progress.has_open_rings(),
+                && (self.segments || !self.progress.has_open_rings()),
             "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
@@ -878,7 +887,7 @@ impl TraversalState {
                 .as_mut()
                 .expect("ring opening requires an active frame"),
         )
-        .remove_ring_incidence(incident);
+        .remove_ring_incidence(incident, self.segments);
         self.progress.open_ring(incident.bond(), active_atom);
     }
 
@@ -926,7 +935,7 @@ impl TraversalState {
         });
         if restored.is_none() {
             assert!(
-                !self.progress.has_open_rings(),
+                self.segments || !self.progress.has_open_rings(),
                 "a component cannot end with an unpaired ring endpoint"
             );
         }
@@ -1265,7 +1274,7 @@ mod tests {
             .collect::<Vec<_>>();
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
         for index in 0..ATOM_COUNT - 1 {
             enter_inline(
                 &mut state,
@@ -1294,7 +1303,7 @@ mod tests {
             .collect::<Vec<_>>();
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
-        state.begin_component(&graph, atoms[order[0]]);
+        state.begin_segment(&graph, atoms[order[0]]);
         for (bond, pair) in bonds.into_iter().zip(order.windows(2)) {
             enter_inline(&mut state, &graph, incident(&graph, atoms[pair[0]], bond));
         }
@@ -1316,7 +1325,7 @@ mod tests {
             .collect::<Vec<_>>();
         let graph = builder.build();
         let mut source = TraversalState::new(&graph);
-        source.begin_component(&graph, atoms[0]);
+        source.begin_segment(&graph, atoms[0]);
         let mut successor = source.clone();
 
         source.progress.visited_atoms.words.reset_copy_counts();
@@ -1352,7 +1361,7 @@ mod tests {
         let graph = graph_fixture(5, &[(0, 1), (0, 2), (1, 3), (1, 4)]);
         let atoms = graph.atom_ids().collect::<Vec<_>>();
         let mut state = TraversalState::new(&graph);
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
         let root_branch = graph.neighbors(atoms[0]).unwrap()[0];
         enter_branch(&mut state, &graph, root_branch);
         let nested_branch = graph
@@ -1392,7 +1401,7 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
 
         assert_eq!(state.active_attachments().len(), 1);
         assert_eq!(
@@ -1416,7 +1425,7 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
 
         assert_eq!(state.active_attachments().len(), 3);
         for (attachment, bond) in state.active_attachments().iter().zip(bonds) {
@@ -1433,7 +1442,7 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
         enter_branch(&mut state, &graph, incident(&graph, atoms[0], branch));
         assert_eq!(state.complete_path(&graph), Some(atoms[0]));
         assert_eq!(state.active_attachments().len(), 1);
@@ -1453,7 +1462,7 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
         state.open_ring_endpoint(&graph, incident(&graph, atoms[0], left));
 
         assert_eq!(state.active_attachments().len(), 1);
@@ -1473,7 +1482,7 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        state.begin_component(&graph, atoms[0]);
+        state.begin_segment(&graph, atoms[0]);
         let opening = incident(&graph, atoms[0], ring);
         state.open_ring_endpoint(&graph, opening);
         assert_eq!(

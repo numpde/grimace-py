@@ -120,6 +120,7 @@ impl PreparedGraph {
 pub struct PreparedMolecule {
     graph: Arc<PreparedGraph>,
     constraints: Arc<ConstraintModel>,
+    topology: crate::model::TraversalTopologyRequirement,
     bond_decision_variables: Arc<[VariableId]>,
     bond_role_partitions: Arc<[EdgeRolePartition]>,
 }
@@ -172,6 +173,10 @@ impl PreparedMolecule {
 
     pub fn constraint_model(&self) -> &ConstraintModel {
         self.constraints.as_ref()
+    }
+
+    pub(crate) const fn topology(&self) -> crate::model::TraversalTopologyRequirement {
+        self.topology
     }
 
     pub(crate) fn constraint_model_arc(&self) -> Arc<ConstraintModel> {
@@ -284,7 +289,14 @@ impl PreparedConstraintAssembly {
             .expect("prepared tetrahedral layout must define a valid latent factor")
     }
 
-    pub(crate) fn finish(mut self) -> PreparedMolecule {
+    pub(crate) fn finish(self) -> PreparedMolecule {
+        self.finish_with_topology(crate::model::TraversalTopologyRequirement::Tree)
+    }
+
+    pub(crate) fn finish_with_topology(
+        mut self,
+        topology: crate::model::TraversalTopologyRequirement,
+    ) -> PreparedMolecule {
         for component in self.graph.components() {
             let edges = component.bonds().iter().map(|bond_id| {
                 let bond = self
@@ -298,13 +310,18 @@ impl PreparedConstraintAssembly {
                     self.bond_role_partitions[bond_id.index()],
                 )
             });
-            self.builder
-                .add_spanning_tree(component.atoms().iter().copied(), edges)
-                .expect("prepared components must define valid spanning-tree factors");
+            match topology {
+                crate::model::TraversalTopologyRequirement::Tree => self.builder
+                    .add_spanning_tree(component.atoms().iter().copied(), edges),
+                crate::model::TraversalTopologyRequirement::Forest => self.builder
+                    .add_spanning_forest(component.atoms().iter().copied(), edges),
+            }
+            .expect("prepared components must define valid traversal-topology factors");
         }
         PreparedMolecule {
             graph: self.graph,
             constraints: Arc::new(self.builder.build()),
+            topology,
             bond_decision_variables: Arc::from(self.bond_decision_variables),
             bond_role_partitions: Arc::from(self.bond_role_partitions),
         }

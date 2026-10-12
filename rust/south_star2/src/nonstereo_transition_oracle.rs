@@ -1910,7 +1910,7 @@ fn atom_for_spelling_choice(
                 return None;
             }
             match state.pending {
-                Some(super::PendingEmission::ComponentRootAtom(atom)) => Some(atom),
+                Some(super::PendingEmission::SegmentRootAtom(atom)) => Some(atom),
                 Some(
                     super::PendingEmission::InlineAtom(edge)
                     | super::PendingEmission::BranchAtom(edge),

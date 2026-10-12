@@ -809,3 +809,30 @@ builds Tree factors. An independent exhaustive role-projection test covers
 small cyclic and disconnected Forest graphs. The bounded Rust library suite
 reported 284 passed, 1 ignored, with verified process cleanup. This validates
 the factor's role projection, not joint writer liveness or connected-dot output.
+
+## 2026-10-12 top-level segment qualification in progress
+
+The native forest path now supports top-level connected-dot serialization for
+admitted nonaromatic, stereo-free inputs in `GENERAL` and `COMPACT`. Public
+semantic witnesses include `C1.C1` for `CC`, `C1.C12.C2` for `CCC`, and compact
+smallest-label equivalents. Nested branch dots and aromatic or stereo inputs
+remain outside this slice. A fixed-budget native diagnostic may explicitly
+report incomplete enumeration, so it is not a global exhaustive-support or
+prefix-liveness result.
+
+A candidate wheel passed the focused public compact-language file: 12 tests,
+with verified process cleanup. The compact `CO` support set grew from 2 to 4
+strings and the three-member ether ring set from 3 to 39. All enumerated
+outputs parsed back to the source graph; enumeration used at most 10,000
+prefix states and 1,000 outputs per molecule (actual 13 and 147 states).
+These fixture sets record bounded candidate-runtime support, not an
+independent exhaustive oracle. Native South Star 2 validation subsequently
+passed 287 tests with one ignored and verified cleanup. An initial candidate
+root Rust run passed 67 tests and failed 19 because that checkout lacked its
+Python `_core` extension; those failures were an environment setup result.
+After extracting only the verified candidate wheel extension into the root
+source package, the actual root `cargo test --lib --offline` passed 86 tests,
+and the root Python public smoke passed 28 tests across the compact-language
+and public-prefix integration files. Both root runs used the bounded runner
+and verified no live descendants. These finite results do not establish
+universal support or prefix liveness.

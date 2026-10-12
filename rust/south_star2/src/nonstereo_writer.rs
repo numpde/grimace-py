@@ -545,6 +545,19 @@ impl PreparedNonStereo {
         directional_relations: Vec<PreparedDirectionalRelation>,
         compact: bool,
     ) -> Result<Self, PreparedNonStereoError> {
+        Self::with_atom_tokens_and_directional_for_writer(
+            molecule, atoms, bond_tokens, directional_relations, compact, false,
+        )
+    }
+
+    pub(crate) fn with_atom_tokens_and_directional_for_writer(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+        directional_relations: Vec<PreparedDirectionalRelation>,
+        compact: bool,
+        allow_segments: bool,
+    ) -> Result<Self, PreparedNonStereoError> {
         #[cfg(test)]
         let test_atom_labels = atoms
             .iter()
@@ -660,7 +673,19 @@ impl PreparedNonStereo {
             .collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
-        let molecule = assembly.finish();
+        let segment_topology = allow_segments
+            && directional_relations.is_empty()
+            && atoms.iter().all(|atom| match atom {
+                PreparedAtom::Facts { facts, tetrahedral, .. } => {
+                    !facts.aromatic && tetrahedral.is_none()
+                }
+            })
+            && !bond_tokens.iter().any(|token| *token == NonStereoBondToken::Aromatic);
+        let molecule = if segment_topology {
+            assembly.finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
+        } else {
+            assembly.finish()
+        };
 
         Ok(Self {
             molecule,
@@ -1726,7 +1751,7 @@ impl RingLabels {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum PendingEmission {
-    ComponentRootAtom(AtomId),
+    SegmentRootAtom(AtomId),
     InlineAtom(AdjacentBond),
     BranchTraversalEmission(AdjacentBond),
     BranchAtom(AdjacentBond),
@@ -2104,7 +2129,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             .map(|frame| frame.atom);
         let active_endpoint = || active.expect("observed pending syntax requires an active atom");
         let pending = self.pending.map(|pending| match pending {
-            PendingEmission::ComponentRootAtom(root) => ObservedPending::ComponentAtom { root },
+            PendingEmission::SegmentRootAtom(root) => ObservedPending::ComponentAtom { root },
             PendingEmission::InlineAtom(incident) => ObservedPending::InlineAtom {
                 parent: active_endpoint(),
                 child: incident.atom(),
@@ -2320,7 +2345,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let mut semantic_rejection_count = 0;
         let mut attempted_choice_count = 0;
         for &candidate in batch.candidates() {
-            if candidate == StructuralCandidate::FinishComponent {
+            if candidate == StructuralCandidate::FinishSegment {
                 panic!("component completion must already be normalized");
             }
             let attempts = match candidate {
@@ -3444,8 +3469,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         match candidate {
             StructuralCandidate::Root { atom } => {
                 assert!(
-                    self.labels.is_clean(),
-                    "a connected component must start with clean ring-label spelling state"
+                    self.structural.prepared_topology()
+                        == crate::model::TraversalTopologyRequirement::Forest
+                        || self.labels.is_clean(),
+                    "a chemical component must start with clean ring-label spelling state"
                 );
                 let anchor = match self.directional_anchor_restrictions(atom, atom, None) {
                     Ok(anchor) => anchor,
@@ -3473,7 +3500,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             regime: self.regime,
                             structural,
                             labels: self.labels.clone(),
-                            pending: Some(PendingEmission::ComponentRootAtom(atom)),
+                            pending: Some(PendingEmission::SegmentRootAtom(atom)),
                         atom_spelling: None,
 },
                     )]
@@ -3753,7 +3780,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
 },
                 )]
             }
-            StructuralCandidate::FinishComponent => {
+            StructuralCandidate::FinishSegment => {
                 panic!("top-level completion is normalized without a visible token")
             }
         }
@@ -3764,7 +3791,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         pending: PendingEmission,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         match pending {
-            PendingEmission::ComponentRootAtom(atom) => {
+            PendingEmission::SegmentRootAtom(atom) => {
                 self.pending_atom_attempts(atom, None, PendingAtomEntry::AlreadyEntered, &[])
             }
             PendingEmission::InlineAtom(incident) => self.pending_atom_attempts(
@@ -4085,12 +4112,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             if batch.is_contradiction() || batch.candidates().is_empty() {
                 return SuccessorAttempt::Rejected(CandidateRejection::Contradiction);
             }
-            if batch.candidates() != [StructuralCandidate::FinishComponent] {
+            if batch.candidates() != [StructuralCandidate::FinishSegment] {
                 return SuccessorAttempt::Accepted(self);
             }
             assert!(
-                !self.labels.has_open_labels(),
-                "a component cannot finish with open visible ring labels"
+                self.structural.prepared_topology()
+                    == crate::model::TraversalTopologyRequirement::Forest
+                    || !self.labels.has_open_labels(),
+                "a chemical component cannot finish with open visible ring labels"
             );
             if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
                 return SuccessorAttempt::Invariant(failure);
@@ -4100,7 +4129,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             }
             self.structural = match self
                 .structural
-                .attempt_candidate(StructuralCandidate::FinishComponent)
+                .attempt_candidate(StructuralCandidate::FinishSegment)
             {
                 Ok(Consistency::Consistent(completed)) => completed,
                 Ok(Consistency::Contradiction) => {

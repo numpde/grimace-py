@@ -203,3 +203,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "support_growth_tests.rs"]
+mod support_growth_tests;

@@ -924,3 +924,42 @@ extension SHA256
 `da832e22ac87c41e6f163adec9736b4185c8cee92d15338161e85dc099e63036`).
 These are finite semantic witnesses, not exhaustive support or RDKit
 writer-parity evidence.
+
+## 2026-10-12 prefix work relative to visible output
+
+At HEAD `bf3c165f`, a bounded probe followed only the selected `C.C...C`
+token path for 2–7 identical disconnected methane components. In both
+`GENERAL` and `COMPACT`, seven components retained 5,040 native states at the
+single accepted text `C.C.C.C.C.C.C`; each intermediate prefix had at most two
+visible next-token choices. The retained counts after successive `C` tokens
+were 7, 42, 210, 840, 2,520, 5,040, and 5,040. These counts measure retained
+walker entries from atom-identity histories; they do not establish that all
+retained states are distinct. For this family their remaining visible
+continuations coincide under permutation of the identical components. The
+observation does not establish a general complexity or hardness bound.
+
+`TextPrefix` stores a `Vec<Walker>` and `grouped_successors` expands every
+state's choices before grouping by token text, without merging successors
+(`rust/south_star2/src/prefix.rs`). Repeated `choices()` calls recompute the
+grouping. Root and dot-root candidate generation considers each eligible
+unvisited atom (`writer_state.rs`); the selected dot commits an atom identity
+before emitting its identical text (`nonstereo_writer.rs`). Thus this chosen
+path retains factorially many internal histories while showing a constant
+number of next texts. Candidate attempts can also be rejected after solver
+work. The mixed exact solver may search unresolved core assignments; its
+topology projector does not enumerate spanning trees (`native.rs`). An
+automorphism-aware continuation quotient is a possible direction, subject to
+a proof that traversal, constraints, ring labels, pending spelling, and writer
+regime preserve the same future visible language. Simple caching would reduce
+repeated calls but leave the retained frontier growth.
+
+Reusable probe: `tmp/exploration/south_star2/004_count_identical_component_prefix_states.py`.
+It caps components at seven and asserts a 10,000-state frontier limit after
+each selection; `choices()` materializes successors before that assertion, so
+this is not a memory hard cap. Run it
+through `scripts/run_bounded_tests.py --wall-seconds 60 --rss-mib 2048
+--cpu-seconds 60 --address-space-mib 4096 -- env PYTHONPATH=python:.
+python3 tmp/exploration/south_star2/004_count_identical_component_prefix_states.py`,
+redirecting output to a temporary log. The bounded run exited zero with
+`verified_no_live_members` cleanup. It did not enumerate the language or
+measure latency.

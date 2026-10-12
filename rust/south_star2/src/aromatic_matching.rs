@@ -79,6 +79,26 @@ fn kekule_feasible(
             remaining[b] = false;
         }
     }
+    has_perfect_matching(
+        &remaining,
+        factor.edges().iter().enumerate().filter_map(|(index, edge)| {
+            edge_domain(index).contains(2).then(|| edge.endpoints())
+        }),
+    )
+}
+
+pub(crate) fn has_feasible_double_assignment(
+    double_demands: &[u8],
+    edges: &[crate::model::AromaticMatchingEdge],
+) -> bool {
+    let remaining = double_demands.iter().map(|&demand| demand == 1).collect::<Vec<_>>();
+    has_perfect_matching(&remaining, edges.iter().map(|edge| edge.endpoints()))
+}
+
+fn has_perfect_matching(
+    remaining: &[bool],
+    edges: impl Iterator<Item = (usize, usize)>,
+) -> bool {
     let mut residual_index = vec![None; remaining.len()];
     let mut count = 0;
     for (atom, &required) in remaining.iter().enumerate() {
@@ -91,13 +111,10 @@ fn kekule_feasible(
         return false;
     }
     let mut graph = vec![Vec::new(); count];
-    for (index, edge) in factor.edges().iter().enumerate() {
-        if edge_domain(index).contains(2) {
-            let (a, b) = edge.endpoints();
-            if let (Some(a), Some(b)) = (residual_index[a], residual_index[b]) {
-                graph[a].push(b);
-                graph[b].push(a);
-            }
+    for (a, b) in edges {
+        if let (Some(a), Some(b)) = (residual_index[a], residual_index[b]) {
+            graph[a].push(b);
+            graph[b].push(a);
         }
     }
     BlossomMatching::new(&graph).has_perfect_matching()

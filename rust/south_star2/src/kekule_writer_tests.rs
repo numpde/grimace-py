@@ -180,6 +180,29 @@ fn aromatic_source_bonds_and_unsupported_demands_fail_preparation() {
 }
 
 #[test]
+fn source_aromatic_component_requires_a_double_bond_assignment() {
+    let atoms = (0..5).map(|_| facts("C", true, 0, 1, Some(4))).collect();
+    let edges = (0..5).map(|i| (i, (i + 1) % 5, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    let odd_carbon_ring = graph_surface(atoms, &edges);
+    assert!(odd_carbon_ring.as_ref().unwrap_err().to_string().contains("required double bonds cannot be assigned"));
+    assert!(matches!(odd_carbon_ring, Err(PreparedNonStereoError::InfeasibleAromaticComponent { atom }) if atom == AtomId::new(0)));
+
+    let zero_demand_atoms = (0..5).map(|_| facts("O", true, 0, 0, Some(2))).collect();
+    assert!(graph_surface(zero_demand_atoms, &edges).is_ok(), "zero double demands need no matching edges");
+
+    // Abstract source facts: four demands have even parity, but three leaves
+    // all need the same center, so no assignment can satisfy the component.
+    let star_atoms = vec![
+        facts("C", true, 0, 0, Some(4)),
+        facts("C", true, 0, 2, Some(4)),
+        facts("C", true, 0, 2, Some(4)),
+        facts("C", true, 0, 2, Some(4)),
+    ];
+    let star_edges = (1..4).map(|leaf| (0, leaf, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    assert!(matches!(graph_surface(star_atoms, &star_edges), Err(PreparedNonStereoError::InfeasibleAromaticComponent { atom }) if atom == AtomId::new(0)));
+}
+
+#[test]
 fn chemical_aromatic_directional_carriers_fail_preparation_explicitly() {
     let mut graph = PreparedGraphBuilder::new();
     let ids = (0..8).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
@@ -187,7 +210,7 @@ fn chemical_aromatic_directional_carriers_fail_preparation_explicitly() {
     let double_bond = graph.add_bond(ids[0], ids[6]).unwrap();
     let right_carrier = graph.add_bond(ids[6], ids[7]).unwrap();
     let mut atoms = vec![facts("C", true, 0, 0, Some(4))];
-    atoms.extend((1..6).map(|_| facts("C", true, 0, 1, Some(4))));
+    atoms.extend((1..6).map(|index| if index == 3 { facts("N", true, 0, 1, Some(3)) } else { facts("C", true, 0, 1, Some(4)) }));
     atoms.extend([facts("C", false, 0, 1, None), facts("C", false, 0, 3, None)]);
     let mut tokens = vec![NonStereoBondToken::Aromatic; 6];
     tokens.extend([NonStereoBondToken::Double, NonStereoBondToken::Single]);

@@ -871,6 +871,9 @@ fn prepare_aromatic_matching(
             orders[bond.index()] = Some(order);
             edges.push(AromaticMatchingEdge::new(order, vertices[&edge.a()], vertices[&edge.b()]));
         }
+        if !crate::aromatic_matching::has_feasible_double_assignment(&demands, &edges) {
+            return Err(PreparedNonStereoError::InfeasibleAromaticComponent { atom: root });
+        }
         assembly.add_aromatic_matching(mode, demands, edges);
     }
     for atom in graph.atom_ids() {
@@ -1512,6 +1515,7 @@ fn test_tetrahedral_facts(has_virtual_hydrogen: bool) -> AtomFacts {
 pub(crate) enum PreparedNonStereoError {
     SourceBondMismatch { bond: BondId },
     AromaticDemand { atom: AtomId, total_valence: u32, non_graph_hydrogens: u8, fixed_bond_order_sum: u32, aromatic_degree: u32 },
+    InfeasibleAromaticComponent { atom: AtomId },
     AromaticDativeIncidence { atom: AtomId, bond: BondId },
     MissingAromaticComponent { atom: AtomId },
     UnsupportedAromaticDirectionalCarrier { bond: BondId },
@@ -1562,6 +1566,7 @@ impl fmt::Display for PreparedNonStereoError {
         match self {
             Self::SourceBondMismatch { bond } => write!(formatter, "cannot prepare aromatic bond {bond:?}: both endpoints must supply aromatic atom facts and total valence"),
             Self::AromaticDemand { atom, total_valence, non_graph_hydrogens, fixed_bond_order_sum, aromatic_degree } => write!(formatter, "cannot prepare Kekule matching for {atom:?}: total valence {total_valence} minus non-graph hydrogens {non_graph_hydrogens}, fixed bond orders {fixed_bond_order_sum}, and aromatic degree {aromatic_degree} must require zero or one incident double bond"),
+            Self::InfeasibleAromaticComponent { atom } => write!(formatter, "cannot prepare aromatic component containing {atom:?}: its required double bonds cannot be assigned to source aromatic edges without sharing an atom"),
             Self::AromaticDativeIncidence { atom, bond } => write!(formatter, "cannot prepare Kekule matching for {atom:?}: incident dative bond {bond:?} has no supported integer valence contribution"),
             Self::MissingAromaticComponent { atom } => write!(formatter, "cannot prepare aromatic atom {atom:?}: no incident source aromatic bond supplies a matching component"),
             Self::UnsupportedAromaticDirectionalCarrier { bond } => write!(formatter, "cannot prepare directional carrier {bond:?}: a chemical aromatic bond with variable Kekule order is not a supported directional role"),

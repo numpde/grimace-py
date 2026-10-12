@@ -322,6 +322,23 @@ class SouthStar2PreparationTests(unittest.TestCase):
         self.assertFalse(mol.NeedsUpdatePropertyCache())
         self.assertTrue(prepare_molecule(mol).atoms[0].aromatic)
 
+    def test_writer_rejects_manually_flagged_aromatic_component_without_valence_assignment(self) -> None:
+        mol = Chem.MolFromSmiles("C1CCCC1")
+        assert mol is not None
+        for atom in mol.GetAtoms():
+            atom.SetIsAromatic(True)
+            atom.SetNoImplicit(True)
+            atom.SetNumExplicitHs(1)
+        for bond in mol.GetBonds():
+            bond.SetIsAromatic(True)
+            bond.SetBondType(Chem.BondType.AROMATIC)
+        mol.UpdatePropertyCache(strict=False)
+
+        prepared = prepare_molecule(mol)
+        self.assertEqual({atom.aromatic_total_valence for atom in prepared.atoms}, {4})
+        with self.assertRaisesRegex(ValueError, "Cannot prepare the writer:.*required double bonds cannot be assigned"):
+            prepared.build_writer()
+
     def test_rejects_radicals_and_unsupported_atom_stereo(self) -> None:
         radical = Chem.MolFromSmiles("[CH3]")
         assert radical is not None

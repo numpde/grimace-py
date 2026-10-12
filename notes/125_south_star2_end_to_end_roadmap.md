@@ -724,6 +724,28 @@ with global residual feasibility. There is no runtime assignment catalog,
 RDKit writer/Kekulize call, or new public `kekuleSmiles` option. This component
 contract does not cover all mixed lowercase/uppercase valid SMILES.
 
+A later preparation invariant requires every admitted source-aromatic component
+to have at least one assignment of its 0/1 double demands to its source
+aromatic edges. Source lowercase spelling still emits aromatic bonds without
+choosing a particular integer assignment, but the component must have a
+latent assignment consistent with its fixed nonaromatic bond orders and
+non-graph hydrogens. Otherwise Source spelling could admit a ring whose atom
+valences cannot be satisfied, such as five neutral aromatic carbons each with
+one hydrogen and total valence four. A component with all zero demands needs
+no selected double edges. This is an integer-valence consistency check for
+the currently modeled aromatic facts; it does not establish aromaticity or
+broader mixed-representation support.
+
+Qualification after integration at `57778418`: the focused native aromatic
+suite passed 12 tests, and the full South Star 2 Rust suite passed 297 with
+one ignored before the final even-demand assertion, which passed in the
+focused suite. Root Rust passed 86 tests. The six selected public Python
+modules passed 78 tests against the freshly compiled local `_core` extension
+(SHA-256 `e754167e0103002c1a7ee6c6c8d0e7e860621c5de1b619a324528a6efe3922ca`).
+The two integrated root runners verified process-tree cleanup; logs are
+`/tmp/grimace-aromatic-feasibility-root-integrated-rust.log` and
+`/tmp/grimace-aromatic-feasibility-root-integrated-python.log`.
+
 Preparation transports cached source total valence and normalizes flagged
 aromatic single/double bonds after caller Kekulization with flags retained;
 contradictory flags, endpoints, or marks fail. Qualification resolved source

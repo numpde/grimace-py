@@ -963,3 +963,68 @@ python3 tmp/exploration/south_star2/004_count_identical_component_prefix_states.
 redirecting output to a temporary log. The bounded run exited zero with
 `verified_no_live_members` cleanup. It did not enumerate the language or
 measure latency.
+
+### Distinct labeled paths: native work audit at `7d4d5a26`
+
+The factorial methane example above groups different atom-identity histories
+under one token text. If atoms are labeled and each distinct traversal is an
+output path, those permutations are legitimate work. Its 5,040-state frontier
+therefore does **not** establish redundant work under this cost model. A
+comparison must hold a labeled path fixed and count internal work that does
+not produce or prove a distinct labeled continuation.
+
+Preparation does not eagerly form a product of tetrahedral choices across
+centers. Each center has one 24-value ligand-order domain and one 8- or
+16-value bond-role-pattern domain, with a root layout factor and one factor
+per possible entry bond (`tetrahedral.rs:6,31-33,61-64,66-107`;
+`nonstereo_writer.rs:935-985`). At atom entry, the writer tries parity and
+available aromatic modes, restricts those domains, and activates the chosen
+layout (`nonstereo_writer.rs:2973-3005`). These are compact local constraints;
+the 24 permutations are distinct labeled local ligand orders when emitted.
+
+An isolated copy of HEAD `7d4d5a26` ran the existing ignored native
+work-count probe at one fixed labeled root/transition and at an unresolved
+triangle prefix. The triangle produced two choices. Its first-edge, atom, and
+second-edge topology counters each recorded 12 visits for the three-atom
+graph, 36 for a connected nine-atom tail, and 52 for a connected 13-atom
+tail with a distant inactive tetrahedral center. The last case also checked
+eight potential layout factors.
+All these cases reported zero mixed exact runs and zero mixed branch points.
+The adjacent-center transition activated the second center and narrowed its
+order/pattern domains from 24/8 values to singletons through two local layout
+factor revisions and 16 potential-layout checks, again with zero mixed exact
+runs. A forced-cycle candidate returned no successor after three first-edge
+visits. Those visits were work incurred while rejecting that candidate; the
+lack of a successor does not show whether the work can be avoided. The counts
+show input-size dependent projector scans on this fixed path, not a factorial
+or redundant same-path computation bound.
+
+The probe's first run failed at its existing expectation that the adjacent
+center choice text was `[C@H]`; the actual next grammar token was `[`. In the
+isolated copy only, that assertion was changed to accept the observed `[` so
+the work-count record could be read. The second run passed one ignored test
+with verified process cleanup. The failed and corrected run logs are
+`/tmp/grimace-complexity-probe.log` and
+`/tmp/grimace-complexity-probe2.log`; the failed run also reported verified
+cleanup. No repository runtime or test file was changed.
+The corrected probe is diagnostic evidence, not a passing test of the
+repository's unchanged assertion. To reproduce, archive HEAD into an isolated
+directory, change only the probe assertion at
+`nonstereo_writer_tests.rs:7588` to accept `[` as the observed choice text,
+and run there:
+
+```sh
+python3 scripts/run_bounded_tests.py --wall-seconds 300 --rss-mib 4096 --cpu-seconds 300 --address-space-mib 8192 -- cargo test --offline -p grimace-south-star2 native_work_count_probe_fixed_interior_prefix -- --ignored --nocapture
+```
+
+Mixed exact search remains a source-level risk, not an observed blowup on
+these paths. It branches over unresolved core variables, propagates each
+value, and stops only when every projected domain value has a witness
+(`native.rs:465-585`). A late witness could require many earlier assignments;
+the saturation check does not give a polynomial bound. The fast-exit
+conditions at `native.rs:500-505` kept these measured cases out of DFS. The
+next discriminating step is to derive a bound for reachable mixed cores under
+writer-generated constraints, or construct a connected asymmetric labeled
+graph whose fixed native prefix reaches a growing mixed core and count nodes,
+leaves, and saturation point under a hard cap. A generic
+solver model or whole-support timing would not establish that reachability.

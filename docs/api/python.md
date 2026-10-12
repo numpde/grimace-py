@@ -29,7 +29,7 @@ Current top-level exports:
 
 ## Additive South Star prefix API
 
-The source tree also provides `grimace.decoding.start(mol, *, style=None)`. This is an
+The source tree also provides `grimace.decoding.start(mol, *, language=SmilesLanguage.GENERAL)`. This is an
 unreleased repository interface; current published `grimace-py` distributions
 do not provide it. To try the checkout, install the repository's declared
 dependencies and build the local package in the same environment:
@@ -42,7 +42,7 @@ python3 -m pip install .
 ```python
 from rdkit import Chem
 
-from grimace.decoding import start
+from grimace.decoding import SmilesLanguage, start
 
 mol = Chem.MolFromSmiles("CCO")
 assert mol is not None
@@ -61,17 +61,27 @@ nonaccepted state without a successor raises an error from the native writer.
 The molecule is prepared once by Python, and subsequent choices use the owned
 Rust prefix state without RDKit or the older support enumerators.
 
-With `style=None`, the prefix explores the implemented OpenSMILES atom-spelling
-subset. `style="rdkit_random_noncanonical"` applies the native writer
-convention's supported restrictions to the same spelling state. The latter is
-qualified by version-keyed fixtures for represented molecules and facts; it
-does not certify the installed RDKit serializer or arbitrary chemistry.
+Pass a `SmilesLanguage` enum member; strings and `None` are rejected. The former
+`style` keyword is removed. The supported members are `GENERAL`, `COMPACT`, and
+`RDKIT_RANDOM_NONCANONICAL`; the default is `SmilesLanguage.GENERAL`.
+
+With `language=SmilesLanguage.GENERAL`, the prefix explores the implemented OpenSMILES atom-spelling
+subset. `language=SmilesLanguage.COMPACT` keeps its traversal, stereo, aromatic,
+and whole-component Kekule choices while using compact spelling: bare atoms
+when source facts permit, unpadded numeric fields, omitted default H and charge
+fields, preserved isotope and atom-map metadata, and the smallest available
+ring number from 0 through 99. Compact does not mean canonical or globally
+shortest SMILES. `language=SmilesLanguage.RDKIT_RANDOM_NONCANONICAL`
+applies the native writer convention's supported restrictions to the same
+spelling state. The latter is qualified by version-keyed fixtures for
+represented molecules and facts; it does not certify the installed RDKit
+serializer or arbitrary chemistry.
 Strict version-keyed parity runners fail when a required fixture set is absent
 for the installed version. Leading-zero numeric fields make the default
 language unbounded, so exhaustive finite writer-support walks select the named
-style.
+language.
 
-With `style=None`, supported aromatic inputs also offer aromatic and Kekule
+With `language=SmilesLanguage.GENERAL`, supported aromatic inputs also offer aromatic and Kekule
 spellings, with all source-valence-preserving single/double bond assignments.
 Each connected aromatic-bond component chooses one representation; separate
 components can choose independently. This does not cover every valid mixture
@@ -80,10 +90,10 @@ hydrogens, charge, isotope, atom class, connectivity, and supported stereo are
 preserved. No `kekuleSmiles` option or runtime RDKit Kekulization is needed.
 Inputs already Kekulized with aromatic flags retained are normalized during
 preparation; contradictory aromatic facts are rejected. The optional
-`rdkit_random_noncanonical` style still rejects aromatic inputs: these Kekule
+`SmilesLanguage.RDKIT_RANDOM_NONCANONICAL` language still rejects aromatic inputs: these Kekule
 checks establish semantic preservation, not exact RDKit writer parity.
 
-The currently qualified RDKit-style corpus covers neutral, nonaromatic carbon
+The currently qualified RDKit language corpus covers neutral, nonaromatic carbon
 and oxygen atoms with implicit valence hydrogens; nonaromatic single and double
 bonds; degree-three tetrahedral carbon centers with one non-graph hydrogen; and
 configured E/Z double bonds with one adjacent nonaromatic single-bond reference

@@ -65,7 +65,7 @@ def _collect_outputs(prefix: object, text: str = "") -> set[str]:
 
 
 def _rdkit_prefix(decoding: object, mol: Chem.Mol):
-    return decoding.start(mol, style="rdkit_random_noncanonical")
+    return decoding.start(mol, language=decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL)
 
 
 def _immediate_signature(prefix: object) -> tuple[bool, tuple[str, ...]]:
@@ -287,7 +287,7 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
     def test_additive_api_has_only_the_selected_prefix_surface(self) -> None:
         from grimace import decoding
 
-        self.assertEqual(tuple(inspect.signature(decoding.start).parameters), ("mol", "style"))
+        self.assertEqual(tuple(inspect.signature(decoding.start).parameters), ("mol", "language"))
         self.assertFalse(hasattr(grimace, "Prefix"))
         self.assertFalse(hasattr(grimace, "start"))
         mol = Chem.MolFromSmiles("C")
@@ -296,6 +296,41 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
         prefix = _rdkit_prefix(decoding, mol)
         for name in ("advance", "select_text", "frontier_size", "count", "enumerate"):
             self.assertFalse(hasattr(prefix, name), name)
+
+    def test_language_requires_enum_members_and_rejects_removed_style(self) -> None:
+        from grimace import decoding
+
+        mol = Chem.MolFromSmiles("C")
+        assert mol is not None
+        for value in (None, "general", "rdkit_random_noncanonical", 0):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(TypeError, "language must be a SmilesLanguage member"):
+                    decoding.start(mol, language=value)
+        with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'style'"):
+            decoding.start(mol, style="rdkit_random_noncanonical")
+
+    def test_explicit_general_matches_default_and_rdkit_restricts_spellings(self) -> None:
+        from grimace import decoding
+
+        mol = Chem.MolFromSmiles("C")
+        assert mol is not None
+        general = decoding.start(mol, language=decoding.SmilesLanguage.GENERAL)
+        self.assertEqual(_immediate_signature(decoding.start(mol)), _immediate_signature(general))
+        self.assertEqual(("[", "C"), _immediate_signature(general)[1])
+        rdkit = decoding.start(mol, language=decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL)
+        self.assertEqual(("C",), _immediate_signature(rdkit)[1])
+        self.assertEqual("general", decoding.SmilesLanguage.GENERAL.value)
+        self.assertEqual("compact", decoding.SmilesLanguage.COMPACT.value)
+        self.assertEqual("rdkit_random_noncanonical", decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL.value)
+        self.assertNotIsInstance(decoding.SmilesLanguage.GENERAL, str)
+
+    def test_compact_uses_compact_native_atom_spelling(self) -> None:
+        from grimace import decoding
+
+        mol = Chem.MolFromSmiles("C")
+        assert mol is not None
+        compact = decoding.start(mol, language=decoding.SmilesLanguage.COMPACT)
+        self.assertEqual(("C",), _immediate_signature(compact)[1])
 
     def test_import_and_existing_api_remain_available(self) -> None:
         from grimace import decoding
@@ -377,7 +412,7 @@ class PublicPrefixSemanticTests(unittest.TestCase):
         # independently permits the single-digit or percent-prefixed alias.
         for target in ("C0CC%00", "C1CC%01", "C%01CC1", "C%99CC%99"):
             with self.subTest(target=target):
-                prefix = decoding.start(source, style=None)
+                prefix = decoding.start(source, language=decoding.SmilesLanguage.GENERAL)
                 text = ""
                 while text != target:
                     self.assertFalse(prefix.is_accepted, text)

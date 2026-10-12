@@ -1,0 +1,14 @@
+{
+  "source": {
+    "name": "OpenSMILES compact spelling rules",
+    "url": "https://opensmiles.org/opensmiles.html",
+    "version": "1.0",
+    "date": "2016-05-15"
+  },
+  "scope": "Compact policy examples derived from the public language rules and graph facts; these are semantic examples, not RDKit writer support claims.",
+  "cases": [
+    {"id": "one_carbon", "source_smiles": "C", "expected_outputs": ["C"]},
+    {"id": "carbon_oxygen", "source_smiles": "CO", "expected_outputs": ["CO", "OC"]},
+    {"id": "three_member_ether_ring", "source_smiles": "C1CO1", "expected_outputs": ["C0CO0", "C0OC0", "O0CC0"]}
+  ]
+}

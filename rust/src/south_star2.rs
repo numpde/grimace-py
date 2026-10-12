@@ -32,10 +32,11 @@ impl PySouthStar2PreparedWriter {
             "generic_input_order" => WriterRegime::Generic {
                 component_order: ComponentOrder::InputOrder,
             },
+            "generic_compact" => WriterRegime::GenericCompact,
             "rdkit_random_noncanonical" => WriterRegime::RdkitRandomNoncanonical,
             _ => {
                 return Err(PyValueError::new_err(
-                    "writer_regime must be 'generic_any_order', 'generic_input_order', or 'rdkit_random_noncanonical'",
+                    "writer_regime must be 'generic_any_order', 'generic_input_order', 'generic_compact', or 'rdkit_random_noncanonical'",
                 ));
             }
         };

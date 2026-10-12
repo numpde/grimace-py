@@ -27,6 +27,7 @@ pub enum ComponentOrder {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum WriterRegime {
     Generic { component_order: ComponentOrder },
+    GenericCompact,
     RdkitRandomNoncanonical,
 }
 
@@ -34,6 +35,7 @@ impl WriterRegime {
     pub(crate) const fn component_order(self) -> ComponentOrder {
         match self {
             Self::Generic { component_order } => component_order,
+            Self::GenericCompact => ComponentOrder::AnyOrder,
             Self::RdkitRandomNoncanonical => ComponentOrder::InputOrder,
         }
     }
@@ -54,11 +56,12 @@ impl PreparedWriter {
         regime: WriterRegime,
     ) -> Result<Self, WalkerFailure> {
         let has_directional_relations = !directional.is_empty();
-        let surface = PreparedNonStereo::with_atom_tokens_and_directional(
+        let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_regime(
             PreparedMolecule::new(graph),
             atoms,
             bonds,
             directional.clone(),
+            regime == WriterRegime::GenericCompact,
         )
         .map_err(|error| WalkerFailure(FailureCause::Preparation(error)))?;
         if matches!(regime, WriterRegime::RdkitRandomNoncanonical) && has_directional_relations {

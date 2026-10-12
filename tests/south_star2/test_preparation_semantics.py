@@ -19,7 +19,7 @@ PINNED_STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evide
 def _accepted_strings(mol: Chem.Mol) -> set[str]:
     """Collect finite RDKit writer support for pinned parity and witness checks."""
     return _collect_writer_strings(
-        prepare_molecule(mol).build_writer(style="rdkit_random_noncanonical")
+        prepare_molecule(mol).build_writer(writer_regime="rdkit_random_noncanonical")
     )
 
 
@@ -74,7 +74,7 @@ def _generic_witness_prefix(text: str) -> bool:
 
 def _accepted_generic_witness_strings(mol: Chem.Mol) -> set[str]:
     return _collect_writer_strings(
-        prepare_molecule(mol).build_writer(style=None),
+        prepare_molecule(mol).build_writer(writer_regime="generic_any_order"),
         finite_generic_witness=True,
     )
 
@@ -98,10 +98,10 @@ def _collect_writer_strings(writer, *, finite_generic_witness: bool = False) -> 
 
 
 def _prefix_strings(
-    mol: Chem.Mol, *, style: str | None
+    mol: Chem.Mol, *, writer_regime: str
 ) -> tuple[list[str], list[str]]:
     """Collect writer parity, or the declared finite Generic lexical witness."""
-    prefix = prepare_molecule(mol).build_writer(style=style).initial_prefix()
+    prefix = prepare_molecule(mol).build_writer(writer_regime=writer_regime).initial_prefix()
     pending = [(prefix, "")]
     accepted: list[str] = []
     dead: list[str] = []
@@ -114,7 +114,7 @@ def _prefix_strings(
             dead.append(text)
         pending.extend(
             (successor, text + token) for token, successor in choices
-            if style is not None or _generic_witness_prefix(text + token)
+            if writer_regime == "rdkit_random_noncanonical" or _generic_witness_prefix(text + token)
         )
     return accepted, dead
 
@@ -199,7 +199,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
                 fixture_path=mixed.fixture_path, case_id=mixed.case_id,
             )
         )
-        mixed_actual, mixed_dead = _prefix_strings(mixed_source, style="rdkit_random_noncanonical")
+        mixed_actual, mixed_dead = _prefix_strings(mixed_source, writer_regime="rdkit_random_noncanonical")
         self.assertEqual(set(mixed_actual), mixed_expected)
         self.assertEqual(len(mixed_actual), len(mixed_expected))
         self.assertFalse(mixed_dead)
@@ -209,7 +209,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
         self.assertIsNotNone(e_source)
         assert e_source is not None
         e_expected = {row["rendered_smiles"] for row in e_case.raw["source_schedule_rows"]}
-        e_actual, e_dead = _prefix_strings(e_source, style="rdkit_random_noncanonical")
+        e_actual, e_dead = _prefix_strings(e_source, writer_regime="rdkit_random_noncanonical")
         self.assertEqual(set(e_actual), e_expected)
         self.assertEqual(len(e_actual), len(e_expected))
         self.assertFalse(e_dead)
@@ -219,7 +219,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
         self.assertIsNotNone(z_source)
         assert z_source is not None
         z_expected = {row["rendered_smiles"] for row in z_case.raw["source_schedule_rows"]}
-        z_actual, z_dead = _prefix_strings(z_source, style="rdkit_random_noncanonical")
+        z_actual, z_dead = _prefix_strings(z_source, writer_regime="rdkit_random_noncanonical")
         self.assertEqual(set(z_actual), z_expected)
         self.assertEqual(len(z_actual), len(z_expected))
         self.assertFalse(z_dead)
@@ -355,7 +355,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                     and bond.GetStereo() != Chem.BondStereo.STEREONONE
                 ]
                 self.assertEqual(len(prepared.directional), len(configured))
-                outputs, dead = _prefix_strings(source, style=None)
+                outputs, dead = _prefix_strings(source, writer_regime="generic_any_order")
                 self.assertTrue(outputs)
                 self.assertFalse(dead)
                 for output in outputs:

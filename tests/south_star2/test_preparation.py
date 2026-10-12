@@ -346,14 +346,14 @@ class SouthStar2PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "query bond"):
             prepare_molecule(query_bond)
 
-    def test_styled_writer_rejects_new_unqualified_chemistry(self) -> None:
+    def test_rdkit_writer_rejects_new_unqualified_chemistry(self) -> None:
         for smiles in ("N", "c1ccccc1", "[13CH4]", "[CH3:7]C", "C#N", "C#C"):
             with self.subTest(smiles=smiles):
                 mol = Chem.MolFromSmiles(smiles)
                 assert mol is not None
                 prepared = prepare_molecule(mol)
                 with self.assertRaisesRegex(ValueError, "only qualified|not qualified"):
-                    prepared.build_writer(style="rdkit_random_noncanonical")
+                    prepared.build_writer(writer_regime="rdkit_random_noncanonical")
 
     def test_explicit_zero_atom_class_is_preserved_as_source_context(self) -> None:
         mol = Chem.MolFromSmiles("C")
@@ -368,7 +368,7 @@ class SouthStar2PreparationTests(unittest.TestCase):
         ))
         self.assertEqual((True,), prepared.source_atom_class_property_present)
         with self.assertRaisesRegex(ValueError, "only qualified"):
-            prepared.build_writer(style="rdkit_random_noncanonical")
+            prepared.build_writer(writer_regime="rdkit_random_noncanonical")
 
         core = ModuleType("grimace._core")
         core._SouthStar2PreparedWriter = lambda *args: args  # type: ignore[attr-defined]

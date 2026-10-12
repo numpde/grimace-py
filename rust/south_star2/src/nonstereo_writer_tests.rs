@@ -1595,6 +1595,55 @@ fn initial(surface: &PreparedNonStereo) -> State {
     State::initial(surface).unwrap().unwrap_consistent()
 }
 
+#[test]
+fn compact_connected_rings_reuse_label_after_closure() {
+    let (surface, _, _) = fixture(
+        &["C"; 6],
+        &[
+            (0, 1, NonStereoBondToken::Elided),
+            (1, 2, NonStereoBondToken::Elided),
+            (2, 0, NonStereoBondToken::Elided),
+            (2, 3, NonStereoBondToken::Elided),
+            (3, 4, NonStereoBondToken::Elided),
+            (4, 5, NonStereoBondToken::Elided),
+            (5, 3, NonStereoBondToken::Elided),
+        ],
+    );
+    let state = State::initial_with_regime(&surface, WriterRegime::GenericCompact)
+        .unwrap()
+        .unwrap_consistent();
+    let witness = "C0CC0C0CC0";
+    let mut pending = vec![(state, 0_usize)];
+    let mut released = false;
+    let mut reopened = false;
+    let mut accepted = false;
+    let mut explored = 0_usize;
+    while let Some((state, offset)) = pending.pop() {
+        explored += 1;
+        assert!(explored <= 500, "compact ring witness search exceeded its bound");
+        if offset == 5 && state.labels.is_clean() {
+            released = true;
+        }
+        if offset == 7 && state.labels.bonds_by_slot.contains_key(&RingLabelSlot(0)) {
+            reopened = true;
+        }
+        if offset == witness.len() {
+            accepted |= state.is_accepted();
+            continue;
+        }
+        for choice in state.choices().expect("compact ring choices are available") {
+            let text = choice.text();
+            if !text.is_empty() && witness[offset..].starts_with(text) {
+                let next_offset = offset + text.len();
+                pending.push((choice.into_successor(), next_offset));
+            }
+        }
+    }
+    assert!(released, "first ring must release label zero");
+    assert!(reopened, "second ring must reuse label zero");
+    assert!(accepted, "connected ring witness must complete");
+}
+
 /// Walk structural paths through the finite atom spellings declared by tests.
 /// This bounds test traversal; it does not count the complete atom language.
 fn reachable_terminal_states<S: ConstraintSolver>(

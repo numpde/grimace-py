@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
-use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingState, ElementSymbol, TetrahedralMarker};
+use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingPolicy, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
@@ -91,6 +91,12 @@ impl BondRepresentation {
                 .union(Self::Ring11.singleton_domain()),
         }
     }
+}
+
+fn compact_explicit_domain() -> Domain {
+    BondRepresentation::Traversal.singleton_domain()
+        .union(BondRepresentation::Ring10.singleton_domain())
+        .union(BondRepresentation::Ring01.singleton_domain())
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -529,6 +535,16 @@ impl PreparedNonStereo {
         bond_tokens: Vec<NonStereoBondToken>,
         directional_relations: Vec<PreparedDirectionalRelation>,
     ) -> Result<Self, PreparedNonStereoError> {
+        Self::with_atom_tokens_and_directional_for_regime(molecule, atoms, bond_tokens, directional_relations, false)
+    }
+
+    pub(crate) fn with_atom_tokens_and_directional_for_regime(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+        directional_relations: Vec<PreparedDirectionalRelation>,
+        compact: bool,
+    ) -> Result<Self, PreparedNonStereoError> {
         #[cfg(test)]
         let test_atom_labels = atoms
             .iter()
@@ -569,6 +585,8 @@ impl PreparedNonStereo {
                     BondRole::role_domain()
                 } else {
                     if bond_tokens[bond.index()] == NonStereoBondToken::Aromatic && chemical_aromatic_bonds.contains(&bond) {
+                        BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
+                    } else if compact && matches!(bond_tokens[bond.index()], NonStereoBondToken::Single | NonStereoBondToken::Elided) {
                         BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
                     } else {
                         bond_tokens[bond.index()].representation_domain()
@@ -2419,7 +2437,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let available = self.available_ring_label_options();
             if available.is_empty() {
                 let first = match self.regime {
-                    WriterRegime::Generic { .. } => 0,
+                    WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
                     WriterRegime::RdkitRandomNoncanonical => 1,
                 };
                 attempts.push(self.ring_label_exhaustion_attempt(
@@ -2504,6 +2522,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         .map(move |text| (slot, text))
                 })
                 .collect(),
+            WriterRegime::GenericCompact => {
+                let slot = self.labels.next_available_from(0);
+                if slot.index() <= maximum {
+                    vec![(slot, ring_label_number_text(slot.index()))]
+                } else {
+                    Vec::new()
+                }
+            }
             WriterRegime::RdkitRandomNoncanonical => {
                 let slot = self.labels.next_available_from(1);
                 if slot.index() <= maximum {
@@ -2521,6 +2547,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
         match self.regime {
             WriterRegime::Generic { .. } => ring_label_spellings(slot.index()),
+            WriterRegime::GenericCompact => vec![ring_label_number_text(slot.index())],
             WriterRegime::RdkitRandomNoncanonical => {
                 vec![ring_label_number_text(slot.index())]
             }
@@ -2652,7 +2679,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let available = self.available_ring_label_options();
             if available.is_empty() {
                 let first = match self.regime {
-                    WriterRegime::Generic { .. } => 0,
+                    WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
                     WriterRegime::RdkitRandomNoncanonical => 1,
                 };
                 attempts.push(self.ring_label_exhaustion_attempt(
@@ -2935,7 +2962,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let center = self.surface.tetrahedral_center(atom);
         let parities = if center.is_some() { TetrahedralParity::ALL.into_iter().map(Some).collect::<Vec<_>>() } else { vec![None] };
         let mode_variable = self.surface.atom_aromatic_modes[atom.index()];
-        let modes = mode_variable.map(|variable| self.structural.semantic_domain(variable).iter().filter(|mode| *mode == 0 || matches!(self.regime, WriterRegime::Generic { .. })).collect::<Vec<_>>()).unwrap_or_else(|| vec![0]);
+        let modes = mode_variable.map(|variable| self.structural.semantic_domain(variable).iter().filter(|mode| *mode == 0 || matches!(self.regime, WriterRegime::Generic { .. } | WriterRegime::GenericCompact)).collect::<Vec<_>>()).unwrap_or_else(|| vec![0]);
         let mut specs = Vec::new();
         for parity in parities {
             for mode in &modes {
@@ -2952,7 +2979,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     restrictions.push((center.role_pattern_variable, self.local_role_pattern_domain(center, context)));
                     activate.push(center.layout_factor(entry_bond));
                 }
-                specs.push((AtomSpellingStart::Grammar { atom, state: AtomSpellingState::initial(facts, spelling_context) }, restrictions, activate));
+                let source_context = self.surface.atom_source_context(atom);
+                let policy = if self.regime == WriterRegime::GenericCompact { AtomSpellingPolicy::Compact } else { AtomSpellingPolicy::General };
+                specs.push((AtomSpellingStart::Grammar { atom, state: AtomSpellingState::initial_with_policy(facts, spelling_context, policy, source_context.atom_class_property_present) }, restrictions, activate));
             }
         }
         specs
@@ -3019,6 +3048,31 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     }
 
     fn chemical_bond_specs(&self, bond: BondId, from: AtomId) -> Vec<(u8, &'static str, Option<(VariableId, Domain)>, Domain)> {
+        if self.regime == WriterRegime::GenericCompact {
+            let graph = self.surface.molecule().graph();
+            let other = graph.bond(bond).unwrap().other(from).unwrap();
+            if let Some(variable) = self.surface.bond_chemical_orders[bond.index()] {
+                return self.structural.semantic_domain(variable).iter().map(|order| {
+                    let implicit = order == 1 || (order == 0 && self.compact_emitted_aromatic(from, None) && self.compact_emitted_aromatic(other, None));
+                    let text = match order { 0 if !implicit => ":", 0 | 1 if implicit => "", 1 => "-", 2 => "=", _ => unreachable!() };
+                    (order, text, Some((variable, Domain::singleton(order).unwrap())),
+                        if implicit { BondRepresentation::elided_domain() } else { compact_explicit_domain() })
+                }).collect();
+            }
+            let token = self.surface.bond_tokens[bond.index()];
+            if matches!(token, NonStereoBondToken::Elided | NonStereoBondToken::Single) {
+                let from_aromatic = self.compact_emitted_aromatic(from, None);
+                let other_mode = self.surface.atom_aromatic_modes[other.index()];
+                let other_modes = other_mode.map(|variable| self.structural.semantic_domain(variable).iter().collect::<Vec<_>>()).unwrap_or_else(|| vec![0]);
+                return other_modes.into_iter().map(|mode| {
+                    let other_aromatic = self.compact_emitted_aromatic(other, Some(mode));
+                    let explicit = from_aromatic && other_aromatic;
+                    (0, if explicit { "-" } else { "" }, other_mode.map(|variable| (variable, Domain::singleton(mode).unwrap())),
+                        if explicit { compact_explicit_domain() } else { BondRepresentation::elided_domain() })
+                }).collect();
+            }
+            return vec![(0, self.surface.bond_text(bond, from), None, compact_explicit_domain())];
+        }
         let Some(variable) = self.surface.bond_chemical_orders[bond.index()] else {
             return vec![(0, self.surface.bond_text(bond, from), None, self.surface.bond_tokens[bond.index()].representation_domain())];
         };
@@ -3027,6 +3081,19 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let placements = if order == 2 { BondRepresentation::explicit_domain() } else { BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain()) };
             (order, text, Some((variable, Domain::singleton(order).unwrap())), placements)
         }).collect()
+    }
+
+    fn compact_emitted_aromatic(&self, atom: AtomId, mode: Option<u8>) -> bool {
+        let facts = self.surface.atom_facts(atom);
+        if !facts.aromatic || facts.element.as_str() == "*" { return false; }
+        match self.surface.atom_aromatic_modes[atom.index()] {
+            Some(variable) => mode.unwrap_or_else(|| {
+                let domain = self.structural.semantic_domain(variable);
+                assert!(domain.is_singleton(), "emitted atom mode must be selected before its bond");
+                domain.iter().next().unwrap()
+            }) == 0,
+            None => false,
+        }
     }
 
     fn ring_emission_specs(&self, bond: BondId, from: AtomId) -> Vec<(RingEndpointSpelling, &'static str, Option<(VariableId, Domain)>, Domain)> {
@@ -3051,7 +3118,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 let mut emissions = Vec::new();
                 for (order, text, semantic_restriction, _) in self.chemical_bond_specs(bond, from) {
                     emissions.push(TraversalEmissionSpec { text, semantic_restriction });
-                    if semantic_restriction.is_some() && order != 2 { emissions.push(TraversalEmissionSpec { text: "", semantic_restriction }); }
+                    if self.regime != WriterRegime::GenericCompact && semantic_restriction.is_some() && order != 2 { emissions.push(TraversalEmissionSpec { text: "", semantic_restriction }); }
                 }
                 Ok(emissions)
             },

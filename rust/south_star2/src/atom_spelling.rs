@@ -254,12 +254,22 @@ pub enum AtomSpellingField {
     CloseBracket,
 }
 
+/// Native atom spelling policy selected independently of traversal constraints.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AtomSpellingPolicy {
+    #[default]
+    General,
+    Compact,
+}
+
 /// Incremental spelling language for one fixed `AtomFacts` and selected context.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AtomSpellingState {
     facts: AtomFacts,
     context: AtomSpellingContext,
     phase: Phase,
+    policy: AtomSpellingPolicy,
+    atom_class_present: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -307,10 +317,22 @@ enum NumberKind {
 
 impl AtomSpellingState {
     pub fn initial(facts: AtomFacts, context: AtomSpellingContext) -> Self {
+        Self::initial_with_policy(facts, context, AtomSpellingPolicy::General, false)
+    }
+
+    /// Source map-property presence distinguishes absent class zero from `:0`.
+    pub fn initial_with_policy(
+        facts: AtomFacts,
+        context: AtomSpellingContext,
+        policy: AtomSpellingPolicy,
+        atom_class_present: bool,
+    ) -> Self {
         Self {
             facts,
             context,
             phase: Phase::Start,
+            policy,
+            atom_class_present,
         }
     }
 
@@ -326,46 +348,42 @@ impl AtomSpellingState {
         let mut choices = Vec::new();
         macro_rules! push {
             ($field:expr, $text:expr, $phase:expr $(,)?) => {
-                push_choice(
-                    &mut choices,
-                    self.facts,
-                    self.context,
-                    $field,
-                    $text,
-                    $phase,
-                )
+                push_choice(&mut choices, self, $field, $text, $phase)
             };
         }
         match &self.phase {
             Phase::Start => {
-                push!(AtomSpellingField::OpenBracket, '[', Phase::AfterOpen);
-                if let Some(bare) = self.facts.bare_spelling(self.context) {
+                let bare = self.facts.bare_spelling(self.context);
+                if self.policy == AtomSpellingPolicy::General
+                    || self.atom_class_present
+                    || bare.is_none()
+                {
+                    push!(AtomSpellingField::OpenBracket, '[', Phase::AfterOpen);
+                }
+                if let Some(bare) = bare.filter(|_| {
+                    self.policy == AtomSpellingPolicy::General || !self.atom_class_present
+                }) {
                     push_text_first(
                         bare,
                         false,
                         Phase::Complete,
                         AtomSpellingField::BareElement,
-                        self.facts,
-                        self.context,
+                        self,
                         &mut choices,
                     );
                 }
             }
             Phase::AfterOpen => {
                 if let Some(isotope) = self.facts.isotope {
-                    push_number_start(
-                        &mut choices,
-                        self.facts,
-                        self.context,
-                        isotope as u64,
-                        NumberKind::Isotope,
-                    );
+                    push_number_start(&mut choices, self, isotope as u64, NumberKind::Isotope);
                 }
-                push_element_start(&mut choices, self.facts, self.context, true);
+                if self.policy == AtomSpellingPolicy::General || self.facts.isotope.is_none() {
+                    push_element_start(&mut choices, self, true);
+                }
             }
-            Phase::ElementStart => push_element_start(&mut choices, self.facts, self.context, true),
+            Phase::ElementStart => push_element_start(&mut choices, self, true),
             Phase::Number(field) => {
-                push_number_choices(&mut choices, self.facts, self.context, field);
+                push_number_choices(&mut choices, self, field);
             }
             Phase::Element {
                 text,
@@ -396,20 +414,22 @@ impl AtomSpellingState {
                 if self.context.tetrahedral_marker.is_some() {
                     push!(AtomSpellingField::TetrahedralMarker, '@', Phase::AfterAt);
                 } else {
-                    push_after_marker(&mut choices, self.facts, self.context);
+                    push_after_marker(&mut choices, self);
                 }
             }
             Phase::AfterAt => match self.context.tetrahedral_marker {
                 Some(TetrahedralMarker::At) => {
-                    push_after_marker(&mut choices, self.facts, self.context);
-                    push!(
-                        AtomSpellingField::TetrahedralMarker,
-                        'T',
-                        Phase::Marker {
-                            text: "H1",
-                            offset: 0,
-                        },
-                    );
+                    push_after_marker(&mut choices, self);
+                    if self.policy == AtomSpellingPolicy::General {
+                        push!(
+                            AtomSpellingField::TetrahedralMarker,
+                            'T',
+                            Phase::Marker {
+                                text: "H1",
+                                offset: 0,
+                            },
+                        );
+                    }
                 }
                 Some(TetrahedralMarker::AtAt) => {
                     push!(
@@ -417,14 +437,16 @@ impl AtomSpellingState {
                         '@',
                         Phase::AfterMarker,
                     );
-                    push!(
-                        AtomSpellingField::TetrahedralMarker,
-                        'T',
-                        Phase::Marker {
-                            text: "H2",
-                            offset: 0,
-                        },
-                    );
+                    if self.policy == AtomSpellingPolicy::General {
+                        push!(
+                            AtomSpellingField::TetrahedralMarker,
+                            'T',
+                            Phase::Marker {
+                                text: "H2",
+                                offset: 0,
+                            },
+                        );
+                    }
                 }
                 None => unreachable!("AfterAt requires a selected tetrahedral marker"),
             },
@@ -441,12 +463,14 @@ impl AtomSpellingState {
                 };
                 push!(AtomSpellingField::TetrahedralMarker, ch, phase);
             }
-            Phase::AfterMarker => push_after_marker(&mut choices, self.facts, self.context),
+            Phase::AfterMarker => push_after_marker(&mut choices, self),
             Phase::HydrogenDigit => {
                 if self.facts.non_graph_hydrogens == 1 {
                     // H without a digit and H1 have the same meaning.
-                    push_after_hydrogen(&mut choices, self.facts, self.context);
-                    push!(AtomSpellingField::HydrogenCount, '1', Phase::ChargeStart);
+                    push_after_hydrogen(&mut choices, self);
+                    if self.policy == AtomSpellingPolicy::General {
+                        push!(AtomSpellingField::HydrogenCount, '1', Phase::ChargeStart);
+                    }
                 } else {
                     // OpenSMILES' bracket H-count production has one digit.
                     push!(
@@ -458,9 +482,11 @@ impl AtomSpellingState {
             }
             Phase::ChargeStart => {
                 if self.facts.formal_charge == 0 {
-                    push_class_start(&mut choices, self.facts, self.context);
-                    push!(AtomSpellingField::Charge, '+', Phase::ChargeAfterSign);
-                    push!(AtomSpellingField::Charge, '-', Phase::ChargeAfterSign);
+                    push_class_start(&mut choices, self);
+                    if self.policy == AtomSpellingPolicy::General {
+                        push!(AtomSpellingField::Charge, '+', Phase::ChargeAfterSign);
+                        push!(AtomSpellingField::Charge, '-', Phase::ChargeAfterSign);
+                    }
                 } else {
                     push!(
                         AtomSpellingField::Charge,
@@ -472,37 +498,41 @@ impl AtomSpellingState {
             Phase::ChargeAfterSign => {
                 let magnitude = self.facts.formal_charge.unsigned_abs();
                 let sign = charge_sign(self.facts);
-                if magnitude == 2 {
+                if magnitude == 2 && self.policy == AtomSpellingPolicy::General {
                     push!(AtomSpellingField::Charge, sign, Phase::ClassStart);
                 }
                 if magnitude == 1 {
-                    push_class_start(&mut choices, self.facts, self.context);
+                    push_class_start(&mut choices, self);
                 }
                 let digits = magnitude.to_string();
-                if digits.len() == 1 {
-                    push!(
-                        AtomSpellingField::Charge,
-                        digits.chars().next().unwrap(),
-                        Phase::ClassStart
-                    );
-                    push!(
-                        AtomSpellingField::Charge,
-                        '0',
-                        Phase::ChargeDigits {
-                            text: digits,
-                            offset: 0
+                if !(magnitude == 1 && self.policy == AtomSpellingPolicy::Compact) {
+                    if digits.len() == 1 {
+                        push!(
+                            AtomSpellingField::Charge,
+                            digits.chars().next().unwrap(),
+                            Phase::ClassStart
+                        );
+                        if self.policy == AtomSpellingPolicy::General {
+                            push!(
+                                AtomSpellingField::Charge,
+                                '0',
+                                Phase::ChargeDigits {
+                                    text: digits,
+                                    offset: 0
+                                }
+                            );
                         }
-                    );
-                } else {
-                    let first = digits.chars().next().unwrap();
-                    push!(
-                        AtomSpellingField::Charge,
-                        first,
-                        Phase::ChargeDigits {
-                            text: digits,
-                            offset: 1
-                        }
-                    );
+                    } else {
+                        let first = digits.chars().next().unwrap();
+                        push!(
+                            AtomSpellingField::Charge,
+                            first,
+                            Phase::ChargeDigits {
+                                text: digits,
+                                offset: 1
+                            }
+                        );
+                    }
                 }
             }
             Phase::ChargeDigits { text, offset } => {
@@ -522,18 +552,25 @@ impl AtomSpellingState {
                 push!(AtomSpellingField::Charge, ch, phase);
             }
             Phase::ClassStart => {
-                if self.facts.atom_class == 0 {
+                if self.facts.atom_class == 0
+                    && (self.policy == AtomSpellingPolicy::General || !self.atom_class_present)
+                {
                     push!(AtomSpellingField::CloseBracket, ']', Phase::Complete);
                 }
-                push!(
-                    AtomSpellingField::AtomClass,
-                    ':',
-                    Phase::Number(NumberField {
-                        target: self.facts.atom_class.to_string(),
-                        offset: 0,
-                        kind: NumberKind::Class,
-                    }),
-                );
+                if self.policy == AtomSpellingPolicy::General
+                    || self.facts.atom_class != 0
+                    || self.atom_class_present
+                {
+                    push!(
+                        AtomSpellingField::AtomClass,
+                        ':',
+                        Phase::Number(NumberField {
+                            target: self.facts.atom_class.to_string(),
+                            offset: 0,
+                            kind: NumberKind::Class,
+                        }),
+                    );
+                }
             }
             Phase::Close => push!(AtomSpellingField::CloseBracket, ']', Phase::Complete),
             Phase::Complete => {}
@@ -542,83 +579,74 @@ impl AtomSpellingState {
     }
 }
 
-fn push_after_marker(
-    choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
-) {
+fn push_after_marker(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpellingState) {
+    let facts = state.facts;
     if facts.element.as_str() == "H" {
-        push_after_hydrogen(choices, facts, context);
+        push_after_hydrogen(choices, state);
         return;
     }
     if facts.non_graph_hydrogens > 0 {
         push_choice(
             choices,
-            facts,
-            context,
+            state,
             AtomSpellingField::HydrogenCount,
             'H',
             Phase::HydrogenDigit,
         );
     } else {
-        push_after_hydrogen(choices, facts, context);
+        push_after_hydrogen(choices, state);
         // H0 has the same non-graph hydrogen count as an omitted H field.
-        push_choice(
-            choices,
-            facts,
-            context,
-            AtomSpellingField::HydrogenCount,
-            'H',
-            Phase::HydrogenDigit,
-        );
+        if state.policy == AtomSpellingPolicy::General {
+            push_choice(
+                choices,
+                state,
+                AtomSpellingField::HydrogenCount,
+                'H',
+                Phase::HydrogenDigit,
+            );
+        }
     }
 }
 
-fn push_after_hydrogen(
-    choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
-) {
+fn push_after_hydrogen(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpellingState) {
+    let facts = state.facts;
     if facts.formal_charge != 0 {
         push_choice(
             choices,
-            facts,
-            context,
+            state,
             AtomSpellingField::Charge,
             charge_sign(facts),
             Phase::ChargeAfterSign,
         );
     } else {
-        push_class_start(choices, facts, context);
-        push_choice(
-            choices,
-            facts,
-            context,
-            AtomSpellingField::Charge,
-            '+',
-            Phase::ChargeAfterSign,
-        );
-        push_choice(
-            choices,
-            facts,
-            context,
-            AtomSpellingField::Charge,
-            '-',
-            Phase::ChargeAfterSign,
-        );
+        push_class_start(choices, state);
+        if state.policy == AtomSpellingPolicy::General {
+            push_choice(
+                choices,
+                state,
+                AtomSpellingField::Charge,
+                '+',
+                Phase::ChargeAfterSign,
+            );
+            push_choice(
+                choices,
+                state,
+                AtomSpellingField::Charge,
+                '-',
+                Phase::ChargeAfterSign,
+            );
+        }
     }
 }
 
-fn push_class_start(
-    choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
-) {
-    if facts.atom_class == 0 {
+fn push_class_start(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpellingState) {
+    let facts = state.facts;
+    if facts.atom_class == 0
+        && (state.policy == AtomSpellingPolicy::General || !state.atom_class_present)
+    {
         push_choice(
             choices,
-            facts,
-            context,
+            state,
             AtomSpellingField::CloseBracket,
             ']',
             Phase::Complete,
@@ -627,8 +655,7 @@ fn push_class_start(
     if facts.atom_class != 0 {
         push_choice(
             choices,
-            facts,
-            context,
+            state,
             AtomSpellingField::AtomClass,
             ':',
             Phase::Number(NumberField {
@@ -638,11 +665,12 @@ fn push_class_start(
             }),
         );
     }
-    if facts.atom_class == 0 {
+    if facts.atom_class == 0
+        && (state.policy == AtomSpellingPolicy::General || state.atom_class_present)
+    {
         push_choice(
             choices,
-            facts,
-            context,
+            state,
             AtomSpellingField::AtomClass,
             ':',
             Phase::Number(NumberField {
@@ -656,15 +684,13 @@ fn push_class_start(
 
 fn push_number_start(
     choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
+    state: &AtomSpellingState,
     value: u64,
     kind: NumberKind,
 ) {
     push_number_choices(
         choices,
-        facts,
-        context,
+        state,
         &NumberField {
             target: value.to_string(),
             offset: 0,
@@ -675,57 +701,24 @@ fn push_number_start(
 
 fn push_number_choices(
     choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
+    state: &AtomSpellingState,
     field: &NumberField,
 ) {
-    let target = field
-        .target
-        .chars()
-        .nth(field.offset)
-        .expect("numeric target offset is valid");
-    let continuation = |offset| NumberField {
-        target: field.target.clone(),
-        offset,
-        kind: field.kind,
-    };
-    if target != '0' {
-        let next = if field.offset + 1 == field.target.len() {
-            number_suffix_phase(field.kind)
-        } else {
-            Phase::Number(continuation(field.offset + 1))
-        };
-        push_choice(
-            choices,
-            facts,
-            context,
-            number_field(field.kind),
-            target,
-            next,
-        );
-        push_choice(
-            choices,
-            facts,
-            context,
-            number_field(field.kind),
-            '0',
-            Phase::Number(field.clone()),
-        );
+    let target = field.target.as_bytes()[field.offset] as char;
+    let next = if field.offset + 1 == field.target.len() {
+        number_suffix_phase(field.kind)
     } else {
-        // For numeric zero, the same character can finish the field or begin
-        // another leading zero. The two successors preserve both languages.
+        Phase::Number(NumberField {
+            offset: field.offset + 1,
+            ..field.clone()
+        })
+    };
+    push_choice(choices, state, number_field(field.kind), target, next);
+    // Only a prefix zero is padding; internal zeros belong to the fixed value.
+    if state.policy == AtomSpellingPolicy::General && field.offset == 0 {
         push_choice(
             choices,
-            facts,
-            context,
-            number_field(field.kind),
-            '0',
-            number_suffix_phase(field.kind),
-        );
-        push_choice(
-            choices,
-            facts,
-            context,
+            state,
             number_field(field.kind),
             '0',
             Phase::Number(field.clone()),
@@ -742,10 +735,11 @@ fn number_suffix_phase(kind: NumberKind) -> Phase {
 
 fn push_element_start(
     choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
+    state: &AtomSpellingState,
     bracketed: bool,
 ) {
+    let facts = state.facts;
+    let context = state.context;
     let text = element_text(facts, context);
     push_text_first(
         &text,
@@ -760,8 +754,7 @@ fn push_element_start(
         } else {
             AtomSpellingField::BareElement
         },
-        facts,
-        context,
+        state,
         choices,
     );
 }
@@ -771,8 +764,7 @@ fn push_text_first(
     bracketed: bool,
     terminal: Phase,
     field: AtomSpellingField,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
+    state: &AtomSpellingState,
     choices: &mut Vec<AtomSpellingChoice>,
 ) {
     let mut chars = text.chars();
@@ -787,7 +779,7 @@ fn push_text_first(
             bracketed,
         }
     };
-    push_choice(choices, facts, context, field, first, phase);
+    push_choice(choices, state, field, first, phase);
 }
 
 fn element_text(facts: AtomFacts, context: AtomSpellingContext) -> String {
@@ -820,8 +812,7 @@ fn charge_sign(facts: AtomFacts) -> char {
 
 fn push_choice(
     choices: &mut Vec<AtomSpellingChoice>,
-    facts: AtomFacts,
-    context: AtomSpellingContext,
+    state: &AtomSpellingState,
     field: AtomSpellingField,
     text: char,
     phase: Phase,
@@ -830,9 +821,11 @@ fn push_choice(
         text,
         field,
         successor: AtomSpellingState {
-            facts,
-            context,
+            facts: state.facts,
+            context: state.context,
             phase,
+            policy: state.policy,
+            atom_class_present: state.atom_class_present,
         },
     });
 }
@@ -931,6 +924,85 @@ mod tests {
             aromatic_total_valence,
         )
         .unwrap()
+    }
+
+    fn compact_support(
+        facts: AtomFacts,
+        context: AtomSpellingContext,
+        map_present: bool,
+    ) -> Vec<String> {
+        let initial = AtomSpellingState::initial_with_policy(
+            facts,
+            context,
+            AtomSpellingPolicy::Compact,
+            map_present,
+        );
+        let mut pending = vec![(String::new(), initial)];
+        let mut complete = Vec::new();
+        while let Some((text, state)) = pending.pop() {
+            assert!(text.len() < 64, "compact atom grammar must terminate");
+            if state.is_complete() {
+                complete.push(text);
+            } else {
+                let choices = state.choices();
+                assert!(
+                    !choices.is_empty(),
+                    "compact prefix {text:?} must remain live"
+                );
+                for choice in choices {
+                    pending.push((format!("{text}{}", choice.text), choice.successor));
+                }
+            }
+        }
+        complete.sort();
+        complete
+    }
+
+    #[test]
+    fn compact_complete_atom_support_preserves_metadata_and_internal_zeros() {
+        let mut atom = facts("C", false, 4, 0, None);
+        let context = AtomSpellingContext::default();
+        assert_eq!(compact_support(atom, context, false), ["C"]);
+        assert_eq!(compact_support(atom, context, true), ["[CH4:0]"]);
+        atom.isotope = Some(0);
+        assert_eq!(compact_support(atom, context, false), ["[0CH4]"]);
+        atom.isotope = Some(101);
+        atom.atom_class = 1002;
+        assert_eq!(compact_support(atom, context, true), ["[101CH4:1002]"]);
+        assert!(supports(atom, context, "[101CH4:1002]"));
+        assert!(supports(atom, context, "[00101CH4:001002]"));
+        assert!(!supports(atom, context, "[1001CH4:1002]"));
+    }
+
+    #[test]
+    fn compact_complete_atom_support_uses_short_hydrogen_charge_and_stereo() {
+        let mut atom = facts("N", false, 1, 0, None);
+        let mut context = AtomSpellingContext::default();
+        assert_eq!(compact_support(atom, context, false), ["[NH]"]);
+        atom.non_graph_hydrogens = 0;
+        assert_eq!(compact_support(atom, context, false), ["[N]"]);
+        for (charge, suffix) in [(1, "+"), (-1, "-"), (2, "+2"), (-2, "-2"), (10, "+10")] {
+            atom.formal_charge = charge;
+            assert_eq!(
+                compact_support(atom, context, false),
+                [format!("[N{suffix}]")]
+            );
+        }
+        atom.formal_charge = 0;
+        atom.non_graph_hydrogens = 1;
+        for (marker, text) in [
+            (TetrahedralMarker::At, "[N@H]"),
+            (TetrahedralMarker::AtAt, "[N@@H]"),
+        ] {
+            context.tetrahedral_marker = Some(marker);
+            assert_eq!(compact_support(atom, context, false), [text]);
+            assert!(supports(atom, context, text));
+        }
+        let donor = facts("N", true, 1, 0, Some(3));
+        let aromatic = bond_context(0, 0, 0, 2);
+        assert_eq!(compact_support(donor, aromatic, false), ["[nH]"]);
+        let carbon = facts("C", true, 1, 0, Some(4));
+        assert_eq!(compact_support(carbon, aromatic, false), ["c"]);
     }
 
     #[test]

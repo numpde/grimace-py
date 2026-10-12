@@ -7,12 +7,21 @@ The default is an implemented language subset, not a complete SMILES grammar.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from enum import Enum
+from typing import TYPE_CHECKING
 
 from rdkit import Chem
 
 if TYPE_CHECKING:
     from ._core import _SouthStar2TextPrefix
+
+
+class SmilesLanguage(Enum):
+    """Supported SMILES languages for immutable prefix decoding."""
+
+    GENERAL = "general"
+    COMPACT = "compact"
+    RDKIT_RANDOM_NONCANONICAL = "rdkit_random_noncanonical"
 
 
 @dataclass(frozen=True, slots=True, init=False, eq=False)
@@ -48,22 +57,33 @@ class Prefix:
 def start(
     mol: Chem.Mol,
     *,
-    style: Literal["rdkit_random_noncanonical"] | None = None,
+    language: SmilesLanguage = SmilesLanguage.GENERAL,
 ) -> Prefix:
     """Prepare an RDKit molecule and return its initial immutable prefix.
 
     Preparation snapshots supported molecular and stereo facts from the
-    installed RDKit. ``style=None`` exposes the implemented OpenSMILES subset;
-    ``style="rdkit_random_noncanonical"`` further applies the qualified
+    installed RDKit. ``SmilesLanguage.GENERAL`` exposes the implemented OpenSMILES subset;
+    ``SmilesLanguage.COMPACT`` removes verbose atom and redundant bond spellings.
+    Because a bare wildcard is not aromatic, compact spells its aromatic bonds
+    with ``:``; a fixed single bond to a wildcard remains unmarked. Compact
+    also retains Kekule spellings where the graph facts permit them.
+    ``SmilesLanguage.RDKIT_RANDOM_NONCANONICAL`` further applies the qualified
     writer-convention restrictions. Neither mode calls RDKit while choices
-    are made. The RDKit style label does not certify installed-writer parity.
+    are made. The RDKit language label does not certify installed-writer parity.
     """
 
     from ._south_star2 import preparation
 
+    if not isinstance(language, SmilesLanguage):
+        raise TypeError("language must be a SmilesLanguage member")
+    writer_regime = {
+        SmilesLanguage.GENERAL: "generic_any_order",
+        SmilesLanguage.COMPACT: "generic_compact",
+        SmilesLanguage.RDKIT_RANDOM_NONCANONICAL: "rdkit_random_noncanonical",
+    }[language]
     prepared = preparation.prepare_molecule(mol)
-    native_prefix = prepared.build_writer(style=style).initial_prefix()
+    native_prefix = prepared.build_writer(writer_regime=writer_regime).initial_prefix()
     return Prefix._from_native(native_prefix)
 
 
-__all__ = ["Prefix", "start"]
+__all__ = ["Prefix", "SmilesLanguage", "start"]

@@ -149,12 +149,10 @@ class PreparedMolecule:
                 if token != "" or endpoint not in (a, b):
                     raise ValueError("prepared directional carrier must be an incident single-bond edge")
 
-    def build_writer(self, *, style: str | None = None) -> object:
+    def build_writer(self, *, writer_regime: str = "generic_any_order") -> object:
         """Construct the private Rust writer when its extension is available."""
 
-        if style not in (None, "rdkit_random_noncanonical"):
-            raise ValueError("style must be None or 'rdkit_random_noncanonical'")
-        if style is not None:
+        if writer_regime == "rdkit_random_noncanonical":
             for index, atom in enumerate(self.atoms):
                 facts = atom.facts if type(atom) is TetrahedralAtom else atom
                 if (
@@ -166,12 +164,12 @@ class PreparedMolecule:
                     or self.source_atom_class_property_present[index]
                 ):
                     raise ValueError(
-                        "style='rdkit_random_noncanonical' is only qualified for neutral, "
+                        "language=SmilesLanguage.RDKIT_RANDOM_NONCANONICAL is only qualified for neutral, "
                         "nonaromatic C/O atom facts without isotope or class fields"
                     )
             if any(token in (":", "#") for _, _, token in self.bonds):
                 raise ValueError(
-                    "style='rdkit_random_noncanonical' is not qualified for aromatic or triple bonds"
+                    "language=SmilesLanguage.RDKIT_RANDOM_NONCANONICAL is not qualified for aromatic or triple bonds"
                 )
 
         try:
@@ -221,7 +219,7 @@ class PreparedMolecule:
         return core._SouthStar2PreparedWriter(
             atom_facts,
             self.bonds,
-            "generic_any_order" if style is None else style,
+            writer_regime,
             directional_facts,
         )
 

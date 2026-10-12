@@ -115,7 +115,7 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
             for witness in [case["source_smiles"], *case["kekule_witnesses"]]:
                 self.assertTrue(_accepts(initial, witness), witness)
 
-    def test_rdkit_style_still_refuses_unqualified_aromatic_sources(self) -> None:
+    def test_rdkit_language_still_refuses_unqualified_aromatic_sources(self) -> None:
         case = next(case for case in self.cases if case["id"] == "benzene")
         with self.assertRaisesRegex(ValueError, "only qualified|not qualified"):
-            decoding.start(_parse(case["source_smiles"]), style="rdkit_random_noncanonical")
+            decoding.start(_parse(case["source_smiles"]), language=decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL)

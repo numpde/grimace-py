@@ -80,6 +80,18 @@ fn rdkit_ring_ids_keep_the_lowest_free_positive_label_and_one_spelling() {
 }
 
 #[test]
+fn compact_ring_ids_use_the_lowest_free_zero_based_label_and_shortest_spelling() {
+    let mut state = state(WriterRegime::GenericCompact);
+    assert_eq!(state.available_ring_label_options(), [(RingLabelSlot(0), "0".to_owned())]);
+    state.labels.allocate_at(RingLabelSlot(0), BondId::new(7));
+    assert_eq!(state.available_ring_label_options(), [(RingLabelSlot(1), "1".to_owned())]);
+    state.labels.release(RingLabelSlot(0), BondId::new(7));
+    assert_eq!(state.available_ring_label_options(), [(RingLabelSlot(0), "0".to_owned())]);
+    assert_eq!(state.label_text_options(RingLabelSlot(9)), ["9".to_owned()]);
+    assert_eq!(state.label_text_options(RingLabelSlot(10)), ["%10".to_owned()]);
+}
+
+#[test]
 fn generic_ring_number_rendering_is_zero_based() {
     assert_eq!(ring_label_number_text(0), "0");
     assert_eq!(ring_label_number_text(1), "1");

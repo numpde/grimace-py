@@ -1,5 +1,26 @@
 # South Star 2 end-to-end roadmap
 
+## 2026-10-12 four-bond tetrahedral carbon admission
+
+Generic preparation now admits tetrahedral carbon with four graph-bond ligands
+and no non-graph hydrogen alongside the existing three-bond, one-hydrogen
+shape. It transports the actual RDKit incident-bond order as the four-ligand
+reference; the native order and parity model already supports this shape.
+Selected opposite enantiomers are checked as semantic prefix witnesses in
+`GENERAL` and `COMPACT`. The version-qualified RDKit writer language retains
+its prior one-hydrogen tetrahedral admission, so these semantic witnesses do
+not extend exact RDKit writer support.
+
+Root qualification at `7ef6b938` used the unchanged compiled extension (SHA-256
+`aa7ffeded8af04d330f71ad4e0d5a50bf1224ce6a71bd00a6c27dd5c45b1b33b`).
+The bounded preparation, preparation-semantics, standard-SMILES, Kekule,
+compact-language, and public-prefix modules passed 76 tests in 29.311 seconds;
+the runner reported `verified_no_live_members` and a sampled process-tree peak
+of 199.75 MiB. The alternate ligand-order witnesses test two enantiomers each
+for a four-halogen center and a ring center, in both generic languages, with
+reverse atom renumbering and wrong-marker rejection. This is finite semantic
+coverage, not an exhaustive language or RDKit writer-support result.
+
 ## Tetrahedral Forest candidate plan
 
 Admit tetrahedral facts to generic Forest when no directional relation is present. Preserve the Tree role rule; in Forest, each residual chemical group can contain several traversal incidences, while the actual per-bond traversal/ring decisions and topology factor own role consistency. Keep the entry bond as the tetrahedral entry ligand and do not treat a dot or serialization predecessor as a ligand. Qualify the candidate with bounded native tests for real chiral molecules, opposite parity, sibling incidences, completed support, and rejected premature acceptance. This slice does not change E/Z Forest admission or claim general writer parity.

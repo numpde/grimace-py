@@ -205,11 +205,33 @@ class SouthStar2PreparationTests(unittest.TestCase):
         self.assertTrue(ccw_fact.at_for_even_parity)
         self.assertFalse(cw_fact.at_for_even_parity)
 
-    def test_rejects_tetrahedral_stereo_outside_the_supported_hydrogen_scope(self) -> None:
-        mol = Chem.MolFromSmiles("C[C@](O)(CC)CCC")
+    def test_rejects_tetrahedral_stereo_outside_the_supported_carbon_scope(self) -> None:
+        mol = Chem.MolFromSmiles("[N@+](C)(F)(Cl)Br")
         assert mol is not None
-        with self.assertRaisesRegex(ValueError, "degree-three carbon"):
+        with self.assertRaisesRegex(ValueError, "expected carbon with three graph bonds"):
             prepare_molecule(mol)
+
+    def test_prepares_four_bond_tetrahedral_carbon_without_hydrogen(self) -> None:
+        for smiles, parity in (("F[C@](Cl)(Br)I", True), ("F[C@@](Cl)(Br)I", False)):
+            with self.subTest(smiles=smiles):
+                mol = Chem.MolFromSmiles(smiles)
+                assert mol is not None
+                center = mol.GetAtomWithIdx(1)
+                prepared = prepare_molecule(mol)
+                tetrahedral = prepared.atoms[1]
+                self.assertIsInstance(tetrahedral, TetrahedralAtom)
+                assert isinstance(tetrahedral, TetrahedralAtom)
+                self.assertEqual(tetrahedral.facts.non_graph_hydrogens, 0)
+                self.assertEqual(
+                    tetrahedral.reference_order,
+                    tuple(bond.GetIdx() for bond in center.GetBonds()),
+                )
+                self.assertEqual(tetrahedral.at_for_even_parity, parity)
+
+        carbon_oxygen = Chem.MolFromSmiles("C[C@](O)(CC)CCC")
+        assert carbon_oxygen is not None
+        with self.assertRaisesRegex(ValueError, "only qualified for tetrahedral carbon"):
+            prepare_molecule(carbon_oxygen).build_writer(writer_regime="rdkit_random_noncanonical")
 
     def test_prepares_supported_single_double_triple_and_aromatic_bonds(self) -> None:
         for smiles, expected in (

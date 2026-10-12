@@ -156,6 +156,14 @@ class PreparedMolecule:
             for index, atom in enumerate(self.atoms):
                 facts = atom.facts if type(atom) is TetrahedralAtom else atom
                 if (
+                    type(atom) is TetrahedralAtom
+                    and VirtualHydrogen.INSTANCE not in atom.reference_order
+                ):
+                    raise ValueError(
+                        "language=SmilesLanguage.RDKIT_RANDOM_NONCANONICAL is only qualified "
+                        "for tetrahedral carbon with one non-graph hydrogen"
+                    )
+                if (
                     facts.element not in ("C", "O")
                     or facts.aromatic
                     or facts.isotope is not None
@@ -227,8 +235,9 @@ class PreparedMolecule:
 def prepare_molecule(mol: object) -> PreparedMolecule:
     """Prepare finite graph facts supported by the native OpenSMILES writer.
 
-    Tetrahedral facts cover degree-three carbon with one hydrogen. E/Z double
-    bonds require one adjacent single-bond reference carrier per end. The
+    Tetrahedral facts cover carbon with three graph bonds and one hydrogen, or
+    four graph bonds and no hydrogen. E/Z double bonds require one adjacent
+    single-bond reference carrier per end. The
     native writer retains its narrower anchoring admission. Atom spelling does
     not come from an RDKit SMILES writer.
     """
@@ -378,16 +387,18 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
         )
         if tetrahedral:
             incident_bonds = tuple(bond.GetIdx() for bond in atom.GetBonds())
-            if atom.GetAtomicNum() != 6 or len(incident_bonds) != 3 or non_graph_hydrogens != 1:
+            if atom.GetAtomicNum() != 6 or (
+                len(incident_bonds), non_graph_hydrogens
+            ) not in ((3, 1), (4, 0)):
                 raise ValueError(
-                    f"Cannot prepare tetrahedral atom {index}: expected degree-three carbon "
-                    "with exactly one non-graph hydrogen"
+                    f"Cannot prepare tetrahedral atom {index}: expected carbon with three graph "
+                    "bonds and one non-graph hydrogen, or four graph bonds and none"
                 )
             # RDKit's tetrahedral tag is relative to its incident-bond order;
-            # the non-graph hydrogen occupies the final reference position.
+            # a non-graph hydrogen occupies the final reference position.
             order: tuple[TetrahedralLigandReference, ...] = (
-                *incident_bonds,
-                VirtualHydrogen.INSTANCE,
+                (*incident_bonds, VirtualHydrogen.INSTANCE)
+                if non_graph_hydrogens else incident_bonds
             )
             atom_facts.append(TetrahedralAtom(
                 facts,

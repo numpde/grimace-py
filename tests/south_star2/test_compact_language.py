@@ -88,6 +88,39 @@ class CompactLanguageTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixture = json.loads(FIXTURE.read_text())
 
+    def test_four_bond_tetrahedral_carbon_preserves_enantiomers(self) -> None:
+        for source_smiles, alternate_smiles in (
+            ("F[C@](Cl)(Br)I", "Cl[C@@](F)(Br)I"),
+            ("F[C@@](Cl)(Br)I", "Cl[C@](F)(Br)I"),
+            ("F[C@]1(Cl)CCCO1", "Cl[C@@]1(F)CCCO1"),
+            ("F[C@@]1(Cl)CCCO1", "Cl[C@]1(F)CCCO1"),
+        ):
+            source = _parse(source_smiles)
+            wrong_parity = alternate_smiles.replace("@]", "@@]") if "@@]" not in alternate_smiles else alternate_smiles.replace("@@]", "@]")
+            for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+                with self.subTest(smiles=source_smiles, language=language):
+                    spelling = alternate_smiles.replace("1", "0") if language == LANGUAGE else alternate_smiles
+                    wrong_spelling = wrong_parity.replace("1", "0") if language == LANGUAGE else wrong_parity
+                    self.assertIsNotNone(_walk_language(source, spelling, language))
+                    renumbered = Chem.RenumberAtoms(source, list(reversed(range(source.GetNumAtoms()))))
+                    self.assertIsNotNone(_walk_language(renumbered, spelling, language))
+                    self.assertIsNone(_walk_language(source, wrong_spelling, language))
+                    parsed = _parse(spelling)
+                    self.assertEqual(source.GetNumAtoms(), parsed.GetNumAtoms())
+                    self.assertEqual(source.GetNumBonds(), parsed.GetNumBonds())
+                    mappings = parsed.GetSubstructMatches(source, useChirality=True)
+                    self.assertTrue(
+                        any(
+                            all(
+                                parsed.GetAtomWithIdx(parsed_index).GetTotalNumHs()
+                                == source.GetAtomWithIdx(source_index).GetTotalNumHs()
+                                for source_index, parsed_index in enumerate(mapping)
+                            )
+                            for mapping in mappings
+                        ),
+                        f"graph, hydrogen, or stereo differs: {spelling!r}",
+                    )
+
     def test_default_is_general_and_compact_is_a_distinct_public_language(self) -> None:
         carbon = _parse("C")
         self.assertEqual(

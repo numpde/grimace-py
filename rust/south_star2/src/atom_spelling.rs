@@ -181,8 +181,9 @@ impl AtomFacts {
                     Some((3 - context.bonds.degree()) as u8)
                 }
                 "N" if context.bonds.aromatic_bonds == 2
-                    && context.bonds.degree() == 2
-                    && !context.bonds.exocyclic_multiple_bond() =>
+                    && !context.bonds.exocyclic_multiple_bond()
+                    && (context.bonds.degree() == 2
+                        || (context.bonds.degree() == 3 && context.bonds.single_bonds == 1)) =>
                 {
                     Some(0)
                 }
@@ -971,6 +972,37 @@ mod tests {
             "c"
         ));
         assert!(supports(facts("N", true, 0, 0), aromatic_ring, "n"));
+        let aromatic_tertiary_n = bond_context(1, 0, 0, 2);
+        assert!(supports(
+            facts("N", true, 0, 0),
+            aromatic_tertiary_n,
+            "n"
+        ));
+        assert!(!supports(
+            facts("N", true, 1, 0),
+            aromatic_tertiary_n,
+            "n"
+        ));
+        assert!(supports(
+            facts("N", true, 1, 0),
+            aromatic_tertiary_n,
+            "[nH]"
+        ));
+        assert!(!supports(
+            facts("N", true, 0, 0),
+            bond_context(0, 1, 0, 2),
+            "n"
+        ));
+        let charged_n = AtomFacts::new(
+            ElementSymbol::new("N").unwrap(),
+            true,
+            None,
+            1,
+            0,
+            0,
+        )
+        .unwrap();
+        assert!(!supports(charged_n, aromatic_tertiary_n, "n"));
         assert!(!supports(facts("N", true, 1, 0), aromatic_ring, "n"));
         assert!(supports(facts("N", true, 1, 0), aromatic_ring, "[nH]"));
         assert!(supports(facts("N", true, 0, 0), aromatic_ring, "[nH0]"));

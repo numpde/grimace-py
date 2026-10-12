@@ -785,3 +785,18 @@ verified extension SHA256 is
 `04d968bfe80f7496626b05cfad0efa8cefb09de3675d9183b208516b92416bfe`.
 These checks cover the recorded finite scopes and do not claim universal
 full-suffix liveness or remote CI results.
+
+## 2026-10-12 principled language contract and next slice
+
+The target contract now lives in
+[`docs/api/smiles-language.md`](../docs/api/smiles-language.md). It separates
+admitted molecular facts and explicit rejection, OpenSMILES v1.0 syntax and
+semantic identity, constructive soundness and coverage, and the narrower
+compact spelling policy. Its coverage table marks current structural and
+stereo gaps; `GENERAL` remains a provisional name, not a completeness claim.
+The next design decision is how to represent serialization segments as a
+spanning forest on admitted nonaromatic, stereo-free graphs: the current
+`SpanningTreeFactor` enforces `n-1` traversal edges, whereas connected-dot
+forms require ring obligations across forest segments independently of
+chemical connected components. This blocks a local dot-transition patch.
+No implementation or universal proof is claimed by this documentation step.

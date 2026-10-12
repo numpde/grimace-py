@@ -11,6 +11,8 @@ This is an RDKit writer-parity API, not a general "all semantically equivalent
 SMILES" API. A SMILES string can be valid and parse to the same molecule while
 still being outside RDKit's writer support. The project keeps those ideas
 separate; see [Correctness contracts](../correctness-contracts.md).
+The distinct principled target and present coverage gaps are specified in
+[Principled SMILES language target](smiles-language.md).
 
 The public signatures keep RDKit-like defaults for surface compatibility, but
 those defaults are not currently supported. Pass `canonical=False` and
@@ -65,8 +67,10 @@ Pass a `SmilesLanguage` enum member; strings and `None` are rejected. The former
 `style` keyword is removed. The supported members are `GENERAL`, `COMPACT`, and
 `RDKIT_RANDOM_NONCANONICAL`; the default is `SmilesLanguage.GENERAL`.
 
-With `language=SmilesLanguage.GENERAL`, the prefix explores the implemented OpenSMILES atom-spelling
-subset. `language=SmilesLanguage.COMPACT` keeps its traversal, stereo, aromatic,
+With `language=SmilesLanguage.GENERAL`, the prefix explores an implemented OpenSMILES
+subset. `GENERAL` is a provisional name for that partial implementation, not a
+claim of complete standard-language coverage.
+`language=SmilesLanguage.COMPACT` keeps its traversal, stereo, aromatic,
 and whole-component Kekule choices while using compact spelling: bare atoms
 when source facts permit, unpadded numeric fields, omitted default H and charge
 fields, preserved isotope and atom-map metadata, and the smallest available

@@ -715,3 +715,73 @@ Artifact hashes and provenance are recorded in
 `/tmp/grimace-kekule-artifacts-24dfbfdb/sdist-wheel-provenance-v1.json`;
 `rebuilt-31-final.log` and `rebuilt-34-final.log` in that directory hold results.
 The next scoped investigation remains connected-dot/ring topology.
+
+## 2026-10-12 compact language implementation and validation
+
+The public entry point becomes
+`start(mol, language=SmilesLanguage.GENERAL)`, with enum members `GENERAL`,
+`COMPACT`, and `RDKIT_RANDOM_NONCANONICAL`. Strict enum input replaces `style`;
+there is no compatibility alias. `GENERAL` keeps the current default's broad
+supported semantic subset. The RDKit member retains its separate, complete
+qualified writer contract and existing admission limits; semantic equivalence
+does not establish exact RDKit support.
+
+Rust owns language rules. Python prepares source facts and transports the
+selected enum name. `COMPACT` is generated directly by native grammar, state,
+and constraints, without completed-string filtering or a new suffix solver.
+It retains traversal, rooting, stereo choices, aromatic representation, and
+whole-component Kekule choices while restricting spelling as follows:
+
+- Use a bare atom when source facts permit it; otherwise use brackets.
+  Preserve isotope and atom-map metadata, including native isotope `Some(0)`
+  and an explicitly present source map property zero as `:0`. Public RDKit
+  isotope zero has already been normalized to absence during preparation.
+- Render decimal fields without padding. Omit H0, spell H1 as `H`, and spell
+  larger hydrogen counts as `Hn`. Omit neutral charge; spell magnitude one as
+  `+` or `-`, and larger magnitudes as a sign followed by decimal magnitude.
+  Tetrahedral markers are only `@` and `@@`.
+- Omit a bond symbol exactly when the endpoint interpretation yields the
+  intended bond, using selected emitted atom categories and representation
+  modes rather than source aromatic flags alone. For source aromatic edges
+  incident to `*`, emit an explicit `:`; omit a fixed single wildcard bridge
+  when its endpoint interpretation is single. `GENERAL` may admit a sanitized
+  omission in some cases; that is a supported writer behavior, not a
+  standards mandate. For ordinary ring bonds, omit at both ends when that
+  interpretation is correct; otherwise emit exactly one symbol at either
+  endpoint, excluding duplicate `Ring11` spelling. Double/triple bonds need
+  one symbol, and a fixed single bond between aromatic atoms needs one `-`.
+  Directional ring plans and marker multiplicity remain governed by their
+  existing constraints, outside ordinary-symbol minimization; this adds no
+  stereo minimizer.
+- Allocate the smallest free ring number in `0..99`, starting at zero. Use
+  single digits for `0..9` and `%10` through `%99` for the rest; reuse a number
+  after closure. Preserve closure-event order and existing ring capacity.
+
+Compact denotes this spelling policy, not canonicalization, globally shortest
+SMILES, or exact RDKit writer support. A public dataclass or orthogonal writer
+and spelling axes was considered and deferred until real consumers need those
+combinations: exposing them now would introduce undefined combinations. The
+enum deliberately keeps qualified language contracts together. Future demand
+for independently selectable policies is a reason to revisit that boundary.
+
+The implementation keeps compact spelling inside native atom and bond
+construction, rather than filtering completed choices. Preparation preserves
+the public isotope-zero normalization boundary, while native internal isotope
+`Some(0)` remains spellable. Review corrected several compact test witnesses
+so they describe the actual source/emitted facts.
+
+Final bounded validation passed: native South Star 2 ran 283 tests with one
+ignored; the root Rust suite ran 86; the installed RDKit 2026.03.1 package suite
+ran 119 with one skip; the selected RDKit 2026.03.4 installed and candidate
+checkout scopes each ran 61. After integration, the root checkout's direct
+2026.03.4 smoke ran 26 tests. Every bounded run exited zero with
+`verified_no_live_members` cleanup. Logs are in
+`/tmp/grimace-compact-artifacts-05d831bf/` (`native-south-star2.log`,
+`native-root.log`, `installed-31.log`, `python-selected-installed-34.log`,
+`python-selected-checkout.log`, and `final-wheel-build.log`); the integrated
+root smoke log is `root-smoke.log` in that directory. The final wheel SHA256 is
+`00b4f091f07c83429e9b1cbd4be8f0b43d5f1b26700b1813b1ba649bb2ab3ffd`; its
+verified extension SHA256 is
+`04d968bfe80f7496626b05cfad0efa8cefb09de3675d9183b208516b92416bfe`.
+These checks cover the recorded finite scopes and do not claim universal
+full-suffix liveness or remote CI results.

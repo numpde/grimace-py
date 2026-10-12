@@ -570,3 +570,62 @@ that every reachable prefix has a full molecular suffix. No ordinary
 full-suffix theorem remains unproved. Kekule alternatives, dot-connected ring
 topology, and remaining stereo restrictions still need separately scoped
 semantic qualification.
+
+
+## 2026-10-12 finite support-growth diagnostic
+
+An isolated native diagnostic at `/tmp/grimace-support-growth-071a34e5`
+walked exact finite supports for fact-correct C/O graphs. These families use
+elided single bonds, connected graphs, no stereo, and either bare atoms or one
+fact-correct bracket alternative per atom; isotope and class numerics are
+excluded. They are not full Generic support (leading zeros make that infinite),
+a style API, or runtime caps. Counts are observed finite walks, not a universal
+independence claim.
+
+| Graph | Atoms | Ring lexemes | Unique SMILES | Accepting paths |
+| --- | --- | --- | ---: | ---: |
+| CO | bare | 1 | 2 | 2 |
+| CO | brackets | 1 | 8 | 8 |
+| CCO | bare | 1 | 4 | 4 |
+| CCO | brackets | 1 | 32 | 32 |
+| CC(C)O | bare | 1 | 6 | 12 |
+| CC(C)O | brackets | 1 | 96 | 192 |
+| C1CO1 | bare | 1 | 3 | 6 |
+| C1CO1 | brackets | 1 | 24 | 48 |
+| C1CO1 | bare | 4 | 24 | 48 |
+| C1CO1 | brackets | 4 | 192 | 384 |
+| C1CO1 | bare | 110 | 390 | 780 |
+| C1CO1 | brackets | 110 | 3120 | 6240 |
+
+Ring families are canonical `1`, `{0,1,%00,%01}`, and 110 lexemes for numeric
+IDs 0–99. Opening and closing use the same numeric ID: the latter families
+admit 8 and 130 pairs, not 16 and 12100. Branch/ring paths can outnumber strings
+twofold; this does not prove equal full futures. CCO prefix `C` retains two
+states with different next texts (`C` versus `(`), demonstrating necessary
+state retention.
+
+Ring-1 bare had 702 pre-group emitted successors and 13 admitted text groups;
+ring-110 brackets had 41906 pre-group emitted successors and 13909 admitted
+text groups, with 28697 cumulative retained states, maximum frontier 4,
+and 13910 token-prefix nodes. Pre-group choices include valid Generic options
+excluded by this finite witness; they are not production waste. These are
+independent choice-call bookkeeping counts, neither raw structural candidates
+or solver calls nor runtime timings.
+
+Checks cover independent CO bare/all-eight-bracket, CCO, and ring expectations,
+projection, and group conservation. Budgets of 100000 prefixes, 2000000 states,
+and depth 128 fail rather than truncate. Native tests passed 260 with one
+ignored before the last assertion; the final focused test passed with verified
+cleanup. Final root native verification passed 260 tests with one ignored and
+verified cleanup; the twelve matrix rows matched. The final log is
+`/tmp/grimace-support-growth-final-root.log`; diagnostic results are retained
+at `/tmp/grimace-support-growth-results.txt`. Reproduce from the repository checkout:
+
+```sh
+python3 scripts/run_bounded_tests.py --wall-seconds 120 --rss-mib 2048 --cpu-seconds 120 --address-space-mib 4096 -- cargo test --offline -p grimace-south-star2 bounded_support_growth -- --nocapture
+```
+
+Decision: the next narrow investigation is aromatic/Kekule alternatives;
+published 0.1.10 benzene `kekuleSmiles=True` was confirmed locally. No measured
+bottleneck justifies new compact policy. Do not start that investigation or a
+refactor as part of this diagnostic.

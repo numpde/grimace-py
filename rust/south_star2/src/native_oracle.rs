@@ -248,6 +248,29 @@ fn assignment_satisfies(
             u32::try_from(index).expect("constraint model validated factor identifiers"),
         );
         match model.factor(factor_id).expect("prepared factor must exist") {
+            FactorDefinition::AromaticMatching(factor) => {
+                let mode = assignment[factor.mode_variable().index()];
+                let mut doubles = vec![0_usize; factor.double_demands().len()];
+                let valid_edges = factor.edges().iter().all(|edge| {
+                    let value = assignment[edge.variable().index()];
+                    if mode == 0 {
+                        return value == 0;
+                    }
+                    if value == 2 {
+                        let (a, b) = edge.endpoints();
+                        doubles[a] += 1;
+                        doubles[b] += 1;
+                    }
+                    value == 1 || value == 2
+                });
+                valid_edges
+                    && (mode == 0
+                        || (mode == 1
+                            && doubles
+                                .iter()
+                                .zip(factor.double_demands())
+                                .all(|(&actual, &demand)| actual == demand as usize)))
+            }
             FactorDefinition::BinaryRelation(relation) => relation
                 .allowed_right(assignment[relation.left().index()])
                 .contains(assignment[relation.right().index()]),

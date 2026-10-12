@@ -94,20 +94,20 @@ class SouthStar2PreparationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "one immutable bool per atom"):
             PreparedMolecule(
-                (AtomFacts("C", False, None, 0, 4, 0),),
+                (AtomFacts("C", False, None, 0, 4, 0, None),),
                 (),
                 source_atom_class_property_present=(1,),  # type: ignore[arg-type]
             )
 
         with self.assertRaisesRegex(ValueError, "elided, single, aromatic, double, or triple"):
             PreparedMolecule((
-                AtomFacts("N", False, None, 0, 3, 0),
-                AtomFacts("N", False, None, 0, 3, 0),
+                AtomFacts("N", False, None, 0, 3, 0, None),
+                AtomFacts("N", False, None, 0, 3, 0, None),
             ), ((0, 1, "->"),))
 
         with self.assertRaisesRegex(TypeError, "immutable tuples"):
             TetrahedralAtom(
-                AtomFacts("C", False, None, 0, 1, 0),
+                AtomFacts("C", False, None, 0, 1, 0, None),
                 [0, 1, 2, VirtualHydrogen.INSTANCE],  # type: ignore[arg-type]
                 True,
             )
@@ -119,7 +119,7 @@ class SouthStar2PreparationTests(unittest.TestCase):
             prepared.atoms = ("O",)  # type: ignore[misc]
 
         tetrahedral = TetrahedralAtom(
-            AtomFacts("C", False, None, 0, 1, 0),
+            AtomFacts("C", False, None, 0, 1, 0, None),
             (0, 1, 2, VirtualHydrogen.INSTANCE),
             True,
         )
@@ -226,6 +226,46 @@ class SouthStar2PreparationTests(unittest.TestCase):
                     tuple(token for _, _, token in prepare_molecule(mol).bonds),
                 )
 
+    def test_kekulized_aromatic_flags_preserve_prepared_source_facts(self) -> None:
+        for smiles in ("c1ccccc1", "c1ccccc1-c2ccccc2", "O=c1cccc[nH]1", "c1ccccc1/C=C/C"):
+            with self.subTest(smiles=smiles):
+                mol = Chem.MolFromSmiles(smiles)
+                assert mol is not None
+                expected = prepare_molecule(mol)
+                kekulized = Chem.Mol(mol)
+                Chem.Kekulize(kekulized, clearAromaticFlags=False)
+                self.assertFalse(kekulized.NeedsUpdatePropertyCache())
+                before = tuple((bond.GetIsAromatic(), bond.GetBondType()) for bond in kekulized.GetBonds())
+                self.assertEqual(expected, prepare_molecule(kekulized))
+                self.assertEqual(before, tuple(
+                    (bond.GetIsAromatic(), bond.GetBondType()) for bond in kekulized.GetBonds()
+                ))
+
+                cleared = Chem.Mol(mol)
+                Chem.Kekulize(cleared, clearAromaticFlags=True)
+                fixed = prepare_molecule(cleared)
+                self.assertTrue(all(not atom.aromatic and atom.aromatic_total_valence is None for atom in fixed.atoms))
+                self.assertNotIn(":", tuple(token for _, _, token in fixed.bonds))
+                self.assertEqual(tuple(
+                    "=" if bond.GetBondType() == Chem.BondType.DOUBLE else ""
+                    for bond in cleared.GetBonds()
+                ), tuple(token for _, _, token in fixed.bonds))
+
+    def test_rejects_contradictory_aromatic_bond_facts(self) -> None:
+        for change, reason in (
+            (lambda mol: mol.GetBondWithIdx(0).SetIsAromatic(False), "inconsistent"),
+            (lambda mol: mol.GetBondWithIdx(0).SetBondType(Chem.BondType.TRIPLE), "inconsistent"),
+            (lambda mol: mol.GetAtomWithIdx(0).SetIsAromatic(False), "both endpoint atoms"),
+            (lambda mol: mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDUPRIGHT), "no source stereo or direction"),
+            (lambda mol: mol.GetBondWithIdx(0).SetStereo(Chem.BondStereo.STEREOANY), "no source stereo or direction"),
+        ):
+            with self.subTest(reason=reason):
+                mol = Chem.MolFromSmiles("c1ccccc1")
+                assert mol is not None
+                change(mol)
+                with self.assertRaisesRegex(ValueError, reason):
+                    prepare_molecule(mol)
+
     def test_unpaired_source_direction_errors_name_sorted_bond_ids(self) -> None:
         for smiles, marked_bonds, expected_ids in (
             ("CC=C", (0,), "[0]"),
@@ -242,7 +282,7 @@ class SouthStar2PreparationTests(unittest.TestCase):
                 self.assertIn("each must be a configured double-bond reference carrier", str(caught.exception))
 
     def test_build_writer_explains_missing_compiled_extension(self) -> None:
-        prepared = PreparedMolecule((AtomFacts("C", False, None, 0, 4, 0),), ())
+        prepared = PreparedMolecule((AtomFacts("C", False, None, 0, 4, 0, None),), ())
         with patch.dict("sys.modules", {"grimace._core": None}):
             with self.assertRaisesRegex(ImportError, "compiled grimace._core extension") as caught:
                 prepared.build_writer()
@@ -334,7 +374,7 @@ class SouthStar2PreparationTests(unittest.TestCase):
         core._SouthStar2PreparedWriter = lambda *args: args  # type: ignore[attr-defined]
         with patch.dict("sys.modules", {"grimace._core": core}):
             payload = prepared.build_writer()
-        self.assertEqual(("C", False, None, 0, 4, 0, None, (), True), payload[0][0])
+        self.assertEqual(("C", False, None, 0, 4, 0, None, (), True, None), payload[0][0])
 
     def test_preparation_matches_version_independent_chemistry_fact_fixture(self) -> None:
         for case in _chemistry_cases():
@@ -394,3 +434,37 @@ class SouthStar2PreparationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AromaticValencePreparationTests(unittest.TestCase):
+    def test_cached_source_valence_is_transported_only_for_aromatic_atoms(self) -> None:
+        for case in _chemistry_cases():
+            with self.subTest(case=case["id"]):
+                mol = _case_molecule(case)
+                prepared = prepare_molecule(mol)
+                core = ModuleType("grimace._core")
+                core._SouthStar2PreparedWriter = lambda *args: args
+                with patch.dict("sys.modules", {"grimace._core": core}):
+                    payload = prepared.build_writer()
+                for source, atom, wire in zip(mol.GetAtoms(), prepared.atoms, payload[0], strict=True):
+                    facts = atom.facts if isinstance(atom, TetrahedralAtom) else atom
+                    expected = source.GetTotalValence() if source.GetIsAromatic() else None
+                    self.assertEqual(facts.aromatic_total_valence, expected)
+                    self.assertEqual(facts.aromatic, source.GetIsAromatic())
+                    self.assertEqual(len(wire), 10)
+                    self.assertEqual(wire[9], expected)
+
+    def test_native_boundary_rejects_stale_or_inconsistent_valence_facts(self) -> None:
+        from grimace._core import _SouthStar2PreparedWriter
+        current = ("C", False, None, 0, 4, 0, None, (), False, None)
+        cases = (
+            (current[:-1], "expected ten atom-fact fields"),
+            (current[:-1] + (4,), "must be absent for nonaromatic atoms"),
+            (("C", True, None, 0, 1, 0, None, (), False, None), "must be present for aromatic atoms"),
+            (("C", True, None, 0, 1, 0, None, (), False, True), "unsigned integer or None"),
+            (("C", True, None, 0, 1, 0, None, (), False, -1), "unsigned integer or None"),
+        )
+        for wire, reason in cases:
+            with self.subTest(wire=wire):
+                with self.assertRaisesRegex(ValueError, reason):
+                    _SouthStar2PreparedWriter([wire], [], "generic_any_order")

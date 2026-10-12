@@ -138,9 +138,9 @@ fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken>
             "Cannot prepare atom {atom_index}: expected an atom-fact tuple"
         ))
     })?;
-    if fact.len() != 9 {
+    if fact.len() != 10 {
         return Err(PyValueError::new_err(format!(
-            "Cannot prepare atom {atom_index}: expected nine atom-fact fields, got {}",
+            "Cannot prepare atom {atom_index}: expected ten atom-fact fields, got {}",
             fact.len()
         )));
     }
@@ -180,7 +180,20 @@ fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken>
     let source_context = grimace_south_star2::AtomSourceContext {
         atom_class_property_present: class_property_present.extract::<bool>()?,
     };
-    let facts = AtomFacts::new(element, aromatic, isotope, formal_charge, non_graph_hydrogens, atom_class)
+    let valence_value = fact.get_item(9)?;
+    let aromatic_total_valence = if valence_value.is_none() {
+        None
+    } else {
+        if valence_value.is_instance_of::<PyBool>() {
+            return Err(PyValueError::new_err(format!(
+                "Cannot prepare atom {atom_index}: aromatic total valence must be an unsigned integer or None"
+            )));
+        }
+        Some(valence_value.extract::<u32>().map_err(|_| PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: aromatic total valence must be an unsigned integer or None"
+        )))?)
+    };
+    let facts = AtomFacts::new(element, aromatic, isotope, formal_charge, non_graph_hydrogens, atom_class, aromatic_total_valence)
         .map_err(|error| PyValueError::new_err(format!("Cannot prepare atom {atom_index}: {error}")))?;
     let parity_context = fact.get_item(6)?;
     let at_for_even_parity = if parity_context.is_none() {

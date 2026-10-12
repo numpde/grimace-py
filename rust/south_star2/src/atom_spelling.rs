@@ -53,8 +53,16 @@ pub enum TetrahedralMarker {
 /// Spelling decisions selected by the caller from graph and stereo constraints.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct AtomSpellingContext {
+    pub aromatic_spelling: AromaticSpelling,
     pub tetrahedral_marker: Option<TetrahedralMarker>,
     pub bonds: AtomBondContext,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum AromaticSpelling {
+    #[default]
+    Source,
+    Kekule,
 }
 
 /// Native-derived incident bond kinds; totals are derived from these counts.
@@ -105,6 +113,7 @@ pub struct AtomFacts {
     pub formal_charge: i8,
     pub non_graph_hydrogens: u8,
     pub atom_class: u64,
+    pub aromatic_total_valence: Option<u32>,
 }
 
 impl AtomFacts {
@@ -115,7 +124,11 @@ impl AtomFacts {
         formal_charge: i8,
         non_graph_hydrogens: u8,
         atom_class: u64,
+        aromatic_total_valence: Option<u32>,
     ) -> Result<Self, AtomFactsError> {
+        if aromatic != aromatic_total_valence.is_some() {
+            return Err(AtomFactsError::AromaticValencePresence { aromatic });
+        }
         if !(-99..=99).contains(&formal_charge) {
             return Err(AtomFactsError::ChargeOutOfRange(formal_charge));
         }
@@ -142,12 +155,11 @@ impl AtomFacts {
             formal_charge,
             non_graph_hydrogens,
             atom_class,
+            aromatic_total_valence,
         })
     }
 
     /// Return a bare organic-subset spelling only when its inferred H count agrees.
-    /// Aromatic P remains bracket-spelled: the standard element list alone does
-    /// not establish its bare implicit-hydrogen inference for these graph facts.
     fn bare_spelling(&self, context: AtomSpellingContext) -> Option<&'static str> {
         if self.isotope.is_some()
             || self.formal_charge != 0
@@ -156,10 +168,13 @@ impl AtomFacts {
         {
             return None;
         }
-        let symbol = if self.aromatic {
+        let symbol = if self.aromatic && context.aromatic_spelling == AromaticSpelling::Source {
             match self.element.as_str() {
+                "B" => "b",
                 "C" => "c",
                 "N" => "n",
+                "P" => "p",
+                "*" => "*",
                 "O" => "o",
                 "S" => "s",
                 _ => return None,
@@ -173,14 +188,24 @@ impl AtomFacts {
                 _ => return None,
             }
         };
-        let eligible_hydrogens = if self.aromatic {
+        let eligible_hydrogens = if self.aromatic && context.aromatic_spelling == AromaticSpelling::Source {
             match self.element.as_str() {
                 "C" if (2..=3).contains(&context.bonds.degree())
-                    && !context.bonds.exocyclic_multiple_bond() =>
+                    && context.bonds.aromatic_bonds >= 2
+                    && context.bonds.triple_bonds == 0
+                    && self.aromatic_total_valence == Some(4) =>
                 {
                     Some((3 - context.bonds.degree()) as u8)
                 }
-                "N" if context.bonds.aromatic_bonds == 2
+                "B" if context.bonds.aromatic_bonds == 2
+                    && (2..=3).contains(&context.bonds.degree())
+                    && !context.bonds.exocyclic_multiple_bond()
+                    && self.aromatic_total_valence == Some(3) =>
+                {
+                    Some(0)
+                }
+                "*" => Some(0),
+                "N" | "P" if context.bonds.aromatic_bonds == 2
                     && !context.bonds.exocyclic_multiple_bond()
                     && (context.bonds.degree() == 2
                         || (context.bonds.degree() == 3 && context.bonds.single_bonds == 1)) =>
@@ -193,9 +218,14 @@ impl AtomFacts {
                 _ => None,
             }
         } else {
-            context
-                .bonds
-                .integer_valence()
+            if self.aromatic && context.aromatic_spelling == AromaticSpelling::Kekule {
+                self.aromatic_total_valence
+                    .expect("Kekule spelling requires aromatic total valence")
+                    .checked_sub(u32::from(self.non_graph_hydrogens))
+                    .and_then(|sum| u16::try_from(sum).ok())
+            } else {
+                context.bonds.integer_valence()
+            }
                 .and_then(|valence| normal_valence_hydrogens(self.element, valence))
         };
         (eligible_hydrogens == Some(self.non_graph_hydrogens)).then_some(symbol)
@@ -716,7 +746,7 @@ fn push_element_start(
     context: AtomSpellingContext,
     bracketed: bool,
 ) {
-    let text = element_text(facts);
+    let text = element_text(facts, context);
     push_text_first(
         &text,
         bracketed,
@@ -760,8 +790,8 @@ fn push_text_first(
     push_choice(choices, facts, context, field, first, phase);
 }
 
-fn element_text(facts: AtomFacts) -> String {
-    if facts.aromatic {
+fn element_text(facts: AtomFacts, context: AtomSpellingContext) -> String {
+    if facts.aromatic && context.aromatic_spelling == AromaticSpelling::Source {
         match facts.element.as_str() {
             "B" => "b",
             "C" => "c",
@@ -841,6 +871,7 @@ fn normal_valence_hydrogens(element: ElementSymbol, bond_order_sum: u16) -> Opti
 /// Errors in atom facts that this OpenSMILES atom lexer can represent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AtomFactsError {
+    AromaticValencePresence { aromatic: bool },
     UnknownElement(String),
     ChargeOutOfRange(i8),
     HydrogenCountOutOfRange(u8),
@@ -851,6 +882,11 @@ pub enum AtomFactsError {
 impl fmt::Display for AtomFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AromaticValencePresence { aromatic } => write!(
+                f, "aromatic total valence must be {} for {} atoms",
+                if *aromatic { "present" } else { "absent" },
+                if *aromatic { "aromatic" } else { "nonaromatic" }
+            ),
             Self::UnknownElement(symbol) => {
                 write!(f, "unknown OpenSMILES element symbol {symbol:?}")
             }
@@ -881,7 +917,10 @@ impl std::error::Error for AtomFactsError {}
 mod tests {
     use super::*;
 
-    fn facts(symbol: &str, aromatic: bool, h: u8, atom_class: u64) -> AtomFacts {
+    fn facts(
+        symbol: &str, aromatic: bool, h: u8, atom_class: u64,
+        aromatic_total_valence: Option<u32>,
+    ) -> AtomFacts {
         AtomFacts::new(
             ElementSymbol::new(symbol).unwrap(),
             aromatic,
@@ -889,8 +928,25 @@ mod tests {
             0,
             h,
             atom_class,
+            aromatic_total_valence,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn aromatic_total_valence_presence_matches_chemical_identity() {
+        let carbon = ElementSymbol::new("C").unwrap();
+        assert_eq!(
+            AtomFacts::new(carbon, true, None, 0, 1, 0, None),
+            Err(AtomFactsError::AromaticValencePresence { aromatic: true })
+        );
+        assert_eq!(
+            AtomFacts::new(carbon, false, None, 0, 4, 0, Some(4)),
+            Err(AtomFactsError::AromaticValencePresence { aromatic: false })
+        );
+        let aromatic = AtomFacts::new(carbon, true, None, 0, 1, 0, Some(4)).unwrap();
+        assert!(aromatic.aromatic);
+        assert_eq!(aromatic.aromatic_total_valence, Some(4));
     }
 
     fn states_after(
@@ -947,49 +1003,64 @@ mod tests {
             ("Br", 0, bond_context(1, 0, 0, 0)),
             ("I", 0, bond_context(1, 0, 0, 0)),
         ] {
-            assert!(supports(facts(symbol, false, h, 0), context, symbol));
+            assert!(supports(facts(symbol, false, h, 0, None), context, symbol));
         }
         assert!(!supports(
-            facts("Cl", false, 1, 0),
+            facts("Cl", false, 1, 0, None),
             bond_context(1, 0, 0, 0),
             "Cl"
         ));
         assert!(supports(
-            facts("C", false, 1, 0),
+            facts("C", false, 1, 0, None),
             bond_context(0, 0, 1, 0),
             "C"
         ));
     }
 
     #[test]
-    fn aromatic_bare_spelling_uses_supported_bond_context_and_keeps_p_bracketed() {
+    fn source_carbon_bare_hydrogens_preserve_valid_exocyclic_valence() {
+        assert!(supports(facts("C", true, 0, 0, Some(4)), bond_context(0, 1, 0, 2), "c"));
+        for (h, valence, context) in [
+            (1, 4, bond_context(0, 1, 0, 2)),
+            (0, 3, bond_context(0, 1, 0, 2)),
+            (0, 4, bond_context(0, 0, 1, 2)),
+            (0, 4, bond_context(0, 2, 0, 2)),
+            (0, 4, bond_context(1, 1, 0, 1)),
+        ] {
+            assert!(!supports(facts("C", true, h, 0, Some(valence)), context, "c"));
+        }
+        assert!(!supports(facts("N", true, 1, 0, Some(3)), bond_context(0, 0, 0, 2), "n"));
+    }
+
+    #[test]
+    fn aromatic_bare_spelling_uses_supported_bond_context() {
         let aromatic_ring = bond_context(0, 0, 0, 2);
-        assert!(supports(facts("C", true, 1, 0), aromatic_ring, "c"));
-        assert!(!supports(facts("C", true, 0, 0), aromatic_ring, "c"));
+        assert!(supports(facts("C", true, 1, 0, Some(4)), aromatic_ring, "c"));
+        assert!(!supports(facts("C", true, 0, 0, Some(4)), aromatic_ring, "c"));
         assert!(supports(
-            facts("C", true, 0, 0),
+            facts("C", true, 0, 0, Some(4)),
             bond_context(1, 0, 0, 2),
             "c"
         ));
-        assert!(supports(facts("N", true, 0, 0), aromatic_ring, "n"));
+        assert!(supports(facts("N", true, 0, 0, Some(3)), aromatic_ring, "n"));
         let aromatic_tertiary_n = bond_context(1, 0, 0, 2);
         assert!(supports(
-            facts("N", true, 0, 0),
+            facts("N", true, 0, 0, Some(3)),
             aromatic_tertiary_n,
             "n"
         ));
         assert!(!supports(
-            facts("N", true, 1, 0),
+            facts("N", true, 1, 0, Some(3)),
             aromatic_tertiary_n,
             "n"
         ));
         assert!(supports(
-            facts("N", true, 1, 0),
+            facts("N", true, 1, 0, Some(3)),
             aromatic_tertiary_n,
             "[nH]"
         ));
         assert!(!supports(
-            facts("N", true, 0, 0),
+            facts("N", true, 0, 0, Some(3)),
             bond_context(0, 1, 0, 2),
             "n"
         ));
@@ -1000,49 +1071,83 @@ mod tests {
             1,
             0,
             0,
+            Some(4),
         )
         .unwrap();
         assert!(!supports(charged_n, aromatic_tertiary_n, "n"));
-        assert!(!supports(facts("N", true, 1, 0), aromatic_ring, "n"));
-        assert!(supports(facts("N", true, 1, 0), aromatic_ring, "[nH]"));
-        assert!(supports(facts("N", true, 0, 0), aromatic_ring, "[nH0]"));
-        assert!(supports(facts("O", true, 0, 0), aromatic_ring, "o"));
-        assert!(supports(facts("S", true, 0, 0), aromatic_ring, "s"));
+        assert!(!supports(facts("N", true, 1, 0, Some(3)), aromatic_ring, "n"));
+        assert!(supports(facts("N", true, 1, 0, Some(3)), aromatic_ring, "[nH]"));
+        assert!(supports(facts("N", true, 0, 0, Some(3)), aromatic_ring, "[nH0]"));
+        assert!(supports(facts("O", true, 0, 0, Some(2)), aromatic_ring, "o"));
+        assert!(supports(facts("S", true, 0, 0, Some(2)), aromatic_ring, "s"));
         assert!(!supports(
-            facts("O", true, 0, 0),
+            facts("O", true, 0, 0, Some(2)),
             bond_context(1, 0, 0, 1),
             "o"
         ));
-        assert!(supports(facts("P", true, 0, 0), aromatic_ring, "[p]"));
-        assert!(!supports(facts("P", true, 0, 0), aromatic_ring, "p"));
+        assert!(supports(facts("P", true, 0, 0, Some(3)), aromatic_ring, "[p]"));
+        assert!(supports(facts("P", true, 0, 0, Some(3)), aromatic_ring, "p"));
         assert!(!supports(
-            facts("C", true, 1, 0),
+            facts("C", true, 1, 0, Some(4)),
             bond_context(0, 1, 0, 2),
             "c"
         ));
     }
 
     #[test]
+    fn bare_aromatic_boron_phosphorus_and_wildcard_preserve_fixed_hydrogens() {
+        let source = bond_context(0, 0, 0, 2);
+        assert!(supports(facts("B", true, 0, 0, Some(3)), source, "b"));
+        assert!(!supports(facts("B", true, 1, 0, Some(3)), source, "b"));
+        assert!(!supports(facts("B", true, 0, 0, Some(4)), source, "b"));
+        for symbol in ["N", "P"] {
+            let bare = symbol.to_ascii_lowercase();
+            assert!(supports(facts(symbol, true, 0, 0, Some(3)), source, &bare));
+            assert!(!supports(facts(symbol, true, 1, 0, Some(3)), source, &bare));
+            assert!(supports(facts(symbol, true, 1, 0, Some(3)), source, &format!("[{bare}H]")));
+            assert!(!supports(facts(symbol, true, 0, 0, Some(3)), bond_context(0, 1, 0, 2), &bare));
+        }
+        for notation in [AromaticSpelling::Source, AromaticSpelling::Kekule] {
+            let context = AtomSpellingContext { aromatic_spelling: notation, ..source };
+            let wildcard = facts("*", true, 0, 0, Some(3));
+            assert!(supports(wildcard, context, "*"));
+            assert!(!supports(facts("*", true, 1, 0, Some(3)), context, "*"));
+            for restricted in [
+                AtomFacts { isotope: Some(13), ..wildcard },
+                AtomFacts { formal_charge: 1, ..wildcard },
+                AtomFacts { atom_class: 1, ..wildcard },
+            ] {
+                assert!(!supports(restricted, context, "*"));
+            }
+            assert!(!supports(wildcard, AtomSpellingContext {
+                tetrahedral_marker: Some(TetrahedralMarker::At), ..context
+            }, "*"));
+        }
+    }
+
+    #[test]
     fn bracket_fields_spell_isotope_hydrogen_charge_class_and_tetrahedral_context() {
         let atom =
-            AtomFacts::new(ElementSymbol::new("N").unwrap(), false, Some(15), 1, 2, 0).unwrap();
+            AtomFacts::new(ElementSymbol::new("N").unwrap(), false, Some(15), 1, 2, 0, None).unwrap();
         let context = AtomSpellingContext {
             tetrahedral_marker: Some(TetrahedralMarker::At),
             bonds: bond_context(4, 0, 0, 0).bonds,
+            aromatic_spelling: AromaticSpelling::Source,
         };
         assert!(supports(atom, context, "[15N@H2+]"));
         assert!(supports(atom, context, "[15N@TH1H2+1]"));
-        let classed = facts("C", false, 4, 7);
+        let classed = facts("C", false, 4, 7, None);
         assert!(supports(classed, AtomSpellingContext::default(), "[CH4:7]"));
     }
 
     #[test]
     fn shared_at_prefix_keeps_selected_short_markers_live_after_style_filtering() {
-        let atom = facts("C", false, 1, 0);
+        let atom = facts("C", false, 1, 0, None);
         for marker in [TetrahedralMarker::At, TetrahedralMarker::AtAt] {
             let context = AtomSpellingContext {
                 tetrahedral_marker: Some(marker),
                 bonds: bond_context(3, 0, 0, 0).bonds,
+                aromatic_spelling: AromaticSpelling::Source,
             };
             let after_shared_at = states_after(atom, context, "[C@")
                 .into_iter()
@@ -1095,7 +1200,7 @@ mod tests {
 
     #[test]
     fn neutral_charge_zero_aliases_and_hydrogen_atom_fields_follow_grammar() {
-        let neutral_carbon = facts("C", false, 0, 0);
+        let neutral_carbon = facts("C", false, 0, 0, None);
         let tetravalent = bond_context(4, 0, 0, 0);
         assert!(supports(neutral_carbon, tetravalent, "[C+0]"));
         assert!(supports(neutral_carbon, tetravalent, "[C-0]"));
@@ -1104,12 +1209,12 @@ mod tests {
         assert!(!supports(neutral_carbon, tetravalent, "[C+]"));
         assert!(!supports(neutral_carbon, tetravalent, "[C-]"));
 
-        let hydrogen = facts("H", false, 0, 0);
+        let hydrogen = facts("H", false, 0, 0, None);
         assert!(supports(hydrogen, AtomSpellingContext::default(), "[H]"));
         assert!(!supports(hydrogen, AtomSpellingContext::default(), "[HH]"));
         assert!(!supports(hydrogen, AtomSpellingContext::default(), "[HH0]"));
         assert!(matches!(
-            AtomFacts::new(ElementSymbol::new("H").unwrap(), false, None, 0, 1, 0),
+            AtomFacts::new(ElementSymbol::new("H").unwrap(), false, None, 0, 1, 0, None),
             Err(AtomFactsError::HydrogenAtomHasHydrogens(1))
         ));
     }
@@ -1117,7 +1222,7 @@ mod tests {
     #[test]
     fn zero_isotope_and_class_accept_long_leading_zero_prefixes() {
         let isotope_zero =
-            AtomFacts::new(ElementSymbol::new("H").unwrap(), false, Some(0), 0, 0, 0).unwrap();
+            AtomFacts::new(ElementSymbol::new("H").unwrap(), false, Some(0), 0, 0, 0, None).unwrap();
         let long_isotope = format!("[{}0H]", "0".repeat(128));
         assert!(supports(
             isotope_zero,
@@ -1125,7 +1230,7 @@ mod tests {
             &long_isotope
         ));
 
-        let class_zero = facts("C", false, 4, 0);
+        let class_zero = facts("C", false, 4, 0, None);
         let long_class = format!("[CH4:{}0]", "0".repeat(128));
         assert!(supports(
             class_zero,
@@ -1136,7 +1241,7 @@ mod tests {
 
     #[test]
     fn zero_class_is_optional_and_sibling_states_are_immutable() {
-        let atom = facts("C", false, 4, 0);
+        let atom = facts("C", false, 4, 0, None);
         assert!(supports(atom, AtomSpellingContext::default(), "C"));
         assert!(supports(atom, AtomSpellingContext::default(), "[CH4]"));
         assert!(supports(atom, AtomSpellingContext::default(), "[CH4:0]"));
@@ -1150,7 +1255,7 @@ mod tests {
 
     #[test]
     fn choices_identify_the_atom_field_emitting_each_character() {
-        let state = AtomSpellingState::initial(facts("C", false, 0, 0), bond_context(4, 0, 0, 0));
+        let state = AtomSpellingState::initial(facts("C", false, 0, 0, None), bond_context(4, 0, 0, 0));
         let choices = state.choices();
         assert!(choices.iter().any(|choice| {
             choice.text == '[' && choice.field == AtomSpellingField::OpenBracket
@@ -1182,12 +1287,12 @@ mod tests {
             assert_eq!(ElementSymbol::new(symbol).unwrap().as_str(), symbol);
         }
         assert!(supports(
-            facts("Xe", false, 0, 0),
+            facts("Xe", false, 0, 0, None),
             AtomSpellingContext::default(),
             "[Xe]"
         ));
         assert!(supports(
-            facts("*", false, 0, 0),
+            facts("*", false, 0, 0, None),
             AtomSpellingContext::default(),
             "*"
         ));

@@ -66,12 +66,15 @@ class AtomFacts:
     formal_charge: int
     non_graph_hydrogens: int
     atom_class: int
+    aromatic_total_valence: int | None
 
     def __post_init__(self) -> None:
         if type(self.element) is not str or type(self.aromatic) is not bool:
             raise TypeError("atom facts require an element symbol and aromatic flag")
         if self.isotope is not None and type(self.isotope) is not int:
             raise TypeError("atom isotope must be an integer or None")
+        if self.aromatic_total_valence is not None and type(self.aromatic_total_valence) is not int:
+            raise TypeError("aromatic total valence must be an integer or None")
         if any(type(value) is not int for value in (
             self.formal_charge, self.non_graph_hydrogens, self.atom_class,
         )):
@@ -202,6 +205,7 @@ class PreparedMolecule:
                 atom.at_for_even_parity if type(atom) is TetrahedralAtom else None,
                 reference_order,
                 self.source_atom_class_property_present[len(atom_facts)],
+                facts.aromatic_total_valence,
             ))
         directional_facts = tuple(
             (
@@ -259,13 +263,26 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
                 f"Cannot prepare South Star 2 molecule: bond {index} has "
                 f"{bond_type = !r}; expected a SINGLE, DOUBLE, TRIPLE, or AROMATIC bond."
             )
-        if is_aromatic != (bond_type == Chem.BondType.AROMATIC):
+        if (bond_type == Chem.BondType.AROMATIC and not is_aromatic) or (
+            is_aromatic and bond_type == Chem.BondType.TRIPLE
+        ):
             raise ValueError(
                 f"Cannot prepare South Star 2 molecule: bond {index} has inconsistent "
                 f"{bond_type = !r} and {is_aromatic = }"
             )
         stereo = bond.GetStereo()
         bond_dir = bond.GetBondDir()
+        begin_aromatic = mol.GetAtomWithIdx(bond.GetBeginAtomIdx()).GetIsAromatic()
+        end_aromatic = mol.GetAtomWithIdx(bond.GetEndAtomIdx()).GetIsAromatic()
+        if is_aromatic:
+            if not (begin_aromatic and end_aromatic):
+                raise ValueError(
+                    f"Cannot prepare aromatic bond {index}: both endpoint atoms must be aromatic"
+                )
+            if stereo != Chem.BondStereo.STEREONONE or bond_dir != Chem.BondDir.NONE:
+                raise ValueError(
+                    f"Cannot prepare aromatic bond {index}: expected no source stereo or direction"
+                )
         configured = stereo in (Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOZ,
                                 Chem.BondStereo.STEREOTRANS, Chem.BondStereo.STEREOCIS)
         if bond_type == Chem.BondType.SINGLE and stereo != Chem.BondStereo.STEREONONE:
@@ -283,9 +300,11 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             source_direction_bonds.add(index)
         if bond_type == Chem.BondType.DOUBLE and stereo != Chem.BondStereo.STEREONONE and not configured:
             raise ValueError(f"Cannot prepare double bond {index} with unsupported {stereo = !r}")
-        begin_aromatic = mol.GetAtomWithIdx(bond.GetBeginAtomIdx()).GetIsAromatic()
-        end_aromatic = mol.GetAtomWithIdx(bond.GetEndAtomIdx()).GetIsAromatic()
-        if bond_type == Chem.BondType.SINGLE:
+        if is_aromatic:
+            # RDKit Kekulize(clearAromaticFlags=False) retains source aromaticity
+            # while replacing aromatic bond types with integer single/double types.
+            token = ":"
+        elif bond_type == Chem.BondType.SINGLE:
             token = "-" if begin_aromatic and end_aromatic else ""
         else:
             token = {
@@ -357,6 +376,7 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             formal_charge=formal_charge,
             non_graph_hydrogens=non_graph_hydrogens,
             atom_class=atom_map_num,
+            aromatic_total_valence=atom.GetTotalValence() if atom.GetIsAromatic() else None,
         )
         if tetrahedral:
             incident_bonds = tuple(bond.GetIdx() for bond in atom.GetBonds())

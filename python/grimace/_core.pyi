@@ -11,6 +11,7 @@ _AtomFactsToken: TypeAlias = tuple[
     bool | None,
     tuple[int | Literal["virtual_hydrogen"], ...],
     bool,
+    int | None,
 ]
 
 

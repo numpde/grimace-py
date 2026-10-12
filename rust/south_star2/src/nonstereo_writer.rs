@@ -12,10 +12,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
-use crate::atom_spelling::{AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingState, ElementSymbol, TetrahedralMarker};
+use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
-use crate::model::{BondRole, EdgeRolePartition, TetrahedralLayoutBond};
-use crate::prepared::{AdjacentBond, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
+use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, TetrahedralLayoutBond};
+use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
     full_order_domain, full_role_pattern_domain, layout_order_rows, parity_domain, prefix_domain,
@@ -362,7 +362,7 @@ enum PreparedDirectionalBondStatus {
 #[derive(Copy, Clone, Debug)]
 struct TraversalEmissionSpec {
     text: &'static str,
-    mark_restriction: Option<(VariableId, Domain)>,
+    semantic_restriction: Option<(VariableId, Domain)>,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +370,8 @@ pub(crate) struct PreparedNonStereo {
     molecule: PreparedMolecule,
     atoms: Arc<[PreparedAtom]>,
     bond_tokens: Arc<[NonStereoBondToken]>,
+    atom_aromatic_modes: Arc<[Option<VariableId>]>,
+    bond_chemical_orders: Arc<[Option<VariableId>]>,
     directional_bonds: Arc<[PreparedDirectionalBondStatus]>,
     directional_sides: Arc<[PreparedDirectionalSide]>,
     #[cfg(test)]
@@ -550,6 +552,11 @@ impl PreparedNonStereo {
                 actual: bond_tokens.len(),
             });
         }
+        let chemical_aromatic_bonds = graph.bond_ids().filter(|bond| {
+            let edge = graph.bond(*bond).unwrap();
+            matches!(&atoms[edge.a().index()], PreparedAtomToken::Facts { .. })
+                || matches!(&atoms[edge.b().index()], PreparedAtomToken::Facts { .. })
+        }).collect::<BTreeSet<_>>();
         for (atom, prepared) in graph.atom_ids().zip(&atoms) {
             validate_prepared_atom(graph, atom, prepared)?;
         }
@@ -561,7 +568,11 @@ impl PreparedNonStereo {
                 if compiled_directional_bonds.contains(&bond) {
                     BondRole::role_domain()
                 } else {
-                    bond_tokens[bond.index()].representation_domain()
+                    if bond_tokens[bond.index()] == NonStereoBondToken::Aromatic && chemical_aromatic_bonds.contains(&bond) {
+                        BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
+                    } else {
+                        bond_tokens[bond.index()].representation_domain()
+                    }
                 }
             })
             .collect::<Vec<_>>();
@@ -577,6 +588,15 @@ impl PreparedNonStereo {
             .collect::<Vec<_>>();
         let mut assembly =
             PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
+        let (atom_aromatic_modes, bond_chemical_orders) =
+            prepare_aromatic_matching(&mut assembly, graph, &atoms, &bond_tokens)?;
+        for relation in &directional_relations {
+            for carrier in relation.left_carriers.iter().chain(relation.right_carriers.iter()) {
+                if bond_chemical_orders.get(carrier.bond.index()).is_some_and(Option::is_some) {
+                    return Err(PreparedNonStereoError::UnsupportedAromaticDirectionalCarrier { bond: carrier.bond });
+                }
+            }
+        }
         let atoms = atoms
             .into_iter()
             .enumerate()
@@ -628,6 +648,8 @@ impl PreparedNonStereo {
             molecule,
             atoms: Arc::from(atoms.into_boxed_slice()),
             bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
+            atom_aromatic_modes: Arc::from(atom_aromatic_modes.into_boxed_slice()),
+            bond_chemical_orders: Arc::from(bond_chemical_orders.into_boxed_slice()),
             directional_bonds: Arc::from(directional_bonds.into_boxed_slice()),
             directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             #[cfg(test)]
@@ -703,7 +725,7 @@ impl PreparedNonStereo {
             (None, None) => None,
             _ => panic!("tetrahedral spelling parity must match prepared center"),
         };
-        AtomSpellingContext { tetrahedral_marker, bonds }
+        AtomSpellingContext { tetrahedral_marker, bonds, aromatic_spelling: AromaticSpelling::Source }
     }
 
     fn bond_text(&self, bond: BondId, from: AtomId) -> &'static str {
@@ -749,6 +771,78 @@ impl PreparedNonStereo {
     ) -> Domain {
         BondRepresentation::endpoint_domain(self.fixed_endpoint(bond, atom), spelling)
     }
+}
+
+fn prepare_aromatic_matching(
+    assembly: &mut PreparedConstraintAssembly,
+    graph: &PreparedGraph,
+    atoms: &[PreparedAtomToken],
+    tokens: &[NonStereoBondToken],
+) -> Result<(Vec<Option<VariableId>>, Vec<Option<VariableId>>), PreparedNonStereoError> {
+    let mut modes = vec![None; graph.atom_count()];
+    let mut orders = vec![None; graph.bond_count()];
+    let mut aromatic_edges = BTreeSet::new();
+    for bond in graph.bond_ids().filter(|bond| tokens[bond.index()] == NonStereoBondToken::Aromatic) {
+        let edge = graph.bond(bond).unwrap();
+        match (&atoms[edge.a().index()], &atoms[edge.b().index()]) {
+            (PreparedAtomToken::Facts { facts: a, .. }, PreparedAtomToken::Facts { facts: b, .. })
+                if a.aromatic && b.aromatic && a.aromatic_total_valence.is_some() && b.aromatic_total_valence.is_some() => { aromatic_edges.insert(bond); }
+            // Fixed adapters model lexical tokens, not chemical aromatic atoms.
+            #[cfg(test)]
+            (PreparedAtomToken::Fixed(_), PreparedAtomToken::Fixed(_)) => {}
+            _ => return Err(PreparedNonStereoError::SourceBondMismatch { bond }),
+        }
+    }
+    for root in graph.atom_ids() {
+        if modes[root.index()].is_some() || !graph.neighbors(root).unwrap().iter().any(|edge| aromatic_edges.contains(&edge.bond())) { continue; }
+        let mut members = BTreeSet::new();
+        let mut queue = vec![root];
+        while let Some(atom) = queue.pop() {
+            if !members.insert(atom) { continue; }
+            for edge in graph.neighbors(atom).unwrap().iter().filter(|edge| aromatic_edges.contains(&edge.bond())) { queue.push(edge.atom()); }
+        }
+        let mode = assembly.add_isolated_variable(Domain::from_bits(3));
+        let mut demands = Vec::new();
+        let vertices = members.iter().enumerate().map(|(index, atom)| (*atom, index)).collect::<BTreeMap<_, _>>();
+        for atom in &members {
+            let PreparedAtomToken::Facts { facts, .. } = &atoms[atom.index()] else { unreachable!() };
+            let mut fixed_bond_order_sum = 0;
+            let mut aromatic_degree = 0;
+            for edge in graph.neighbors(*atom).unwrap() {
+                match tokens[edge.bond().index()] {
+                    NonStereoBondToken::Aromatic => aromatic_degree += 1,
+                    NonStereoBondToken::Elided | NonStereoBondToken::Single => fixed_bond_order_sum += 1,
+                    NonStereoBondToken::Double => fixed_bond_order_sum += 2,
+                    NonStereoBondToken::Triple => fixed_bond_order_sum += 3,
+                    NonStereoBondToken::DativeAToB | NonStereoBondToken::DativeBToA => return Err(PreparedNonStereoError::AromaticDativeIncidence { atom: *atom, bond: edge.bond() }),
+                }
+            }
+            let total_valence = facts.aromatic_total_valence.unwrap();
+            let base = u32::from(facts.non_graph_hydrogens) + fixed_bond_order_sum + aromatic_degree;
+            let demand = total_valence.checked_sub(base).filter(|d| *d <= 1)
+                .ok_or(PreparedNonStereoError::AromaticDemand {
+                    atom: *atom, total_valence, non_graph_hydrogens: facts.non_graph_hydrogens,
+                    fixed_bond_order_sum, aromatic_degree,
+                })?;
+            demands.push(demand as u8);
+            modes[atom.index()] = Some(mode);
+        }
+        let mut edges = Vec::new();
+        for bond in &aromatic_edges {
+            let edge = graph.bond(*bond).unwrap();
+            if !members.contains(&edge.a()) { continue; }
+            let order = assembly.add_isolated_variable(Domain::from_bits(7));
+            orders[bond.index()] = Some(order);
+            edges.push(AromaticMatchingEdge::new(order, vertices[&edge.a()], vertices[&edge.b()]));
+        }
+        assembly.add_aromatic_matching(mode, demands, edges);
+    }
+    for atom in graph.atom_ids() {
+        if matches!(&atoms[atom.index()], PreparedAtomToken::Facts { facts, .. } if facts.aromatic) && modes[atom.index()].is_none() {
+            return Err(PreparedNonStereoError::MissingAromaticComponent { atom });
+        }
+    }
+    Ok((modes, orders))
 }
 
 fn provisionally_compiled_directional_bonds(
@@ -1349,7 +1443,7 @@ fn test_atom_facts(
         let hydrogens = fixed_hydrogens.unwrap_or_else(|| {
             u8::try_from((valence - bond_valence).max(0)).expect("test hydrogen count fits")
         });
-        return AtomFacts::new(element, false, None, 0, hydrogens, 0)
+        return AtomFacts::new(element, false, None, 0, hydrogens, 0, None)
             .expect("test atom facts are valid");
     }
     AtomFacts::new(
@@ -1359,6 +1453,7 @@ fn test_atom_facts(
         0,
         0,
         u64::try_from(atom.index() + 1).expect("test atom class fits"),
+        None,
     )
     .expect("test atom facts are valid")
 }
@@ -1372,12 +1467,18 @@ fn test_tetrahedral_facts(has_virtual_hydrogen: bool) -> AtomFacts {
         0,
         u8::from(has_virtual_hydrogen),
         0,
+        None,
     )
     .expect("tetrahedral test facts are valid")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PreparedNonStereoError {
+    SourceBondMismatch { bond: BondId },
+    AromaticDemand { atom: AtomId, total_valence: u32, non_graph_hydrogens: u8, fixed_bond_order_sum: u32, aromatic_degree: u32 },
+    AromaticDativeIncidence { atom: AtomId, bond: BondId },
+    MissingAromaticComponent { atom: AtomId },
+    UnsupportedAromaticDirectionalCarrier { bond: BondId },
     AtomTextCountMismatch {
         expected: usize,
         actual: usize,
@@ -1423,6 +1524,11 @@ pub(crate) enum PreparedNonStereoError {
 impl fmt::Display for PreparedNonStereoError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SourceBondMismatch { bond } => write!(formatter, "cannot prepare aromatic bond {bond:?}: both endpoints must supply aromatic atom facts and total valence"),
+            Self::AromaticDemand { atom, total_valence, non_graph_hydrogens, fixed_bond_order_sum, aromatic_degree } => write!(formatter, "cannot prepare Kekule matching for {atom:?}: total valence {total_valence} minus non-graph hydrogens {non_graph_hydrogens}, fixed bond orders {fixed_bond_order_sum}, and aromatic degree {aromatic_degree} must require zero or one incident double bond"),
+            Self::AromaticDativeIncidence { atom, bond } => write!(formatter, "cannot prepare Kekule matching for {atom:?}: incident dative bond {bond:?} has no supported integer valence contribution"),
+            Self::MissingAromaticComponent { atom } => write!(formatter, "cannot prepare aromatic atom {atom:?}: no incident source aromatic bond supplies a matching component"),
+            Self::UnsupportedAromaticDirectionalCarrier { bond } => write!(formatter, "cannot prepare directional carrier {bond:?}: a chemical aromatic bond with variable Kekule order is not a supported directional role"),
             Self::AtomTextCountMismatch { expected, actual } => write!(
                 formatter,
                 "expected {expected} prepared atom texts, received {actual}"
@@ -2290,19 +2396,12 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             .structural
             .active_atom()
             .expect("ring opening spelling requires an active endpoint");
-        let current = self.structural.bond_decision_domain(incident.bond());
         let mut restrictions = self.parent_prefix_restriction(incident);
         restrictions.extend_from_slice(semantic_restrictions);
         let mut attempts = Vec::new();
-        for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
-            let allowed = current.intersect(self.surface.ring_endpoint_domain(
-                incident.bond(),
-                active,
-                spelling,
-            ));
-            if allowed.is_empty() {
-                continue;
-            }
+        for (spelling, text, order_restriction, allowed) in self.ring_emission_specs(incident.bond(), active) {
+            let mut restrictions = restrictions.clone();
+            if let Some(restriction) = order_restriction { restrictions.push(restriction); }
             let structural = match self.attempt_candidate_with_transition(
                 candidate,
                 Some(allowed),
@@ -2351,7 +2450,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                 }
                 RingEndpointSpelling::Emit => {
-                    let text = self.surface.bond_text(incident.bond(), active);
                     assert!(
                         !text.is_empty(),
                         "an emitted ring endpoint must have prepared bond text"
@@ -2726,20 +2824,13 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             .structural
             .active_atom()
             .expect("ring closure spelling requires an active endpoint");
-        let current = self.structural.bond_decision_domain(incident.bond());
         let mut restrictions = self.parent_prefix_restriction(incident);
         restrictions.extend_from_slice(semantic_restrictions);
         let label_slot = self.labels.slot_for_bond(incident.bond());
         let mut attempts = Vec::new();
-        for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
-            let allowed = current.intersect(self.surface.ring_endpoint_domain(
-                incident.bond(),
-                active,
-                spelling,
-            ));
-            if allowed.is_empty() {
-                continue;
-            }
+        for (spelling, text, order_restriction, allowed) in self.ring_emission_specs(incident.bond(), active) {
+            let mut restrictions = restrictions.clone();
+            if let Some(restriction) = order_restriction { restrictions.push(restriction); }
             assert!(
                 allowed.is_singleton(),
                 "opening and closure projections must resolve one representation plan"
@@ -2802,7 +2893,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     }
                 }
                 RingEndpointSpelling::Emit => {
-                    let text = self.surface.bond_text(incident.bond(), active);
                     assert!(
                         !text.is_empty(),
                         "an emitted ring endpoint must have prepared bond text"
@@ -2842,49 +2932,30 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         context: &LocalLayoutContext,
     ) -> Vec<(AtomSpellingStart, Vec<(VariableId, Domain)>, Vec<FactorId>)> {
         let facts = *self.surface.atom_facts(atom);
-        let Some(center) = self.surface.tetrahedral_center(atom) else {
-            return vec![(
-                AtomSpellingStart::Grammar {
-                    atom,
-                    state: AtomSpellingState::initial(
-                        facts,
-                        self.surface.atom_spelling_context(atom, None),
-                    ),
-                },
-                Vec::new(),
-                Vec::new(),
-            )];
-        };
-        assert_eq!(context.order.atom, atom);
-        assert_eq!(context.order.entry_bond, entry_bond);
-        assert!(
-            context.order.emitted_bonds.is_empty(),
-            "tetrahedral layout activates before local ring or child occurrences"
-        );
-        let role_patterns = self.local_role_pattern_domain(center, context);
-        TetrahedralParity::ALL
-            .into_iter()
-            .map(|parity| {
-                let spelling = AtomSpellingStart::Grammar {
-                    atom,
-                    state: AtomSpellingState::initial(
-                        facts,
-                        self.surface.atom_spelling_context(atom, Some(parity)),
-                    ),
-                };
-                (
-                    spelling,
-                    vec![
-                        (
-                            center.order_variable,
-                            center.token_domain(entry_bond, parity),
-                        ),
-                        (center.role_pattern_variable, role_patterns),
-                    ],
-                    vec![center.layout_factor(entry_bond)],
-                )
-            })
-            .collect()
+        let center = self.surface.tetrahedral_center(atom);
+        let parities = if center.is_some() { TetrahedralParity::ALL.into_iter().map(Some).collect::<Vec<_>>() } else { vec![None] };
+        let mode_variable = self.surface.atom_aromatic_modes[atom.index()];
+        let modes = mode_variable.map(|variable| self.structural.semantic_domain(variable).iter().filter(|mode| *mode == 0 || matches!(self.regime, WriterRegime::Generic { .. })).collect::<Vec<_>>()).unwrap_or_else(|| vec![0]);
+        let mut specs = Vec::new();
+        for parity in parities {
+            for mode in &modes {
+                let mut spelling_context = self.surface.atom_spelling_context(atom, parity);
+                spelling_context.aromatic_spelling = if *mode == 1 { AromaticSpelling::Kekule } else { AromaticSpelling::Source };
+                let mut restrictions = Vec::new();
+                let mut activate = Vec::new();
+                if let Some(variable) = mode_variable { restrictions.push((variable, Domain::singleton(*mode).unwrap())); }
+                if let Some(center) = center {
+                    assert_eq!(context.order.atom, atom);
+                    assert_eq!(context.order.entry_bond, entry_bond);
+                    assert!(context.order.emitted_bonds.is_empty());
+                    restrictions.push((center.order_variable, center.token_domain(entry_bond, parity.unwrap())));
+                    restrictions.push((center.role_pattern_variable, self.local_role_pattern_domain(center, context)));
+                    activate.push(center.layout_factor(entry_bond));
+                }
+                specs.push((AtomSpellingStart::Grammar { atom, state: AtomSpellingState::initial(facts, spelling_context) }, restrictions, activate));
+            }
+        }
+        specs
     }
 
     fn local_role_pattern_domain(
@@ -2947,16 +3018,43 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         )]
     }
 
+    fn chemical_bond_specs(&self, bond: BondId, from: AtomId) -> Vec<(u8, &'static str, Option<(VariableId, Domain)>, Domain)> {
+        let Some(variable) = self.surface.bond_chemical_orders[bond.index()] else {
+            return vec![(0, self.surface.bond_text(bond, from), None, self.surface.bond_tokens[bond.index()].representation_domain())];
+        };
+        self.structural.semantic_domain(variable).iter().map(|order| {
+            let text = match order { 0 => ":", 1 => "-", 2 => "=", _ => unreachable!("matching order domain was prepared") };
+            let placements = if order == 2 { BondRepresentation::explicit_domain() } else { BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain()) };
+            (order, text, Some((variable, Domain::singleton(order).unwrap())), placements)
+        }).collect()
+    }
+
+    fn ring_emission_specs(&self, bond: BondId, from: AtomId) -> Vec<(RingEndpointSpelling, &'static str, Option<(VariableId, Domain)>, Domain)> {
+        let current = self.structural.bond_decision_domain(bond);
+        let mut specs = Vec::new();
+        for (_, text, restriction, placements) in self.chemical_bond_specs(bond, from) {
+            for spelling in [RingEndpointSpelling::Omit, RingEndpointSpelling::Emit] {
+                let allowed = current.intersect(placements).intersect(self.surface.ring_endpoint_domain(bond, from, spelling));
+                if !allowed.is_empty() { specs.push((spelling, text, restriction, allowed)); }
+            }
+        }
+        specs
+    }
+
     fn traversal_emission_specs(
         &self,
         bond: BondId,
         from: AtomId,
     ) -> Result<Vec<TraversalEmissionSpec>, IncompleteDirectionalSelection> {
         match self.surface.directional_status(bond) {
-            PreparedDirectionalBondStatus::Ordinary => Ok(vec![TraversalEmissionSpec {
-                text: self.surface.bond_text(bond, from),
-                mark_restriction: None,
-            }]),
+            PreparedDirectionalBondStatus::Ordinary => {
+                let mut emissions = Vec::new();
+                for (order, text, semantic_restriction, _) in self.chemical_bond_specs(bond, from) {
+                    emissions.push(TraversalEmissionSpec { text, semantic_restriction });
+                    if semantic_restriction.is_some() && order != 2 { emissions.push(TraversalEmissionSpec { text: "", semantic_restriction }); }
+                }
+                Ok(emissions)
+            },
             PreparedDirectionalBondStatus::IncompleteSelection(incomplete) => Err(incomplete),
             PreparedDirectionalBondStatus::CompiledSite(site) => {
                 let topology = self
@@ -2984,7 +3082,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             text: mark
                                 .directional_text(from_fixed_a)
                                 .unwrap_or_else(|| self.surface.bond_text(bond, from)),
-                            mark_restriction: Some((site.mark_variable, mark.singleton_domain())),
+                            semantic_restriction: Some((site.mark_variable, mark.singleton_domain())),
                         }
                     })
                     .collect())
@@ -3455,7 +3553,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
                         {
                             let mut restrictions = parent_restriction.clone();
-                            if let Some(mark) = emission.mark_restriction {
+                            if let Some(mark) = emission.semantic_restriction {
                                 restrictions.push(mark);
                             }
                             restrictions.append(&mut child_restriction);
@@ -3511,7 +3609,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         }
                     } else {
                         let mut restrictions = parent_restriction.clone();
-                        if let Some(mark) = emission.mark_restriction {
+                        if let Some(mark) = emission.semantic_restriction {
                             restrictions.push(mark);
                         }
                         let structural = match self.attempt_candidate_with_transition(
@@ -3618,7 +3716,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     .expect("a published branch must have a complete traversal-emission frontier");
                 let mut attempts = Vec::new();
                 for emission in emissions {
-                    let restrictions = emission.mark_restriction.into_iter().collect::<Vec<_>>();
+                    let restrictions = emission.semantic_restriction.into_iter().collect::<Vec<_>>();
                     if emission.text.is_empty() {
                         let pending = self.pending_atom_attempts(
                             incident.atom(),
@@ -4047,3 +4145,7 @@ mod tetrahedral_transition_oracle;
 #[cfg(test)]
 #[path = "directional_transition_oracle.rs"]
 mod directional_transition_oracle;
+
+#[cfg(test)]
+#[path = "kekule_writer_tests.rs"]
+mod kekule_writer_tests;

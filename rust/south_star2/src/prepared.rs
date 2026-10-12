@@ -226,6 +226,17 @@ impl PreparedConstraintAssembly {
             .expect("prepared semantic variables must fit the constraint identifier space")
     }
 
+    pub(crate) fn add_aromatic_matching(
+        &mut self,
+        mode_variable: VariableId,
+        double_demands: impl IntoIterator<Item = u8>,
+        edges: impl IntoIterator<Item = crate::model::AromaticMatchingEdge>,
+    ) -> FactorId {
+        self.builder
+            .add_aromatic_matching(mode_variable, double_demands, edges)
+            .expect("prepared aromatic component must define a valid matching factor")
+    }
+
     pub(crate) fn add_binary_relation(
         &mut self,
         left: VariableId,

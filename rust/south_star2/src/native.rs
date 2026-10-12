@@ -350,6 +350,9 @@ impl NativeSolverState {
                 .factor(factor_id)
                 .expect("factor adjacency must reference a prepared factor");
             let reductions = match factor {
+                FactorDefinition::AromaticMatching(matching) => {
+                    crate::aromatic_matching::revise_aromatic_matching(matching, &mut self.domains)?
+                }
                 FactorDefinition::BinaryRelation(relation) => {
                     revise_binary_relation(relation, &mut self.domains)?
                         .into_iter()
@@ -643,6 +646,7 @@ impl NativeExactPlan {
                 || matches!(
                     model.factor(seed).expect("prepared factor must exist"),
                     FactorDefinition::SpanningTree(_)
+                        | FactorDefinition::AromaticMatching(_)
                         | FactorDefinition::DirectionalRingPlacement(_)
                 )
             {
@@ -691,6 +695,11 @@ impl NativeExactPlan {
                         }
                         layout.variables()
                     }
+                    FactorDefinition::AromaticMatching(_) => {
+                        unreachable!(
+                            "exclusive aromatic matching factors are not exact-search seeds"
+                        )
+                    }
                     FactorDefinition::DirectionalRingPlacement(_) => {
                         unreachable!("local directional ring factors are not exact-search seeds")
                     }
@@ -711,7 +720,8 @@ impl NativeExactPlan {
                                     pending.push_back(neighbour);
                                 }
                             }
-                            FactorDefinition::DirectionalRingPlacement(_) => {}
+                            FactorDefinition::AromaticMatching(_)
+                            | FactorDefinition::DirectionalRingPlacement(_) => {}
                             FactorDefinition::SpanningTree(spanning_tree) => {
                                 if !structural_factors.insert(neighbour) {
                                     continue;
@@ -2339,5 +2349,45 @@ mod tests {
             ]),
             Err(NativeSolverError::UnknownVariable(found)) if found == unknown
         ));
+    }
+}
+
+#[cfg(test)]
+mod aromatic_matching_plan_tests {
+    use super::*;
+    use crate::model::{AromaticMatchingEdge, ConstraintModelBuilder};
+
+    #[test]
+    fn aromatic_matching_initial_and_transition_never_enter_exact_search_plan() {
+        let mut builder = ConstraintModelBuilder::new();
+        let mode = builder.add_variable(Domain::from_bits(3)).unwrap();
+        let edges = (0..6)
+            .map(|_| builder.add_variable(Domain::from_bits(7)).unwrap())
+            .collect::<Vec<_>>();
+        builder
+            .add_aromatic_matching(
+                mode,
+                [1; 6],
+                edges.iter().enumerate().map(|(index, &variable)| {
+                    AromaticMatchingEdge::new(variable, index, (index + 1) % 6)
+                }),
+            )
+            .unwrap();
+        let initial = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        assert!(initial.exact_plan.components.is_empty());
+        assert!(initial
+            .exact_plan
+            .component_by_variable
+            .iter()
+            .all(Option::is_none));
+        let next = initial
+            .with_restrictions([(edges[0], Domain::from_bits(4))])
+            .unwrap();
+        assert_eq!(next.domain(mode), Some(Domain::from_bits(2)));
+        assert_eq!(next.domain(edges[1]), Some(Domain::from_bits(2)));
+        assert_eq!(next.binary_exact_runs.load(Ordering::Relaxed), 0);
+        assert_eq!(next.mixed_exact_runs.load(Ordering::Relaxed), 0);
+        assert_eq!(next.mixed_search_branches.load(Ordering::Relaxed), 0);
+        assert_eq!(initial.domain(mode), Some(Domain::from_bits(3)));
     }
 }

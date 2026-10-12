@@ -1,0 +1,181 @@
+{
+  "source": {
+    "name": "OpenSMILES Specification",
+    "url": "https://opensmiles.org/opensmiles.html",
+    "version": "1.0",
+    "date": "2016-05-15",
+    "sections": [
+      "3.1 Atoms",
+      "3.4 Rings",
+      "3.5 Aromaticity",
+      "3.8 Chirality"
+    ],
+    "derivation": "Constructed representation witnesses applying aromatic and integer-bond syntax; not quoted examples, RDKit writer expectations, or exhaustive support sets."
+  },
+  "cases": [
+    {
+      "id": "benzene",
+      "source_smiles": "c1ccccc1",
+      "kekule_witnesses": [
+        "C1=CC=CC=C1",
+        "C1C=CC=CC=1"
+      ]
+    },
+    {
+      "id": "pyridine",
+      "source_smiles": "n1ccccc1",
+      "kekule_witnesses": [
+        "N1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "pyrrole",
+      "source_smiles": "[nH]1cccc1",
+      "kekule_witnesses": [
+        "[NH]1C=CC=C1"
+      ]
+    },
+    {
+      "id": "n_substituted_pyrrole",
+      "source_smiles": "Cn1cccc1",
+      "kekule_witnesses": [
+        "CN1C=CC=C1"
+      ]
+    },
+    {
+      "id": "furan",
+      "source_smiles": "o1cccc1",
+      "kekule_witnesses": [
+        "O1C=CC=C1"
+      ]
+    },
+    {
+      "id": "thiophene",
+      "source_smiles": "s1cccc1",
+      "kekule_witnesses": [
+        "S1C=CC=C1"
+      ]
+    },
+    {
+      "id": "naphthalene",
+      "source_smiles": "c1ccc2ccccc2c1",
+      "kekule_witnesses": [
+        "C1=CC=C2C=CC=CC2=C1",
+        "C1C=CC2=CC=CC=C2C=1"
+      ]
+    },
+    {
+      "id": "pyridinium",
+      "source_smiles": "[nH+]1ccccc1",
+      "kekule_witnesses": [
+        "[NH+]1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "anionic_nitrogen",
+      "source_smiles": "[n-]1cccc1",
+      "kekule_witnesses": [
+        "[N-]1C=CC=C1"
+      ]
+    },
+    {
+      "id": "anionic_carbon",
+      "source_smiles": "[cH-]1cccc1",
+      "kekule_witnesses": [
+        "[CH-]1C=CC=C1"
+      ]
+    },
+    {
+      "id": "cationic_carbon",
+      "source_smiles": "[cH+]1cccccc1",
+      "kekule_witnesses": [
+        "[CH+]1C=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "exocyclic_carbonyl",
+      "source_smiles": "O=c1cc[nH]cc1",
+      "kekule_witnesses": [
+        "O=C1C=C[NH]C=C1"
+      ]
+    },
+    {
+      "id": "wildcard_ring",
+      "source_smiles": "*1ccccc1",
+      "kekule_witnesses": [
+        "*1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "phosphorus",
+      "source_smiles": "p1ccccc1",
+      "kekule_witnesses": [
+        "P1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "hydrogen_phosphorus",
+      "source_smiles": "[pH]1cccc1",
+      "kekule_witnesses": [
+        "[PH]1C=CC=C1"
+      ]
+    },
+    {
+      "id": "selenophene",
+      "source_smiles": "[se]1cccc1",
+      "kekule_witnesses": [
+        "[Se]1C=CC=C1"
+      ]
+    },
+    {
+      "id": "boron",
+      "source_smiles": "b1ccccc1",
+      "kekule_witnesses": [
+        "B1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "linked_components",
+      "source_smiles": "c1ccccc1-c2ccccc2",
+      "kekule_witnesses": [
+        "C1=CC=CC=C1-C2=CC=CC=C2",
+        "c1ccccc1-C2=CC=CC=C2",
+        "C1=CC=CC=C1-c2ccccc2"
+      ]
+    },
+    {
+      "id": "isotope_atom_class",
+      "source_smiles": "[13cH:7]1ccccc1",
+      "kekule_witnesses": [
+        "[13CH:7]1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "graph_hydrogen",
+      "source_smiles": "[H]c1ccccc1",
+      "kekule_witnesses": [
+        "[H]C1=CC=CC=C1"
+      ],
+      "preserve_graph_hydrogens": true
+    },
+    {
+      "id": "tetrahedral_neighbor",
+      "source_smiles": "C[C@H](F)c1ccccc1",
+      "kekule_witnesses": [
+        "C[C@H](F)C1=CC=CC=C1"
+      ]
+    },
+    {
+      "id": "ez_neighbor",
+      "source_smiles": "c1ccccc1/C=C/C",
+      "kekule_witnesses": [
+        "C1=CC=CC=C1/C=C/C"
+      ]
+    }
+  ],
+  "current_component_mode_conflict_witnesses": [
+    "c1CC=CC=C1",
+    "C1ccccc1"
+  ],
+  "component_mode_scope": "The current native model selects one representation mode per aromatic-bond component. Conflict witnesses test that model restriction, not general SMILES validity."
+}

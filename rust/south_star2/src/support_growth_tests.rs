@@ -181,7 +181,7 @@ fn molecule(elements: &[&str], edges: &[(usize, usize)]) -> (PreparedWriter, Vec
                 _ => format!("[{element}H{h}]"),
             });
             AtomToken::Facts {
-                facts: AtomFacts::new(ElementSymbol::new(element).unwrap(), false, None, 0, h, 0)
+                facts: AtomFacts::new(ElementSymbol::new(element).unwrap(), false, None, 0, h, 0, None)
                     .unwrap(),
                 source_context: AtomSourceContext::default(),
                 tetrahedral_reference_order: None,

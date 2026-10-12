@@ -6,6 +6,7 @@
 //! Provisional implementation stages remain private rather than becoming
 //! capability labels in the semantic API.
 
+mod aromatic_matching;
 mod atom_spelling;
 mod domain;
 mod ids;
@@ -31,9 +32,9 @@ pub use atom_spelling::{
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, VariableId};
 pub use model::{
-    BinaryRelationFactor, BondRole, ConstraintModel, ConstraintModelBuilder, ConstraintModelError,
-    DirectionalRingPlacementFactor, EdgeRolePartition, FactorDefinition, SpanningTreeEdge,
-    SpanningTreeFactor, VariableDefinition,
+    AromaticMatchingEdge, AromaticMatchingFactor, BinaryRelationFactor, BondRole, ConstraintModel,
+    ConstraintModelBuilder, ConstraintModelError, DirectionalRingPlacementFactor,
+    EdgeRolePartition, FactorDefinition, SpanningTreeEdge, SpanningTreeFactor, VariableDefinition,
 };
 pub use nonstereo_writer::{
     AtomSourceContext, NonStereoBondToken as BondToken, PreparedAtomToken as AtomToken,

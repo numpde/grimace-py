@@ -71,13 +71,26 @@ for the installed version. Leading-zero numeric fields make the default
 language unbounded, so exhaustive finite writer-support walks select the named
 style.
 
-In this source revision, preparation represents neutral, nonaromatic carbon
+With `style=None`, supported aromatic inputs also offer aromatic and Kekule
+spellings, with all source-valence-preserving single/double bond assignments.
+Each connected aromatic-bond component chooses one representation; separate
+components can choose independently. This does not cover every valid mixture
+of lowercase aromatic and uppercase atom spellings within a component. Source
+hydrogens, charge, isotope, atom class, connectivity, and supported stereo are
+preserved. No `kekuleSmiles` option or runtime RDKit Kekulization is needed.
+Inputs already Kekulized with aromatic flags retained are normalized during
+preparation; contradictory aromatic facts are rejected. The optional
+`rdkit_random_noncanonical` style still rejects aromatic inputs: these Kekule
+checks establish semantic preservation, not exact RDKit writer parity.
+
+The currently qualified RDKit-style corpus covers neutral, nonaromatic carbon
 and oxygen atoms with implicit valence hydrogens; nonaromatic single and double
 bonds; degree-three tetrahedral carbon centers with one non-graph hydrogen; and
 configured E/Z double bonds with one adjacent nonaromatic single-bond reference
-carrier at each end. Other atom, hydrogen, bond, and stereo facts are rejected
-at preparation or native-writer construction. This describes the adapter's
-current fact boundary, not a chemistry classification.
+carrier at each end. This corpus does not define the full default admission
+boundary. Unsupported input and stereo facts fail at preparation or
+native-writer construction; aromatic bonds carrying chemical directional marks
+are rejected.
 
 The bounded public corpus compares complete output sets for the C/O and stereo
 cases represented in the matching RDKit-version fixtures. Separate parse-back

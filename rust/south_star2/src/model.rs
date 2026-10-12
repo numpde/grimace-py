@@ -280,8 +280,56 @@ impl TetrahedralLayoutFactor {
     }
 }
 
+/// An aromatic component edge; endpoints index the factor's double demands.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct AromaticMatchingEdge {
+    variable: VariableId,
+    a: usize,
+    b: usize,
+}
+
+impl AromaticMatchingEdge {
+    pub const fn new(variable: VariableId, a: usize, b: usize) -> Self {
+        Self { variable, a, b }
+    }
+
+    pub const fn variable(self) -> VariableId {
+        self.variable
+    }
+    pub const fn endpoints(self) -> (usize, usize) {
+        (self.a, self.b)
+    }
+}
+
+/// Exact local support for aromatic (mode 0) or Kekule (mode 1) chemistry.
+/// Edge values are aromatic 0, Kekule single 1, and Kekule double 2.
+/// Every scope variable is exclusive to this projector.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AromaticMatchingFactor {
+    mode_variable: VariableId,
+    double_demands: Box<[u8]>,
+    edges: Box<[AromaticMatchingEdge]>,
+    variables: Box<[VariableId]>,
+}
+
+impl AromaticMatchingFactor {
+    pub const fn mode_variable(&self) -> VariableId {
+        self.mode_variable
+    }
+    pub fn double_demands(&self) -> &[u8] {
+        &self.double_demands
+    }
+    pub fn edges(&self) -> &[AromaticMatchingEdge] {
+        &self.edges
+    }
+    pub fn variables(&self) -> &[VariableId] {
+        &self.variables
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FactorDefinition {
+    AromaticMatching(AromaticMatchingFactor),
     BinaryRelation(BinaryRelationFactor),
     DirectionalRingPlacement(DirectionalRingPlacementFactor),
     SpanningTree(SpanningTreeFactor),
@@ -291,6 +339,7 @@ pub enum FactorDefinition {
 impl FactorDefinition {
     pub fn variables(&self) -> &[VariableId] {
         match self {
+            Self::AromaticMatching(factor) => factor.variables(),
             Self::BinaryRelation(factor) => factor.variables(),
             Self::DirectionalRingPlacement(factor) => factor.variables(),
             Self::SpanningTree(factor) => factor.variables(),
@@ -402,6 +451,79 @@ impl ConstraintModelBuilder {
         self.variables.push(VariableDefinition { initial_domain });
         self.factors_by_variable.push(Vec::new());
         Ok(variable)
+    }
+
+    pub fn add_aromatic_matching(
+        &mut self,
+        mode_variable: VariableId,
+        double_demands: impl IntoIterator<Item = u8>,
+        edges: impl IntoIterator<Item = AromaticMatchingEdge>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let double_demands = double_demands.into_iter().collect::<Vec<_>>();
+        let edges = edges.into_iter().collect::<Vec<_>>();
+        if double_demands.is_empty() {
+            return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                "a component requires at least one atom",
+            ));
+        }
+        if double_demands.iter().any(|&demand| demand > 1) {
+            return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                "per-atom double demand must be zero or one",
+            ));
+        }
+        let mut endpoint_pairs = BTreeSet::new();
+        for edge in &edges {
+            if edge.a >= double_demands.len() || edge.b >= double_demands.len() {
+                return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                    "edge endpoint is outside the component atom set",
+                ));
+            }
+            if edge.a == edge.b {
+                return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                    "a component cannot contain a self-edge",
+                ));
+            }
+            if !endpoint_pairs.insert((edge.a.min(edge.b), edge.a.max(edge.b))) {
+                return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                    "a component cannot contain duplicate edges",
+                ));
+            }
+        }
+        let variables = std::iter::once(mode_variable)
+            .chain(edges.iter().map(|edge| edge.variable))
+            .collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        for (index, &variable) in variables.iter().enumerate() {
+            let definition = self
+                .variables
+                .get(variable.index())
+                .ok_or(ConstraintModelError::UnknownVariable(variable))?;
+            if !seen.insert(variable) {
+                return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
+            }
+            if !self.factors_by_variable[variable.index()].is_empty()
+                || self.local_projector_leaves.contains(&variable)
+            {
+                return Err(ConstraintModelError::LocalProjectorLeafReuse(variable));
+            }
+            let allowed = Domain::from_bits(if index == 0 { 0b11 } else { 0b111 });
+            if !definition.initial_domain.is_subset_of(allowed) {
+                return Err(ConstraintModelError::InvalidAromaticMatchingDomain(
+                    variable,
+                ));
+            }
+        }
+        let factor = self.push_factor(
+            FactorDefinition::AromaticMatching(AromaticMatchingFactor {
+                mode_variable,
+                double_demands: double_demands.into_boxed_slice(),
+                edges: edges.into_boxed_slice(),
+                variables: variables.clone().into_boxed_slice(),
+            }),
+            FactorActivation::Always,
+        )?;
+        self.local_projector_leaves.extend(variables);
+        Ok(factor)
     }
 
     pub fn add_binary_relation(
@@ -787,7 +909,8 @@ impl ConstraintModelBuilder {
         self.factors_by_variable[variable.index()]
             .iter()
             .find_map(|factor| match &self.factors[factor.index()] {
-                FactorDefinition::BinaryRelation(_)
+                FactorDefinition::AromaticMatching(_)
+                | FactorDefinition::BinaryRelation(_)
                 | FactorDefinition::DirectionalRingPlacement(_) => None,
                 FactorDefinition::SpanningTree(spanning) => spanning
                     .edges()
@@ -805,6 +928,8 @@ impl ConstraintModelBuilder {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConstraintModelError {
+    InvalidAromaticMatchingGraph(&'static str),
+    InvalidAromaticMatchingDomain(VariableId),
     EmptyInitialDomain,
     VariableCapacityExceeded,
     FactorCapacityExceeded,
@@ -839,6 +964,10 @@ pub enum ConstraintModelError {
 impl fmt::Display for ConstraintModelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidAromaticMatchingGraph(reason) => write!(
+                formatter, "cannot build aromatic matching component: {reason}"),
+            Self::InvalidAromaticMatchingDomain(variable) => write!(
+                formatter, "aromatic matching variable {variable:?} has values outside its mode (0..1) or edge chemistry (0..2) domain"),
             Self::EmptyInitialDomain => {
                 formatter.write_str("constraint variables require a nonempty initial domain")
             }

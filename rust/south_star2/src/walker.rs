@@ -265,9 +265,12 @@ mod tests {
         reverse_right_carrier: bool,
         left_sibling: bool,
     ) -> BTreeSet<String> {
-        fn collect(walker: Walker, prefix: String, support: &mut BTreeSet<String>) {
+        fn collect(walker: Walker, prefix: String, support: &mut BTreeSet<String>, nodes: &mut usize) {
+            *nodes += 1;
+            assert!(*nodes <= 10_000, "alkene support exceeded 10,000 states");
             if walker.is_accepted() {
                 support.insert(prefix);
+                assert!(support.len() <= 1_000, "alkene support exceeded 1,000 outputs");
                 return;
             }
             for choice in walker.choices().unwrap() {
@@ -280,6 +283,7 @@ mod tests {
                     choice.successor,
                     format!("{prefix}{}", choice.text),
                     support,
+                    nodes,
                 );
             }
         }
@@ -327,7 +331,7 @@ mod tests {
         )
         .unwrap();
         let mut support = BTreeSet::new();
-        collect(prepared.initial().unwrap(), String::new(), &mut support);
+        collect(prepared.initial().unwrap(), String::new(), &mut support, &mut 0);
         support
     }
 
@@ -475,6 +479,65 @@ mod tests {
         ).unwrap();
         assert!(reaches_text(nested.initial().unwrap(), "", "C(.C(.O))", &mut 5000));
         assert!(!reaches_text(nested.initial().unwrap(), "", "C(.)", &mut 5000));
+    }
+
+    fn directional_butene(side_phase_xor: bool, regime: WriterRegime, spectator: bool) -> PreparedWriter {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..4).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let double = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let right = graph.add_bond(atoms[2], atoms[3]).unwrap();
+        if spectator { graph.add_atom().unwrap(); }
+        let mut atom_texts = ["F", "C", "C", "Cl"].map(|text| AtomToken::Fixed(text.to_owned())).to_vec();
+        if spectator { atom_texts.push(AtomToken::Fixed("O".to_owned())); }
+        PreparedWriter::new(
+            graph.build(),
+            atom_texts,
+            vec![BondToken::Elided, BondToken::Double, BondToken::Elided],
+            vec![PreparedDirectionalRelation {
+                double_bond: double,
+                left_endpoint: atoms[1],
+                left_carriers: Box::new([PreparedDirectionalCarrier { bond: left, side_flip: false }]),
+                right_endpoint: atoms[2],
+                right_carriers: Box::new([PreparedDirectionalCarrier { bond: right, side_flip: false }]),
+                side_phase_xor,
+            }],
+            regime,
+        ).unwrap()
+    }
+
+    fn reaches_selected_text(prefix: crate::TextPrefix, current: &str, target: &str, steps: &mut usize) -> bool {
+        assert!(*steps < 100, "selected directional witness exceeded 100 token steps");
+        *steps += 1;
+        if current == target { return prefix.is_accepted(); }
+        prefix.choices().unwrap().into_iter().any(|choice| {
+            let next = format!("{current}{}", choice.text);
+            target.starts_with(&next) && reaches_selected_text(choice.successor, &next, target, steps)
+        })
+    }
+
+    #[test]
+    fn directional_carrier_crosses_dot_segment_as_ring() {
+        let general = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        for regime in [general, WriterRegime::GenericCompact] {
+            let label = if regime == WriterRegime::GenericCompact { "0" } else { "1" };
+            for (phase, forward, reverse) in [(false, "\\", "/"), (true, "/", "\\")] {
+                let target = format!("F{forward}{label}.C{label}=C/Cl");
+                let opposite = format!("F{reverse}{label}.C{label}=C/Cl");
+                assert!(reaches_selected_text(crate::TextPrefix::initial(&directional_butene(phase, regime, false)).unwrap(), "", &target, &mut 0), "{target}");
+                assert!(!reaches_selected_text(crate::TextPrefix::initial(&directional_butene(phase, regime, false)).unwrap(), "", &opposite, &mut 0), "{opposite}");
+            }
+        }
+    }
+
+    #[test]
+    fn completed_directional_component_in_dot_branch_returns_to_spectator() {
+        for regime in [WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, WriterRegime::GenericCompact] {
+            let text = "O(.F/C=C/Cl)";
+            let opposite = "O(.F/C=C\\Cl)";
+            assert!(reaches_selected_text(crate::TextPrefix::initial(&directional_butene(true, regime, true)).unwrap(), "", text, &mut 0));
+            assert!(!reaches_selected_text(crate::TextPrefix::initial(&directional_butene(true, regime, true)).unwrap(), "", opposite, &mut 0));
+        }
     }
 
     #[test]
@@ -917,9 +980,10 @@ mod tests {
 
     #[test]
     fn rdkit_anchor_removes_only_the_simultaneous_sign_inversion() {
+        // InputOrder keeps this historical exact anchoring comparison on Tree topology.
         let generic = alkene_support(
             WriterRegime::Generic {
-                component_order: ComponentOrder::AnyOrder,
+                component_order: ComponentOrder::InputOrder,
             },
             true,
             false,
@@ -989,7 +1053,7 @@ mod tests {
     fn rdkit_anchor_persists_across_ordinary_sibling_choices() {
         let generic = alkene_support(
             WriterRegime::Generic {
-                component_order: ComponentOrder::AnyOrder,
+                component_order: ComponentOrder::InputOrder,
             },
             true,
             false,

@@ -673,7 +673,7 @@ impl PreparedNonStereo {
             .collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
-        let segment_topology = allow_segments && directional_relations.is_empty();
+        let segment_topology = allow_segments;
         let molecule = if segment_topology {
             assembly.finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
         } else {
@@ -3346,6 +3346,18 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         structural: &WriterState<S>,
     ) -> Result<(), WriterInvariantFailure> {
         self.validate_active_tetrahedral_completion(structural)?;
+        if !self.surface.directional_sides.is_empty() {
+            let graph = self.surface.molecule().graph();
+            let active = structural
+                .active_atom()
+                .expect("semantic completion requires one active atom");
+            let component = graph
+                .component_of_atom(active)
+                .expect("active atom must belong to one prepared component");
+            if structural.chemical_component_is_complete(component) {
+                self.validate_directional_component_completion(structural)?;
+            }
+        }
         let local = structural.active_local_bond_order();
         for bond in local
             .entry_bond
@@ -4146,9 +4158,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 "a chemical component cannot finish with open visible ring labels"
             );
             if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
-                return SuccessorAttempt::Invariant(failure);
-            }
-            if let Err(failure) = self.validate_directional_component_completion(&self.structural) {
                 return SuccessorAttempt::Invariant(failure);
             }
             self.structural = match self

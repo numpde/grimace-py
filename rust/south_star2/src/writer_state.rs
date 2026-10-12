@@ -176,6 +176,10 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
+    pub(crate) fn chemical_component_is_complete(&self, component: usize) -> bool {
+        self.traversal.chemical_component_is_complete(self.prepared.graph(), component)
+    }
+
     pub(crate) const fn has_visited_atoms(&self) -> bool {
         self.traversal.has_visited_atoms()
     }

@@ -36,10 +36,15 @@ def _walk(mol: Chem.Mol, text: str) -> decoding.Prefix | None:
 
 
 def _walk_language(
-    mol: Chem.Mol, text: str, language: decoding.SmilesLanguage, *, complete: bool = True
+    mol: Chem.Mol, text: str, language: decoding.SmilesLanguage, *, complete: bool = True,
+    max_nodes: int | None = None,
 ) -> decoding.Prefix | None:
     pending = [(decoding.start(mol, language=language), 0)]
+    nodes = 0
     while pending:
+        nodes += 1
+        if max_nodes is not None and nodes > max_nodes:
+            raise AssertionError(f"selected path exceeded {max_nodes} prefix nodes: {text!r}")
         prefix, offset = pending.pop()
         if offset == len(text):
             if not complete or prefix.is_accepted:
@@ -87,6 +92,22 @@ class CompactLanguageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.fixture = json.loads(FIXTURE.read_text())
+
+    def test_configured_alkene_carrier_crosses_dot_as_ring(self) -> None:
+        for source_smiles, ring_mark, wrong_mark in (
+            ("F/C=C/Cl", "/", "\\"),
+            ("F/C=C\\Cl", "\\", "/"),
+        ):
+            source = _parse(source_smiles)
+            for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+                with self.subTest(source=source_smiles, language=language):
+                    label = "0" if language == LANGUAGE else "1"
+                    spelling = f"F{ring_mark}{label}.C{label}=C/Cl"
+                    wrong = f"F{wrong_mark}{label}.C{label}=C/Cl"
+                    self.assertIsNotNone(_walk_language(source, spelling, language, max_nodes=100))
+                    self.assertIsNone(_walk_language(source, wrong, language, max_nodes=100))
+                    self.assertEqual(_canonical_semantics(source_smiles), _canonical_semantics(spelling))
+                    self.assertNotEqual(_canonical_semantics(source_smiles), _canonical_semantics(wrong))
 
     def test_four_bond_tetrahedral_carbon_preserves_enantiomers(self) -> None:
         for source_smiles, alternate_smiles in (

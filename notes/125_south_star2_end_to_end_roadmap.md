@@ -1049,3 +1049,32 @@ writer-generated constraints, or construct a connected asymmetric labeled
 graph whose fixed native prefix reaches a growing mixed core and count nodes,
 leaves, and saturation point under a hard cap. A generic
 solver model or whole-support timing would not establish that reachability.
+
+## 2026-10-12 selected directional Forest segment qualification
+
+Generic AnyOrder and Compact now select Forest topology for inputs with
+configured directional relations. Their existing carrier-mark, side-pattern,
+and ring-placement constraints remain active across dot segments. The traversal
+progress owner determines when all atoms and bonds of a chemical component are
+represented; the shared frame-completion boundary checks directional side and
+carrier resolution at that point, including return from a leading-dot branch.
+The RDKit writer regime retains its Tree topology and anchoring rules.
+
+A selected connected F-C=C-Cl path places one directional carrier at a ring
+endpoint across a dot; both generic languages accept the matching E/Z spelling
+and reject the opposite marker. RDKit parser-based semantic checks distinguish
+those isomers, not RDKit writer support. A native leading-dot branch witness
+completes a configured E/Z component before returning to a disconnected
+spectator. Full Forest directional support and leading-dot stereo semantic
+qualification remain open.
+
+Integrated checkout qualification: bounded offline South Star 2 Rust tests passed
+296 with one ignored; root Rust tests passed 86. The six selected public Python
+modules passed 77 tests against the freshly built extension copied to the
+CPython 3.12 ABI import path (SHA-256
+`c4742909421afe558cc83244c3640b52fa170a5fabfac3702c50a8e6b7792588`).
+All three runners reported verified process-tree cleanup. The public selection
+includes configured E/Z cross-dot ring parse-back, compact and generic paths,
+mixed alkene/tetrahedral semantics, and unspecified-stereo controls. These are
+selected semantic and regression results, not full maximal-language support,
+all-prefix liveness, or RDKit writer parity for the new dot spellings.

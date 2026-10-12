@@ -179,6 +179,21 @@ impl GraphProgress {
         self.visited_atoms.is_complete() && self.represented_bond_count == self.bonds.len()
     }
 
+    fn chemical_component_is_complete(&self, graph: &PreparedGraph, component: usize) -> bool {
+        graph.atom_ids().all(|atom| {
+            graph.component_of_atom(atom) != Some(component) || self.atom_is_visited(atom)
+        }) && graph.bond_ids().all(|bond| {
+            let edge = graph
+                .bond(bond)
+                .expect("prepared bond must belong to the graph");
+            graph.component_of_atom(edge.a()) != Some(component)
+                || matches!(
+                    self.bond_progress(bond),
+                    BondProgress::Traversed { .. } | BondProgress::RingClosed { .. }
+                )
+        })
+    }
+
     const fn has_visited_atoms(&self) -> bool {
         self.visited_atoms.marked_count != 0
     }
@@ -695,6 +710,14 @@ impl TraversalState {
 
     pub(crate) const fn graph_is_complete(&self) -> bool {
         self.progress.is_complete()
+    }
+
+    pub(crate) fn chemical_component_is_complete(
+        &self,
+        graph: &PreparedGraph,
+        component: usize,
+    ) -> bool {
+        self.progress.chemical_component_is_complete(graph, component)
     }
 
     pub(crate) fn scope_is_complete(&self) -> bool {
@@ -1521,6 +1544,27 @@ mod tests {
             state.active_attachments()[0].incidences(),
             &[incident(&graph, atoms[0], right)]
         );
+    }
+
+    #[test]
+    fn chemical_completion_requires_every_atom_and_closed_bond_in_that_component() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let bond = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let graph = builder.build();
+        let connected = graph.component_of_atom(atoms[0]).unwrap();
+        let spectator = graph.component_of_atom(atoms[2]).unwrap();
+        let mut progress = GraphProgress::new(&graph);
+        progress.visit_atom(atoms[0]);
+        progress.open_ring(bond, atoms[0]);
+        progress.visit_atom(atoms[1]);
+        assert!(!progress.chemical_component_is_complete(&graph, connected));
+        assert!(!progress.chemical_component_is_complete(&graph, spectator));
+        progress.close_ring(bond, atoms[1]);
+        assert!(progress.chemical_component_is_complete(&graph, connected));
+        assert!(!progress.chemical_component_is_complete(&graph, spectator));
+        progress.visit_atom(atoms[2]);
+        assert!(progress.chemical_component_is_complete(&graph, spectator));
     }
 
     #[test]

@@ -106,7 +106,7 @@ relax spelling only; it cannot stand in for the structural contract.
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
 | Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment witnesses also pass in both languages | Extend qualification to leading-dot stereo paths and other unqualified syntax |
 | Aromaticity | Aromatic or whole-component Kekule choices for supported inputs | Valid mixed lowercase/uppercase spellings within a component |
-| Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral Forest segments preserve chirality in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
+| Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level and branch-local dot segments,
 including leading-dot branches, with ring obligations crossing segment
@@ -114,8 +114,10 @@ boundaries on admitted stereo-free graphs, including supported aromatic graphs.
 Selected tetrahedral Forest paths also admit ring-separated ligands, including
 `F1.[C@@H]1(Cl)Br` in `GENERAL` and `F0.[C@@H]0(Cl)Br` in `COMPACT` for
 `F[C@H](Cl)Br`. These are semantic parse-back witnesses, not RDKit writer
-support claims. Directional E/Z Forest paths and leading-dot stereo paths
-remain unqualified.
+support claims. Selected configured E/Z Forest paths now reach acceptance with carrier marks
+across dot/ring boundaries in both languages and parse back to the source
+stereo. Other directional Forest paths and leading-dot stereo paths remain
+unqualified.
 The aromatic source spelling and whole-component Kekule alternatives retain
 one matching constraint across segments; mixed lowercase and uppercase
 spellings within an aromatic component remain unqualified. The path also admits

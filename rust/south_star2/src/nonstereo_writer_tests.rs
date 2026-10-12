@@ -483,49 +483,6 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
     }
 }
 
-static TETRAHEDRAL_RESTRICTION_CALLS: AtomicUsize = AtomicUsize::new(0);
-
-#[derive(Clone, Debug)]
-struct CountTetrahedralRestrictionsSolver(NativeSolverState);
-
-impl ConstraintSolver for CountTetrahedralRestrictionsSolver {
-    type Failure = NativeSolverFailure;
-
-    fn initial(
-        model: Arc<crate::model::ConstraintModel>,
-    ) -> Result<Consistency<Self>, Self::Failure> {
-        Ok(<NativeSolverState as ConstraintSolver>::initial(model)?.map(Self))
-    }
-
-    fn restricted(
-        &self,
-        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
-    ) -> Result<Consistency<Self>, Self::Failure> {
-        TETRAHEDRAL_RESTRICTION_CALLS.fetch_add(1, Ordering::Relaxed);
-        Ok(<NativeSolverState as ConstraintSolver>::restricted(&self.0, restrictions)?.map(Self))
-    }
-
-    fn transitioned(
-        &self,
-        restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
-        activate: &[crate::ids::FactorId],
-    ) -> Result<Consistency<Self>, Self::Failure> {
-        TETRAHEDRAL_RESTRICTION_CALLS.fetch_add(1, Ordering::Relaxed);
-        Ok(
-            <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)?
-                .map(Self),
-        )
-    }
-
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
-    }
-
-    fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
-        self.0.factor_is_active(factor)
-    }
-}
-
 #[derive(Clone, Debug)]
 struct NonconformingNonProjectingTetrahedralSolver(NativeSolverState);
 
@@ -841,6 +798,7 @@ impl ConstraintSolver for RejectPlainDirectionalMarkSolver {
 }
 
 static DIRECTIONAL_RESTRICTION_CALLS: AtomicUsize = AtomicUsize::new(0);
+static DIRECTIONAL_RESTRICTION_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Clone, Debug)]
 struct CountDirectionalRestrictionsSolver(NativeSolverState);
@@ -1051,7 +1009,7 @@ fn adjacent_ring_coupled_tetrahedral_fixture() -> (PreparedNonStereo, Vec<AtomId
                     TetrahedralLigand::Bond(bonds[4]),
                     TetrahedralLigand::VirtualHydrogen,
                 ],
-                text_by_parity: ["[L@H]".to_owned(), "[L@@H]".to_owned()],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
             },
             PreparedAtomToken::Tetrahedral {
                 reference_order: [
@@ -1060,12 +1018,12 @@ fn adjacent_ring_coupled_tetrahedral_fixture() -> (PreparedNonStereo, Vec<AtomId
                     TetrahedralLigand::Bond(bonds[5]),
                     TetrahedralLigand::VirtualHydrogen,
                 ],
-                text_by_parity: ["[R@H]".to_owned(), "[R@@H]".to_owned()],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
             },
             PreparedAtomToken::Fixed("A".to_owned()),
             PreparedAtomToken::Fixed("B".to_owned()),
             PreparedAtomToken::Fixed("X".to_owned()),
-            PreparedAtomToken::Fixed("Y".to_owned()),
+            PreparedAtomToken::Fixed("Q".to_owned()),
         ],
         vec![NonStereoBondToken::Elided; bonds.len()],
     )
@@ -1100,7 +1058,7 @@ fn disconnected_ring_coupled_tetrahedral_fixture() -> (PreparedNonStereo, Vec<At
                     TetrahedralLigand::Bond(bonds[bond_offset + 3]),
                     TetrahedralLigand::VirtualHydrogen,
                 ],
-                text_by_parity: [format!("[C{component}@H]"), format!("[C{component}@@H]")],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
             },
             PreparedAtomToken::Fixed(format!("A{component}")),
             PreparedAtomToken::Fixed(format!("B{component}")),
@@ -1233,16 +1191,403 @@ fn incident(surface: &PreparedNonStereo, atom: AtomId, bond: BondId) -> Adjacent
         .expect("fixture bond must be incident to the atom")
 }
 
-fn only_choice(state: &State, text: &str) -> (String, State) {
-    let choices = state.choices().unwrap();
-    assert_eq!(choices.len(), 1);
-    assert_eq!(choices[0].text(), text);
+fn only_choice<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    text: &str,
+) -> (String, NonStereoWriterState<S>) {
+    let branch_atom_is_ready = match state.pending {
+        Some(PendingEmission::BranchTraversalEmission(incident)) => {
+            let atom = incident.atom();
+            let first_chars = declared_atom_witnesses(&state.surface, atom)
+                .into_iter()
+                .filter_map(|target| target.chars().next())
+                .collect::<BTreeSet<_>>();
+            ring_witness_choices(&state)
+                .iter()
+                .any(|choice| first_chars.contains(&choice.text().chars().next().unwrap()))
+        }
+        _ => false,
+    };
+    if state.is_spelling_atom()
+        || branch_atom_is_ready
+        || matches!(
+            state.pending,
+            Some(
+                PendingEmission::ComponentRootAtom(_)
+                    | PendingEmission::InlineAtom(_)
+                    | PendingEmission::BranchAtom(_)
+            )
+        )
+    {
+        let atom = pending_atom(state)
+            .or_else(|| state.active_atom())
+            .expect("pending atom spelling identifies its AtomId");
+        let target = declared_atom_witnesses(&state.surface, atom)
+            .into_iter()
+            .find(|target| {
+                if text.contains("@@") {
+                    target.contains("@@")
+                } else if text.contains('@') {
+                    target.contains('@') && !target.contains("@@")
+                } else {
+                    true
+                }
+            })
+            .expect("test atom has a selected production spelling");
+        let successors = consume_atom_spelling_states(state.clone(), &target, 0);
+        assert_eq!(
+            successors.len(),
+            1,
+            "one declared atom witness must identify one test path"
+        );
+        let successor = successors.into_iter().next().unwrap();
+        let emitted_text = if state.surface.tetrahedral_center(atom).is_some() {
+            target
+        } else {
+            state.surface.atom_text(atom).to_owned()
+        };
+        return (emitted_text, successor);
+    }
+    let choices = ring_witness_choices(&state)
+        .into_iter()
+        .filter(|choice| choice.text() == text)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        choices.len(),
+        1,
+        "expected one production transition for {text:?}"
+    );
     let choice = choices.into_iter().next().unwrap();
     (choice.text, choice.successor)
 }
 
-fn choice_at(state: &State, index: usize) -> (String, State) {
-    let choice = state.choices().unwrap().into_iter().nth(index).unwrap();
+/// Finite, declared atom spellings used by structural writer tests.
+/// This is a witness set, not an enumeration of the atom grammar.
+fn declared_atom_witnesses(surface: &PreparedNonStereo, atom: AtomId) -> Vec<String> {
+    let facts = surface.atom_facts(atom);
+    if surface.tetrahedral_center(atom).is_some() {
+        let hydrogen = if facts.non_graph_hydrogens == 1 {
+            "H"
+        } else {
+            ""
+        };
+        return vec![format!("[C@{hydrogen}]"), format!("[C@@{hydrogen}]")];
+    }
+    if facts.element.as_str() == "*" {
+        vec![format!("[*:{}]", facts.atom_class)]
+    } else if facts.element.as_str() == "F" && facts.non_graph_hydrogens == 1 {
+        // Isolated fluorine has both bare and bracketed declared witnesses;
+        // an aromatic carrier fixture has only the bracketed spelling.
+        if surface
+            .molecule()
+            .graph()
+            .neighbors(atom)
+            .expect("test atom exists")
+            .is_empty()
+        {
+            vec!["F".to_owned(), "[FH]".to_owned()]
+        } else {
+            vec!["[FH]".to_owned()]
+        }
+    } else {
+        vec![facts.element.as_str().to_owned()]
+    }
+}
+
+fn pending_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
+    state
+        .atom_spelling
+        .as_ref()
+        .map(|progress| progress.atom)
+        .or_else(|| match state.pending {
+            Some(PendingEmission::ComponentRootAtom(atom)) => Some(atom),
+            Some(PendingEmission::InlineAtom(edge) | PendingEmission::BranchAtom(edge)) => {
+                Some(edge.atom())
+            }
+            Some(PendingEmission::BranchTraversalEmission(edge)) => Some(edge.atom()),
+            _ => None,
+        })
+}
+
+fn branch_event_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
+    match state.pending {
+        Some(PendingEmission::BranchTraversalEmission(incident)) => Some(incident.atom()),
+        _ => pending_atom(state),
+    }
+}
+
+fn atom_was_emitted<S: ConstraintSolver>(state: &NonStereoWriterState<S>, atom: AtomId) -> bool {
+    state.active_atom() == Some(atom) || state.structural.atom_is_visited(atom)
+}
+
+fn completed_atom_witnesses<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    atom: AtomId,
+) -> Vec<(String, NonStereoWriterState<S>)> {
+    declared_atom_witnesses(&state.surface, atom)
+        .into_iter()
+        .flat_map(|target| {
+            consume_atom_spelling_states(state.clone(), &target, 0)
+                .into_iter()
+                .filter(|successor| atom_was_emitted(successor, atom))
+                .map(move |successor| (target.clone(), successor))
+        })
+        .collect()
+}
+
+fn atom_witness_completions_after_choice<S: ConstraintSolver>(
+    choice: &Choice<NonStereoWriterState<S>>,
+    atom: AtomId,
+) -> Vec<(String, NonStereoWriterState<S>)> {
+    let prefix = choice.text();
+    declared_atom_witnesses(&choice.successor().surface, atom)
+        .into_iter()
+        .filter(|target| target.starts_with(prefix))
+        .flat_map(|target| {
+            consume_atom_spelling_states(choice.successor().clone(), &target, prefix.len())
+                .into_iter()
+                .filter(|successor| atom_was_emitted(successor, atom))
+                .map(move |successor| (target.clone(), successor))
+        })
+        .collect()
+}
+
+fn pending_atom_entries<S: ConstraintSolver>(
+    state: NonStereoWriterState<S>,
+    atom: AtomId,
+) -> Vec<(NonStereoWriterState<S>, String)> {
+    let mut pending = vec![(state, 0_usize)];
+    let mut entries = Vec::new();
+    let mut explored = 0_usize;
+    while let Some((state, atom_offset)) = pending.pop() {
+        explored += 1;
+        assert!(
+            explored <= 100_000,
+            "test exceeded its pending-atom path bound"
+        );
+        for choice in state.choices().expect("production choices are available") {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
+            let text = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let starts_target_spelling = successor
+                .atom_spelling
+                .as_ref()
+                .is_some_and(|progress| progress.atom == atom)
+                || (successor.active_atom() == Some(atom) && state.active_atom() != Some(atom));
+            if starts_target_spelling {
+                entries.push((successor, text));
+                continue;
+            }
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &text);
+            pending.push((successor, next_offset));
+        }
+    }
+    entries
+}
+
+fn complete_atom_witness_from_prefix<S: ConstraintSolver>(
+    state: NonStereoWriterState<S>,
+    atom: AtomId,
+    prefix: &str,
+) -> Vec<(String, NonStereoWriterState<S>)> {
+    declared_atom_witnesses(&state.surface, atom)
+        .into_iter()
+        .filter(|target| target.starts_with(prefix))
+        .flat_map(|target| {
+            if target.len() == prefix.len() {
+                return atom_was_emitted(&state, atom)
+                    .then_some((target, state.clone()))
+                    .into_iter()
+                    .collect::<Vec<_>>();
+            }
+            consume_atom_spelling_states(state.clone(), &target, prefix.len())
+                .into_iter()
+                .filter(|successor| atom_was_emitted(successor, atom))
+                .map(|successor| (target.clone(), successor))
+                .collect()
+        })
+        .collect()
+}
+
+fn only_root_atom<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    atom: AtomId,
+) -> (String, NonStereoWriterState<S>) {
+    assert_eq!(state.active_atom(), None);
+    assert_eq!(state.pending, None);
+    for witness in declared_atom_witnesses(&state.surface, atom) {
+        let matching = completed_atom_witnesses(state, atom)
+            .into_iter()
+            .filter(|(candidate, _)| candidate == &witness)
+            .collect::<Vec<_>>();
+        if let [(_, rooted)] = matching.as_slice() {
+            let emitted_text = if state.surface.tetrahedral_center(atom).is_some() {
+                witness
+            } else {
+                state.surface.atom_text(atom).to_owned()
+            };
+            return (emitted_text, rooted.clone());
+        }
+        assert!(
+            matching.is_empty(),
+            "one declared root spelling must identify one test path"
+        );
+    }
+    panic!("no declared root spelling is accepted for AtomId {atom:?}");
+}
+
+fn only_component_separator<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    root: AtomId,
+) -> (String, NonStereoWriterState<S>) {
+    let choices = ring_witness_choices(&state)
+        .into_iter()
+        .filter(|choice| {
+            choice.text() == "."
+                && choice.successor().pending == Some(PendingEmission::ComponentRootAtom(root))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        choices.len(),
+        1,
+        "the selected root identifies one dot path"
+    );
+    let choice = choices.into_iter().next().unwrap();
+    (choice.text, choice.successor)
+}
+
+fn choices_matching_declared_witnesses<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    atom_offset: usize,
+) -> Vec<Choice<NonStereoWriterState<S>>> {
+    ring_witness_choices(&state)
+        .into_iter()
+        .filter(|choice| selected_atom_spelling_transition(state, choice, atom_offset))
+        .collect()
+}
+
+fn next_atom_spelling_offset<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    successor: &NonStereoWriterState<S>,
+    atom_offset: usize,
+    text: &str,
+) -> usize {
+    match (&state.atom_spelling, &successor.atom_spelling) {
+        (Some(current), Some(next)) if current.atom == next.atom => atom_offset + text.len(),
+        (_, Some(_)) => text.len(),
+        (_, None) => 0,
+    }
+}
+
+fn declared_successors<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    atom_offset: usize,
+) -> Vec<(NonStereoWriterState<S>, usize)> {
+    state
+        .choices()
+        .expect("production choices are available")
+        .into_iter()
+        .filter_map(|choice| {
+            if !selected_atom_spelling_transition(state, &choice, atom_offset)
+                || !selected_ring_label_witness(state, &choice)
+            {
+                return None;
+            }
+            let text = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(state, &successor, atom_offset, &text);
+            Some((successor, next_offset))
+        })
+        .collect()
+}
+
+pub(super) fn selected_ring_label_witness<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    choice: &Choice<NonStereoWriterState<S>>,
+) -> bool {
+    let successor = choice.successor();
+    let assigned = successor.labels.bonds_by_slot.keys()
+        .find(|slot| !state.labels.bonds_by_slot.contains_key(slot)).copied();
+    let released = state.labels.bonds_by_slot.keys()
+        .find(|slot| !successor.labels.bonds_by_slot.contains_key(slot)).copied();
+    let pending_label = match state.pending {
+        Some(PendingEmission::RingOpeningLabel { label_slot, .. })
+        | Some(PendingEmission::RingClosureLabel { label_slot, .. }) => Some(label_slot),
+        _ => None,
+    };
+    if let Some(slot) = assigned {
+        if slot != preferred_test_ring_label(&state.labels) {
+            return false;
+        }
+        // Explicit operators allocate the ID before its visible label.
+        return choice.text() == ring_label_number_text(slot.index())
+            || matches!(successor.pending, Some(PendingEmission::RingOpeningLabel { .. }));
+    }
+    if let Some(slot) = pending_label.or(released) {
+        return choice.text() == ring_label_number_text(slot.index())
+            || matches!(successor.pending, Some(PendingEmission::RingClosureLabel { .. }));
+    }
+    true
+}
+
+pub(super) fn ring_witness_choices<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+) -> Vec<Choice<NonStereoWriterState<S>>> {
+    state
+        .choices()
+        .expect("production ring choices are available")
+        .into_iter()
+        .filter(|choice| selected_ring_label_witness(state, choice))
+        .collect()
+}
+
+fn preferred_test_ring_label(labels: &RingLabels) -> RingLabelSlot {
+    (1..=99)
+        .chain(0..=0)
+        .map(RingLabelSlot)
+        .find(|slot| !labels.bonds_by_slot.contains_key(slot))
+        .expect("fixture witness family has a free ring label")
+}
+
+fn consume_atom_spelling_states<S: ConstraintSolver>(
+    state: NonStereoWriterState<S>,
+    target: &str,
+    offset: usize,
+) -> Vec<NonStereoWriterState<S>> {
+    let Some(suffix) = target.get(offset..) else {
+        return Vec::new();
+    };
+    let mut states = vec![state];
+    for expected in suffix.chars() {
+        let mut successors = Vec::new();
+        for state in states {
+            for choice in state
+                .choices()
+                .expect("production spelling choices are available")
+            {
+                if choice.text() == expected.to_string() {
+                    successors.push(choice.into_successor());
+                }
+            }
+        }
+        states = successors;
+        if states.is_empty() {
+            break;
+        }
+    }
+    states
+        .into_iter()
+        .filter(|state| !state.is_spelling_atom())
+        .collect()
+}
+
+fn choice_at<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    index: usize,
+) -> (String, NonStereoWriterState<S>) {
+    let choice = ring_witness_choices(&state).into_iter().nth(index).unwrap();
     (choice.text, choice.successor)
 }
 
@@ -1250,23 +1595,37 @@ fn initial(surface: &PreparedNonStereo) -> State {
     State::initial(surface).unwrap().unwrap_consistent()
 }
 
-fn reachable_terminal_states(state: State) -> Vec<State> {
-    let mut pending = vec![state];
+/// Walk structural paths through the finite atom spellings declared by tests.
+/// This bounds test traversal; it does not count the complete atom language.
+fn reachable_terminal_states<S: ConstraintSolver>(
+    state: NonStereoWriterState<S>,
+) -> Vec<NonStereoWriterState<S>> {
+    let mut pending = vec![(state, 0_usize)];
     let mut complete = Vec::new();
     let mut explored = 0_usize;
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored <= 100_000, "writer test exceeded its state bound");
         if state.is_accepted() {
             complete.push(state);
             continue;
         }
-        let choices = state.choices().unwrap();
+        let choices = ring_witness_choices(&state);
         assert!(
             !choices.is_empty(),
             "nonaccepted writer state has no continuation"
         );
-        pending.extend(choices.into_iter().map(Choice::into_successor));
+        for choice in choices {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset)
+                || !selected_ring_label_witness(&state, &choice)
+            {
+                continue;
+            }
+            let token = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, next_offset));
+        }
     }
     complete
 }
@@ -1579,21 +1938,18 @@ fn tetrahedral_domains_match_independent_permutation_and_parity_enumeration() {
 fn four_arm_root_reaches_every_local_order_under_exactly_one_parity_token() {
     let (surface, atoms, _) = tetrahedral_star_fixture(4);
     let initial = initial(&surface);
-    let root_choices = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .collect::<Vec<_>>();
+    let root_choices = completed_atom_witnesses(&initial, atoms[0]);
 
     assert_eq!(
-        root_choices.iter().map(Choice::text).collect::<Vec<_>>(),
+        root_choices
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
     let mut orders_by_token = BTreeMap::<String, BTreeSet<u8>>::new();
-    for root in root_choices {
-        let token = root.text().to_owned();
-        for terminal in reachable_terminal_states(root.into_successor()) {
+    for (token, root) in root_choices {
+        for terminal in reachable_terminal_states(root) {
             orders_by_token
                 .entry(token.clone())
                 .or_default()
@@ -1621,22 +1977,22 @@ fn four_arm_root_reaches_every_local_order_under_exactly_one_parity_token() {
 fn entered_four_arm_center_reaches_all_six_remaining_orders() {
     let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
     let initial = initial(&surface);
-    let rooted_leaf = initial
-        .choices()
-        .unwrap()
+    let (_, rooted_leaf) = only_root_atom(&initial, atoms[1]);
+    let atom_choices = pending_atom_entries(rooted_leaf, atoms[0])
         .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
-    let atom_choices = rooted_leaf.choices().unwrap();
+        .flat_map(|(entry, prefix)| complete_atom_witness_from_prefix(entry, atoms[0], &prefix))
+        .collect::<Vec<_>>();
 
     assert_eq!(
-        atom_choices.iter().map(Choice::text).collect::<Vec<_>>(),
+        atom_choices
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
     let mut orders = BTreeSet::new();
-    for choice in atom_choices {
-        for terminal in reachable_terminal_states(choice.into_successor()) {
+    for (_, atom_state) in atom_choices {
+        for terminal in reachable_terminal_states(atom_state) {
             let value = resolved_tetrahedral_order(&terminal, &surface, atoms[0]);
             let order = independent_tetrahedral_order(
                 &surface
@@ -1658,12 +2014,9 @@ fn virtual_hydrogen_has_the_context_position_for_root_and_entry() {
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
     let initial = initial(&surface);
 
-    let rooted_orders = initial
-        .choices()
-        .unwrap()
+    let rooted_orders = completed_atom_witnesses(&initial, atoms[0])
         .into_iter()
-        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .flat_map(|choice| reachable_terminal_states(choice.into_successor()))
+        .flat_map(|(_, root)| reachable_terminal_states(root))
         .map(|terminal| {
             independent_tetrahedral_order(
                 &center.reference_order,
@@ -1676,18 +2029,11 @@ fn virtual_hydrogen_has_the_context_position_for_root_and_entry() {
         .iter()
         .all(|order| order[0] == TetrahedralLigand::VirtualHydrogen));
 
-    let rooted_leaf = initial
-        .choices()
-        .unwrap()
+    let (_, rooted_leaf) = only_root_atom(&initial, atoms[1]);
+    let entered_orders = pending_atom_entries(rooted_leaf, atoms[0])
         .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
-    let entered_orders = rooted_leaf
-        .choices()
-        .unwrap()
-        .into_iter()
-        .flat_map(|choice| reachable_terminal_states(choice.into_successor()))
+        .flat_map(|(entry, prefix)| complete_atom_witness_from_prefix(entry, atoms[0], &prefix))
+        .flat_map(|(_, atom_state)| reachable_terminal_states(atom_state))
         .map(|terminal| {
             independent_tetrahedral_order(
                 &center.reference_order,
@@ -1709,20 +2055,8 @@ fn virtual_hydrogen_has_the_context_position_for_root_and_entry() {
 fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
     let (elided_branch_surface, atoms, bonds) =
         entered_tetrahedral_fixture(NonStereoBondToken::Elided, true);
-    let parent = initial(&elided_branch_surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    parent.reset_writer_work_counts();
-    let parent_choices = parent.choices().unwrap();
-    assert_eq!(
-        parent.writer_work_counts(),
-        (2, 3),
-        "the two branch candidates prevalidate one tetrahedral and one fixed atom frontier"
-    );
+    let (_, parent) = only_root_atom(&initial(&elided_branch_surface), atoms[0]);
+    let parent_choices = ring_witness_choices(&parent);
     let pending_branch = parent_choices
         .into_iter()
         .find(|choice| {
@@ -1735,30 +2069,18 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         })
         .unwrap()
         .into_successor();
-    pending_branch.reset_writer_work_counts();
     assert_eq!(
-        pending_branch
-            .choices()
-            .unwrap()
+        completed_atom_witnesses(&pending_branch, atoms[1])
             .iter()
-            .map(Choice::text)
+            .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
-    assert_eq!(pending_branch.writer_work_counts(), (1, 0));
 
     let (explicit_branch_surface, atoms, bonds) =
         entered_tetrahedral_fixture(NonStereoBondToken::Double, true);
-    let parent = initial(&explicit_branch_surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    let pending_bond = parent
-        .choices()
-        .unwrap()
+    let (_, parent) = only_root_atom(&initial(&explicit_branch_surface), atoms[0]);
+    let pending_bond = ring_witness_choices(&parent)
         .into_iter()
         .find(|choice| {
             choice.successor().pending
@@ -1770,40 +2092,22 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
         })
         .unwrap()
         .into_successor();
-    pending_bond.reset_writer_work_counts();
     let (_, pending_atom) = only_choice(&pending_bond, "=");
     assert_eq!(
-        pending_bond.writer_work_counts(),
-        (1, 2),
-        "the explicit branch bond prevalidates its two-choice atom frontier"
-    );
-    pending_atom.reset_writer_work_counts();
-    assert_eq!(
-        pending_atom
-            .choices()
-            .unwrap()
+        completed_atom_witnesses(&pending_atom, atoms[1])
             .iter()
-            .map(Choice::text)
+            .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
-    assert_eq!(pending_atom.writer_work_counts(), (1, 0));
 
     let (inline_surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
-    let parent = initial(&inline_surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, parent) = only_root_atom(&initial(&inline_surface), atoms[0]);
     let (_, pending_atom) = only_choice(&parent, "=");
     assert_eq!(
-        pending_atom
-            .choices()
-            .unwrap()
+        completed_atom_witnesses(&pending_atom, atoms[1])
             .iter()
-            .map(Choice::text)
+            .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
@@ -1836,57 +2140,35 @@ fn component_separator_defers_tetrahedral_parity_until_the_atom_token() {
         vec![NonStereoBondToken::Elided; bonds.len()],
     )
     .unwrap();
-    let after_first = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().structural.atom_is_visited(atoms[0]))
-        .unwrap()
-        .into_successor();
-    after_first.reset_writer_work_counts();
-    let root_choices = after_first.choices().unwrap();
-    assert_eq!(
-        after_first.writer_work_counts(),
-        (5, 6),
-        "five dot roots prevalidate four fixed and two tetrahedral atom successors"
-    );
+    let (_, after_first) = only_root_atom(&initial(&surface), atoms[0]);
+    let root_choices = ring_witness_choices(&after_first);
     let dot = root_choices
         .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
+        .find(|choice| !completed_atom_witnesses(choice.successor(), atoms[1]).is_empty())
         .unwrap();
 
     assert_eq!(dot.text(), ".");
-    dot.successor().reset_writer_work_counts();
     assert_eq!(
-        dot.successor()
-            .choices()
-            .unwrap()
+        completed_atom_witnesses(dot.successor(), atoms[1])
             .iter()
-            .map(Choice::text)
+            .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
         vec!["[C@]", "[C@@]"]
     );
-    assert_eq!(dot.successor().writer_work_counts(), (1, 0));
 }
 
 #[test]
 fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
     let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
-    let mut parent = initial(&surface)
-        .choices()
-        .unwrap()
+    let mut parent = completed_atom_witnesses(&initial(&surface), atoms[0])
         .into_iter()
-        .find(|choice| {
-            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
-        })
-        .unwrap()
-        .into_successor();
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .map(|(_, state)| state)
+        .unwrap();
 
     for &bond in &bonds[..2] {
-        let selected = parent
-            .choices()
-            .unwrap()
+        let selected = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
                 matches!(
@@ -1897,8 +2179,9 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
             })
             .unwrap()
             .into_successor();
-        let child = selected.choices().unwrap().remove(0).into_successor();
-        let restored = child.choices().unwrap().remove(0).into_successor();
+        let child_atom = branch_event_atom(&selected).expect("branch event names its child AtomId");
+        let (_, child) = only_choice(&selected, surface.atom_text(child_atom));
+        let (_, restored) = only_choice(&child, ")");
         assert_eq!(restored.active_atom(), Some(atoms[0]));
         parent = restored;
     }
@@ -1911,7 +2194,7 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
             .prefix_domain_with_bond_order(None, &bonds[..2])
             .intersect(parity_domain(TetrahedralParity::Even))
     );
-    let next = parent.choices().unwrap();
+    let next = ring_witness_choices(&parent);
     assert_eq!(
         next.len(),
         1,
@@ -1941,19 +2224,13 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
         ],
     );
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
-    let mut parent = initial(&surface)
-        .choices()
-        .unwrap()
+    let mut parent = completed_atom_witnesses(&initial(&surface), atoms[0])
         .into_iter()
-        .find(|choice| {
-            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
-        })
-        .unwrap()
-        .into_successor();
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .map(|(_, state)| state)
+        .unwrap();
     for &bond in &bonds[..3] {
-        let pending = parent
-            .choices()
-            .unwrap()
+        let pending = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
                 matches!(
@@ -1964,8 +2241,9 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
             })
             .unwrap()
             .into_successor();
-        let child = pending.choices().unwrap().remove(0).into_successor();
-        parent = child.choices().unwrap().remove(0).into_successor();
+        let child_atom = branch_event_atom(&pending).expect("branch event names its child AtomId");
+        let (_, child) = only_choice(&pending, surface.atom_text(child_atom));
+        parent = only_choice(&child, ")").1;
     }
 
     let (_, pending_atom) = only_choice(&parent, "=");
@@ -1995,19 +2273,13 @@ fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
         NonStereoWriterState::<NonconformingNonProjectingTetrahedralSolver>::initial(&surface)
             .unwrap()
             .unwrap_consistent();
-    let mut parent = initial
-        .choices()
-        .unwrap()
+    let mut parent = completed_atom_witnesses(&initial, atoms[0])
         .into_iter()
-        .find(|choice| {
-            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
-        })
-        .unwrap()
-        .into_successor();
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .map(|(_, state)| state)
+        .unwrap();
     for &bond in &bonds[..3] {
-        let pending = parent
-            .choices()
-            .unwrap()
+        let pending = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
                 matches!(
@@ -2018,20 +2290,9 @@ fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
             })
             .unwrap()
             .into_successor();
-        let child = pending
-            .choices()
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap()
-            .into_successor();
-        parent = child
-            .choices()
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap()
-            .into_successor();
+        let child_atom = branch_event_atom(&pending).expect("branch event identifies its child");
+        let (_, child) = only_choice(&pending, surface.atom_text(child_atom));
+        parent = only_choice(&child, ")").1;
     }
     let source = parent.observe_raw();
 
@@ -2060,11 +2321,11 @@ fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
     let mut atom_tokens = vec![
         PreparedAtomToken::Tetrahedral {
             reference_order: [shared, left[0], left[1], left[2]].map(TetrahedralLigand::Bond),
-            text_by_parity: ["[L@]".to_owned(), "[L@@]".to_owned()],
+            text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
         },
         PreparedAtomToken::Tetrahedral {
             reference_order: [shared, right[0], right[1], right[2]].map(TetrahedralLigand::Bond),
-            text_by_parity: ["[R@]".to_owned(), "[R@@]".to_owned()],
+            text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
         },
     ];
     atom_tokens.extend((2..8).map(|index| PreparedAtomToken::Fixed(format!("A{index}"))));
@@ -2076,15 +2337,11 @@ fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
     .unwrap();
     let left_center = surface.tetrahedral_center(atoms[0]).unwrap();
     let right_center = surface.tetrahedral_center(atoms[1]).unwrap();
-    let root = initial(&surface)
-        .choices()
-        .unwrap()
+    let root = completed_atom_witnesses(&initial(&surface), atoms[0])
         .into_iter()
-        .find(|choice| {
-            choice.text() == "[L@]" && choice.successor().active_atom() == Some(atoms[0])
-        })
-        .unwrap()
-        .into_successor();
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .map(|(_, state)| state)
+        .unwrap();
     let terminals = reachable_terminal_states(root);
 
     assert!(!terminals.is_empty());
@@ -2123,18 +2380,12 @@ fn ring_capable_tetrahedral_center_activates_layout_at_its_atom_event() {
     let state = State::initial(&surface).unwrap().unwrap_consistent();
     let source = state.observe_raw();
 
-    let choices = state
-        .choices()
-        .unwrap()
-        .into_iter()
-        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .collect::<Vec<_>>();
+    let choices = completed_atom_witnesses(&state, atoms[0]);
     assert_eq!(choices.len(), 2);
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
-    for choice in choices {
-        let active_factors = &choice.successor().observe_raw().structural.active_factors;
-        assert!(choice
-            .successor()
+    for (_, successor) in choices {
+        let active_factors = &successor.observe_raw().structural.active_factors;
+        assert!(successor
             .structural
             .factor_is_active(center.root_layout_factor));
         assert!(active_factors.contains(&center.root_layout_factor));
@@ -2146,9 +2397,8 @@ fn ring_capable_tetrahedral_center_activates_layout_at_its_atom_event() {
         assert!(center
             .entry_layout_factors
             .iter()
-            .all(|(_, factor)| !choice.successor().structural.factor_is_active(*factor)));
-        assert!(!choice
-            .successor()
+            .all(|(_, factor)| !successor.structural.factor_is_active(*factor)));
+        assert!(!successor
             .structural
             .semantic_domain(center.role_pattern_variable)
             .is_empty());
@@ -2265,12 +2515,12 @@ fn live_tetrahedral_context_matches_declarative_graph_recomputation() {
         vec![vec![bonds[0], bonds[1]], vec![bonds[3]]]
     );
 
-    let mut pending = vec![initial];
+    let mut pending = vec![(initial, 0_usize)];
     let mut saw_root = false;
     let mut saw_entry = false;
     let mut saw_waiting_closure = false;
     let mut explored = 0;
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 20_000);
         if state.pending.is_none() && state.active_atom() == Some(atoms[0]) {
@@ -2293,13 +2543,7 @@ fn live_tetrahedral_context_matches_declarative_graph_recomputation() {
         if saw_root && saw_entry && saw_waiting_closure {
             break;
         }
-        pending.extend(
-            state
-                .choices()
-                .unwrap()
-                .into_iter()
-                .map(Choice::into_successor),
-        );
+        pending.extend(declared_successors(&state, atom_offset));
     }
     assert!(saw_root && saw_entry && saw_waiting_closure);
 }
@@ -2308,12 +2552,9 @@ fn live_tetrahedral_context_matches_declarative_graph_recomputation() {
 fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
     let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
     let source = initial(&surface);
-    let pending = source
-        .choices()
-        .unwrap()
+    let pending = completed_atom_witnesses(&source, atoms[0])
         .into_iter()
-        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .flat_map(|choice| choice.into_successor().choices().unwrap())
+        .flat_map(|(_, root)| ring_witness_choices(&root))
         .find(|choice| {
             choice.text() == "="
                 && matches!(
@@ -2328,7 +2569,7 @@ fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
 
     assert_eq!(before_label.emitted_bonds, vec![bonds[0]]);
     assert_eq!(before_label.ring_occurrence_count, 1);
-    let after_label = pending.choices().unwrap().remove(0).into_successor();
+    let after_label = ring_witness_choices(&pending).remove(0).into_successor();
     assert_eq!(
         after_label.structural.active_local_bond_order(),
         before_label
@@ -2338,25 +2579,31 @@ fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
 #[test]
 fn every_ring_endpoint_path_commits_one_local_occurrence() {
     let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
-    let mut pending = vec![initial(&surface)];
+    let mut pending = vec![(initial(&surface), 0_usize)];
     let mut saw = [false; 4];
     let mut explored = 0;
 
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 20_000);
         let source = state.observe_raw();
         let Some(source_frame) = source.structural.traversal.active_frame.as_ref() else {
-            pending.extend(
-                state
-                    .choices()
-                    .unwrap()
-                    .into_iter()
-                    .map(Choice::into_successor),
-            );
+            for choice in ring_witness_choices(&state) {
+                if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                    continue;
+                }
+                let token = choice.text().to_owned();
+                let successor = choice.into_successor();
+                let next_offset =
+                    next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+                pending.push((successor, next_offset));
+            }
             continue;
         };
-        for choice in state.choices().unwrap() {
+        for choice in ring_witness_choices(&state) {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
             let successor = choice.successor().observe_raw();
             let source_progress = &source.structural.traversal.bond_progress[bonds[0].index()];
             let successor_progress =
@@ -2402,9 +2649,7 @@ fn every_ring_endpoint_path_commits_one_local_occurrence() {
 
                 if explicit {
                     let pending_state = choice.successor().clone();
-                    let after_label = pending_state
-                        .choices()
-                        .unwrap()
+                    let after_label = ring_witness_choices(&pending_state)
                         .into_iter()
                         .next()
                         .unwrap()
@@ -2417,7 +2662,10 @@ fn every_ring_endpoint_path_commits_one_local_occurrence() {
                     );
                 }
             }
-            pending.push(choice.into_successor());
+            let token = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, next_offset));
         }
         if saw.iter().all(|value| *value) {
             break;
@@ -2432,16 +2680,16 @@ fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
     let (surface, atoms, _) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Elided);
 
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
-    let mut pending = vec![(initial(&surface), String::new())];
+    let mut pending = vec![(initial(&surface), String::new(), 0_usize)];
     let mut paths = Vec::new();
     let mut saw_entered_context = false;
     let mut saw_waiting_closure = false;
     let mut explored = 0;
-    while let Some((state, prefix)) = pending.pop() {
+    while let Some((state, prefix, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 20_000);
         if state.is_accepted() {
-            paths.push(prefix);
+            paths.push(surface.normalize_test_atom_classes(&prefix));
             continue;
         }
         if state.pending.is_none() && state.active_atom() == Some(atoms[0]) {
@@ -2454,16 +2702,19 @@ fn ring_coupled_tetrahedral_center_has_complete_online_walks() {
             }
             saw_waiting_closure |= !context.waiting_ring_bonds.is_empty();
         }
-        let choices = state.choices().unwrap();
+        let choices = ring_witness_choices(&state);
         assert!(
             !choices.is_empty(),
             "nonaccepted ring-coupled tetrahedral state has no continuation"
         );
         for choice in choices {
-            pending.push((
-                choice.successor().clone(),
-                format!("{prefix}{}", choice.text()),
-            ));
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
+            let token = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, format!("{prefix}{token}"), next_offset));
         }
     }
 
@@ -2490,13 +2741,13 @@ fn adjacent_ring_coupled_centers_activate_and_resolve_in_one_component() {
             )
             .collect::<Vec<_>>()
     });
-    let mut pending = vec![initial(&surface)];
+    let mut pending = vec![(initial(&surface), 0_usize)];
     let mut saw_both_active = false;
     let mut saw_one_suspended_while_the_other_was_active = false;
     let mut accepted = 0;
     let mut explored = 0;
 
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 100_000);
         let observed = state.observe_raw();
@@ -2540,13 +2791,7 @@ fn adjacent_ring_coupled_centers_activate_and_resolve_in_one_component() {
             }
             continue;
         }
-        pending.extend(
-            state
-                .choices()
-                .unwrap()
-                .into_iter()
-                .map(Choice::into_successor),
-        );
+        pending.extend(declared_successors(&state, atom_offset));
     }
 
     assert!(accepted > 0);
@@ -2561,20 +2806,25 @@ fn disconnected_ring_coupled_centers_keep_factors_local_and_reuse_labels() {
         surface.tetrahedral_center(atoms[0]).unwrap(),
         surface.tetrahedral_center(atoms[4]).unwrap(),
     ];
-    let mut pending = vec![(initial(&surface), String::new())];
+    let mut pending = vec![(initial(&surface), String::new(), 0_usize)];
     let mut accepted = None;
     let mut explored = 0;
-    while let Some((state, text)) = pending.pop() {
+    while let Some((state, text, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 100_000);
         if state.is_accepted() {
-            accepted = Some((state, text));
+            accepted = Some((state, surface.normalize_test_atom_classes(&text)));
             break;
         }
-        pending.extend(state.choices().unwrap().into_iter().map(|choice| {
-            let next_text = format!("{text}{}", choice.text());
-            (choice.into_successor(), next_text)
-        }));
+        for choice in ring_witness_choices(&state) {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
+            let token = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, format!("{text}{token}"), next_offset));
+        }
     }
     let (accepted, text) = accepted.expect("disconnected cyclic fixture must have support");
     let components = text.split('.').collect::<Vec<_>>();
@@ -2605,10 +2855,10 @@ fn disconnected_ring_coupled_centers_keep_factors_local_and_reuse_labels() {
 fn disconnected_ring_coupled_suffix_resolves_after_first_component() {
     let (surface, atoms) = disconnected_ring_coupled_tetrahedral_fixture();
     let second_center = surface.tetrahedral_center(atoms[4]).unwrap();
-    let mut pending = vec![initial(&surface)];
+    let mut pending = vec![(initial(&surface), 0_usize)];
     let mut boundary = None;
     let mut explored = 0;
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 100_000);
         let visited = state
@@ -2626,12 +2876,21 @@ fn disconnected_ring_coupled_suffix_resolves_after_first_component() {
             break;
         }
         if !state.is_accepted() {
-            let choices = state.choices().unwrap();
+            let choices = ring_witness_choices(&state);
             assert!(
                 !choices.is_empty(),
                 "nonaccepted disconnected ring-coupled state has no continuation"
             );
-            pending.extend(choices.into_iter().map(Choice::into_successor));
+            for choice in choices {
+                if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                    continue;
+                }
+                let token = choice.text().to_owned();
+                let successor = choice.into_successor();
+                let next_offset =
+                    next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+                pending.push((successor, next_offset));
+            }
         }
     }
 
@@ -2661,15 +2920,10 @@ fn contradictory_tetrahedral_token_is_filtered_without_suppressing_its_sibling()
             .unwrap()
             .unwrap_consistent();
     let source = state.observe_raw();
-    let center_choices = state
-        .choices()
-        .unwrap()
-        .into_iter()
-        .filter(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .collect::<Vec<_>>();
+    let center_choices = completed_atom_witnesses(&state, atoms[0]);
 
     assert_eq!(center_choices.len(), 1);
-    assert_eq!(center_choices[0].text(), "[C@@]");
+    assert_eq!(center_choices[0].0, "[C@@]");
     assert_eq!(state.observe_raw(), source);
 }
 
@@ -2694,13 +2948,7 @@ fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
         NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
             .unwrap()
             .unwrap_consistent();
-    let parent = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, parent) = only_root_atom(&initial, atoms[0]);
 
     assert!(matches!(
         parent.choices(),
@@ -2717,14 +2965,8 @@ fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
         NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
             .unwrap()
             .unwrap_consistent();
-    let parent = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    let choices = parent.choices().unwrap();
+    let (_, parent) = only_root_atom(&initial, atoms[0]);
+    let choices = ring_witness_choices(&parent);
 
     assert_eq!(choices.len(), 1);
     assert_eq!(choices[0].text(), "(");
@@ -2736,54 +2978,47 @@ fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
 }
 
 #[test]
-fn each_tetrahedral_semantic_choice_uses_one_solver_restriction_batch() {
+fn tetrahedral_atom_spellings_partition_the_order_domain() {
     let (surface, atoms, _) = tetrahedral_star_fixture(4);
-    TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
-    let initial = NonStereoWriterState::<CountTetrahedralRestrictionsSolver>::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
-    let root_choices = initial.choices().unwrap();
-    assert_eq!(TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed), 2);
-    let rooted = root_choices
-        .into_iter()
-        .find(|choice| {
-            choice.text() == "[C@]" && choice.successor().active_atom() == Some(atoms[0])
-        })
-        .unwrap()
-        .into_successor();
-
-    TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
-    let branch_choices = rooted.choices().unwrap();
-    assert_eq!(branch_choices.len(), 4);
-    assert_eq!(TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed), 4);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let initial = initial(&surface);
+    let witnesses = completed_atom_witnesses(&initial, atoms[0]);
+    assert_eq!(
+        witnesses
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["[C@]", "[C@@]"])
+    );
+    let first = witnesses[0]
+        .1
+        .structural
+        .semantic_domain(center.order_variable);
+    let second = witnesses[1]
+        .1
+        .structural
+        .semantic_domain(center.order_variable);
+    assert!(first.intersect(second).is_empty());
+    assert_eq!(first.union(second), full_order_domain());
 }
 
 #[test]
-fn ring_and_child_atom_frontiers_use_one_transition_per_semantic_choice() {
-    type CountingState = NonStereoWriterState<CountTetrahedralRestrictionsSolver>;
+fn ring_and_child_atom_frontiers_preserve_ring_and_parity_choices() {
+    type WriterState = NonStereoWriterState<NativeSolverState>;
 
     let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
-    let initial = CountingState::initial(&surface)
-        .unwrap()
-        .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    let mut pending = vec![rooted];
+    let initial = WriterState::initial(&surface).unwrap().unwrap_consistent();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
+    let mut pending = vec![(rooted, 0_usize)];
     let mut saw_opening = false;
     let mut saw_closure = false;
     let mut explored = 0;
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(explored < 20_000);
         let source = state.observe_raw();
-        TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
-        let choices = state.choices().unwrap();
-        let ring_event = choices.iter().any(|choice| {
+        let choices = ring_witness_choices(&state);
+        for choice in &choices {
             let successor = choice.successor().observe_raw();
             match (
                 &source.structural.traversal.bond_progress[bonds[0].index()],
@@ -2791,26 +3026,25 @@ fn ring_and_child_atom_frontiers_use_one_transition_per_semantic_choice() {
             ) {
                 (ObservedBondProgress::Unrepresented, ObservedBondProgress::RingOpen { .. }) => {
                     saw_opening = true;
-                    true
                 }
                 (
                     ObservedBondProgress::RingOpen { .. },
                     ObservedBondProgress::RingClosed { .. },
                 ) => {
                     saw_closure = true;
-                    true
                 }
-                _ => false,
+                _ => {}
             }
-        });
-        if ring_event {
-            assert_eq!(
-                TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
-                choices.len(),
-                "each ring spelling candidate must use one atomic solver transition"
-            );
         }
-        pending.extend(choices.into_iter().map(Choice::into_successor));
+        for choice in choices {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
+            let token = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, next_offset));
+        }
         if saw_opening && saw_closure {
             break;
         }
@@ -2819,20 +3053,10 @@ fn ring_and_child_atom_frontiers_use_one_transition_per_semantic_choice() {
 
     for token in [NonStereoBondToken::Elided, NonStereoBondToken::Double] {
         let (surface, atoms, _) = entered_tetrahedral_fixture(token, false);
-        let initial = CountingState::initial(&surface)
-            .unwrap()
-            .unwrap_consistent();
-        let parent = initial
-            .choices()
-            .unwrap()
-            .into_iter()
-            .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-            .unwrap()
-            .into_successor();
+        let initial = WriterState::initial(&surface).unwrap().unwrap_consistent();
+        let (_, parent) = only_root_atom(&initial, atoms[0]);
         let atom_frontier = if token == NonStereoBondToken::Double {
-            parent
-                .choices()
-                .unwrap()
+            ring_witness_choices(&parent)
                 .into_iter()
                 .find(|choice| choice.text() == "=")
                 .unwrap()
@@ -2840,14 +3064,21 @@ fn ring_and_child_atom_frontiers_use_one_transition_per_semantic_choice() {
         } else {
             parent
         };
-        TETRAHEDRAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
-        let atom_choices = atom_frontier.choices().unwrap();
-        assert_eq!(atom_choices.len(), 2);
+        let atom_choices = completed_atom_witnesses(&atom_frontier, atoms[1]);
         assert_eq!(
-            TETRAHEDRAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
             atom_choices.len(),
-            "each pending or combined child atom token must use one transition"
+            2,
+            "both tetrahedral marker witnesses survive"
         );
+        let order_domains = atom_choices
+            .iter()
+            .map(|(_, successor)| {
+                successor
+                    .structural
+                    .semantic_domain(surface.tetrahedral_center(atoms[1]).unwrap().order_variable)
+            })
+            .collect::<Vec<_>>();
+        assert!(order_domains[0].intersect(order_domains[1]).is_empty());
     }
 }
 
@@ -2872,7 +3103,7 @@ fn isolated_tetrahedral_order_domains_do_not_create_exact_search_work() {
         .structural
         .constraints_for_test()
         .reset_tetrahedral_factor_revision_count();
-    let _choices = state.choices().unwrap();
+    let _choices = ring_witness_choices(&state);
     assert!(
         state
             .structural
@@ -2890,18 +3121,10 @@ fn isolated_tetrahedral_order_domains_do_not_create_exact_search_work() {
 #[test]
 fn pending_prevalidation_work_is_measured_at_the_lexical_frontier() {
     let (surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
-    let parent = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, parent) = only_root_atom(&initial(&surface), atoms[0]);
 
     parent.reset_writer_work_counts();
-    let pending_atom = parent
-        .choices()
-        .unwrap()
+    let pending_atom = ring_witness_choices(&parent)
         .into_iter()
         .find(|choice| choice.text() == "=")
         .unwrap()
@@ -2913,7 +3136,7 @@ fn pending_prevalidation_work_is_measured_at_the_lexical_frontier() {
     );
 
     pending_atom.reset_writer_work_counts();
-    assert_eq!(pending_atom.choices().unwrap().len(), 2);
+    assert_eq!(ring_witness_choices(&pending_atom).len(), 2);
     assert_eq!(
         pending_atom.writer_work_counts(),
         (1, 0),
@@ -2925,13 +3148,7 @@ fn pending_prevalidation_work_is_measured_at_the_lexical_frontier() {
 fn top_level_component_completion_is_silent_normalization() {
     let (surface, atoms, _) = fixture(&["A", "B"], &[]);
     let initial = initial(&surface);
-    let first = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "A")
-        .unwrap()
-        .into_successor();
+    let (_, first) = only_root_atom(&initial, atoms[0]);
 
     assert_eq!(initial.active_atom(), None, "the source remains unchanged");
     assert_eq!(first.active_atom(), None);
@@ -2948,15 +3165,9 @@ fn top_level_component_completion_is_silent_normalization() {
 fn equal_dot_choices_commit_distinct_pending_component_roots() {
     let (surface, atoms, _) = fixture(&["A", "B", "C"], &[]);
     let initial = initial(&surface);
-    let after_first = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "A")
-        .unwrap()
-        .into_successor();
+    let (_, after_first) = only_root_atom(&initial, atoms[0]);
 
-    let choices = after_first.choices().unwrap();
+    let choices = ring_witness_choices(&after_first);
     assert_eq!(choices.len(), 2);
     assert!(choices.iter().all(|choice| choice.text() == "."));
     assert_eq!(
@@ -2972,16 +3183,17 @@ fn equal_dot_choices_commit_distinct_pending_component_roots() {
         "the source remains unchanged"
     );
     for (choice, root) in choices.iter().zip(&atoms[1..]) {
-        assert_eq!(choice.successor().active_atom(), Some(*root));
-        assert!(choice.successor().structural.atom_is_visited(atoms[0]));
-        assert!(choice.successor().structural.atom_is_visited(*root));
-        assert_eq!(
-            choice.successor().pending,
-            Some(PendingEmission::ComponentRootAtom(*root))
-        );
-        let atom_choice = choice.successor().choices().unwrap();
-        assert_eq!(atom_choice.len(), 1);
-        assert_eq!(atom_choice[0].text(), surface.atom_text(*root));
+        let witness = declared_atom_witnesses(&surface, *root)
+            .into_iter()
+            .next()
+            .unwrap();
+        let atom_choices = choices_matching_declared_witnesses(choice.successor(), 0);
+        assert!(!atom_choices.is_empty());
+        assert!(atom_choices
+            .iter()
+            .any(|atom_choice| witness.starts_with(atom_choice.text())));
+        let completed = consume_atom_spelling_states(choice.successor().clone(), &witness, 0);
+        assert!(completed.iter().any(|state| atom_was_emitted(state, *root)));
     }
 }
 
@@ -2990,23 +3202,54 @@ fn equal_text_choices_retain_distinct_successors() {
     let (surface, atoms, _) = fixture(&["C", "C"], &[(0, 1, NonStereoBondToken::Elided)]);
     let initial = initial(&surface);
 
-    let choices = initial.choices().unwrap();
-    assert_eq!(choices.len(), 2);
-    assert_eq!(choices[0].text(), choices[1].text());
-    assert_eq!(choices[0].text(), "C");
-    assert_eq!(choices[0].successor().active_atom(), Some(atoms[0]));
-    assert_eq!(choices[1].successor().active_atom(), Some(atoms[1]));
+    let choices = choices_matching_declared_witnesses(&initial, 0);
+    assert!(choices.len() >= 2);
+    assert!(choices
+        .iter()
+        .all(|choice| choice.text() == choices[0].text()));
     assert_eq!(initial.active_atom(), None);
+
+    let reached_by_choice = choices
+        .iter()
+        .map(|choice| {
+            atoms
+                .iter()
+                .copied()
+                .filter(|atom| {
+                    let witness = declared_atom_witnesses(&surface, *atom)[0].clone();
+                    witness.starts_with(choice.text())
+                        && consume_atom_spelling_states(
+                            choice.successor().clone(),
+                            &witness,
+                            choice.text().len(),
+                        )
+                        .iter()
+                        .any(|state| atom_was_emitted(state, *atom))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert!(reached_by_choice
+        .iter()
+        .any(|left| { reached_by_choice.iter().any(|right| left != right) }));
+    assert_eq!(
+        reached_by_choice
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        atoms.iter().copied().collect()
+    );
 }
 
 #[test]
 fn accepted_state_returns_an_ordinary_empty_choice_result() {
-    let surface = fixture(&["C"], &[]).0;
+    let (surface, atoms, _) = fixture(&["C"], &[]);
     let initial = initial(&surface);
-    let (_, accepted) = only_choice(&initial, "C");
+    let (_, accepted) = only_root_atom(&initial, atoms[0]);
 
     assert!(accepted.is_accepted());
-    assert!(accepted.choices().unwrap().is_empty());
+    assert!(ring_witness_choices(&accepted).is_empty());
 }
 
 #[test]
@@ -3021,18 +3264,12 @@ fn choices_derives_the_source_frontier_once() {
     )
     .0;
     let initial = initial(&surface);
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, AtomId::new(0));
     let before = rooted.structural.candidate_batch_derivation_count();
 
     let choices = rooted.choices().unwrap();
 
-    assert_eq!(choices.len(), 2);
+    assert_eq!(choices.len(), 220);
     assert_eq!(
         rooted.structural.candidate_batch_derivation_count(),
         before + 1
@@ -3053,14 +3290,10 @@ fn backend_failure_aborts_the_candidate_batch() {
     let initial = NonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, AtomId::new(0));
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
 
     assert!(matches!(
         rooted.choices(),
@@ -3082,13 +3315,7 @@ fn late_backend_failure_discards_an_earlier_accepted_choice() {
     let initial = NonStereoWriterState::<FailSecondVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, AtomId::new(0));
 
     assert!(matches!(
         rooted.choices(),
@@ -3109,13 +3336,7 @@ fn ring_alternative_generation_stops_at_the_first_backend_failure() {
     let initial = NonStereoWriterState::<FailFirstRingAlternativeSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
     let candidate = rooted
         .structural
         .derive_candidates()
@@ -3156,28 +3377,21 @@ fn contradictory_candidate_is_filtered_without_suppressing_its_sibling() {
     let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
 
     let choices = rooted.choices().unwrap();
 
-    assert_eq!(choices.len(), 1);
-    assert_eq!(choices[0].text(), "1");
-    assert_eq!(
-        choices[0]
+    assert_eq!(choices.len(), 110);
+    assert!(choices.iter().all(|choice| {
+        choice
             .successor()
             .labels
             .bonds_by_slot
             .values()
             .copied()
-            .collect::<Vec<_>>(),
-        vec![bonds[1]]
-    );
+            .collect::<Vec<_>>()
+            == vec![bonds[1]]
+    }));
     assert!(rooted.labels.is_clean());
 }
 
@@ -3196,15 +3410,9 @@ fn writer_policy_contradiction_is_candidate_local() {
     let initial = NonStereoWriterState::<WriterPolicyContradictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
 
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
 
     assert!(!choices.is_empty());
     assert!(choices.iter().all(|choice| {
@@ -3226,9 +3434,9 @@ fn writer_policy_contradiction_is_candidate_local() {
 }
 
 #[test]
-fn all_candidate_contradiction_is_an_explicit_live_state_failure() {
+fn pending_atom_completion_rejects_a_contradictory_structural_frontier() {
     let (surface, atoms, _) = fixture(
-        &["R", "A", "B", "C"],
+        &["R", "A", "Q", "X"],
         &[
             (0, 1, NonStereoBondToken::Double),
             (1, 2, NonStereoBondToken::Elided),
@@ -3239,20 +3447,48 @@ fn all_candidate_contradiction_is_an_explicit_live_state_failure() {
     let initial = NonStereoWriterState::<PendingContradictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
 
-    assert!(matches!(
-        rooted.choices(),
-        Err(ChoiceFailure::Invariant(
-            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 1 }
-        ))
-    ));
+    let (_, after_double_bond) = only_choice(&rooted, "=");
+    let mut after_child = vec![after_double_bond];
+    let mut witness_prefix = String::new();
+    for expected in "[*:2".chars() {
+        let mut successors = Vec::new();
+        for state in after_child {
+            let choices = state.choices().unwrap_or_else(|failure| {
+                panic!(
+                    "child witness failed after {witness_prefix:?} before {expected:?}: {failure:?}; pending={:?}, spelling={:?}",
+                    state.pending,
+                    state.atom_spelling
+                )
+            });
+            successors.extend(
+                choices
+                    .into_iter()
+                    .filter(|choice| choice.text() == expected.to_string())
+                    .map(Choice::into_successor),
+            );
+        }
+        witness_prefix.push(expected);
+        after_child = successors;
+    }
+    assert!(
+        !after_child.is_empty(),
+        "the declared child witness remains reachable"
+    );
+    let failures = after_child
+        .iter()
+        .map(NonStereoWriterState::choices)
+        .collect::<Vec<_>>();
+    assert!(
+        failures.iter().all(|choices| matches!(
+            choices,
+            Err(ChoiceFailure::Invariant(
+                WriterInvariantFailure::PendingEmissionRejected
+            ))
+        )),
+        "unexpected candidate outcomes at the final child-atom field: {failures:?}"
+    );
 }
 
 #[test]
@@ -3266,14 +3502,10 @@ fn all_candidate_spelling_exhaustion_is_typed() {
         ],
     );
     let initial = initial(&surface);
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, atoms[0]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
 
     assert!(matches!(
         rooted.choices(),
@@ -3298,14 +3530,10 @@ fn explicit_pending_labels_retain_spelling_exhaustion_classification() {
         ],
     );
     let initial = initial(&surface);
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, atoms[0]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
 
     assert!(matches!(
         rooted.choices(),
@@ -3330,16 +3558,8 @@ fn explicit_closure_pending_label_retains_spelling_exhaustion_classification() {
         ],
     );
     let initial = initial(&surface);
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    let opening = rooted
-        .choices()
-        .unwrap()
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
+    let opening = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice.text() == "="
@@ -3382,14 +3602,10 @@ fn viable_unspellable_candidate_outweighs_a_contradictory_sibling() {
     let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, atoms[0]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
 
     assert!(matches!(
         rooted.choices(),
@@ -3416,14 +3632,10 @@ fn contradiction_precedes_spelling_for_each_candidate() {
     let initial = NonStereoWriterState::<RejectEveryRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, atoms[0]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
 
     assert!(matches!(
         rooted.choices(),
@@ -3445,17 +3657,13 @@ fn explicit_endpoint_contradiction_precedes_pending_label_spelling() {
             (2, 3, NonStereoBondToken::Elided),
         ],
     );
-    let initial = NonStereoWriterState::<WriterPolicyContradictionSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<RejectEveryRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let mut rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial, atoms[0]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
     let candidate = rooted
         .structural
         .derive_candidates()
@@ -3500,16 +3708,8 @@ fn unspellable_openings_do_not_suppress_a_valid_closure() {
         ],
     );
     let initial = initial(&surface);
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
-    let opened = rooted
-        .choices()
-        .unwrap()
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
+    let opened = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice
@@ -3525,9 +3725,10 @@ fn unspellable_openings_do_not_suppress_a_valid_closure() {
     let (_, mut walked) = only_choice(&walked, "B");
     assert_eq!(walked.active_atom(), Some(atoms[1]));
     walked.labels.maximum_spelling_label = Some(1);
-    assert_eq!(walked.labels.next_available(), RingLabelSlot(1));
+    walked.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
+    assert_eq!(walked.labels.next_available(), RingLabelSlot(2));
 
-    let choices = walked.choices().unwrap();
+    let choices = ring_witness_choices(&walked);
 
     assert_eq!(choices.len(), 1);
     assert_eq!(choices[0].text(), "1");
@@ -3584,8 +3785,8 @@ fn elided_triangle_emits_a_complete_ring() {
     let between = incident(&surface, atoms[2], bonds[2]);
     let closing = incident(&surface, atoms[1], bonds[0]);
 
-    let (root, rooted) = choice_at(&initial, atoms[0].index());
-    let rooted_choices = rooted.choices().unwrap();
+    let (root, rooted) = only_root_atom(&initial, atoms[0]);
+    let rooted_choices = ring_witness_choices(&rooted);
     assert_eq!(
         rooted_choices.iter().map(Choice::text).collect::<Vec<_>>(),
         vec!["1", "1"]
@@ -3610,11 +3811,16 @@ fn elided_triangle_emits_a_complete_ring() {
     assert_eq!(walked.structural.active_atom(), Some(atoms[1]));
     assert_eq!(between.bond(), bonds[2]);
     assert_eq!(closing.bond(), bonds[0]);
-    let (close, accepted) = only_choice(&walked, "1");
+    let closing_choices = walked.choices().unwrap().into_iter()
+        .filter(|choice| choice.text() == "%01").collect::<Vec<_>>();
+    assert_eq!(closing_choices.len(), 1);
+    let closing_choice = closing_choices.into_iter().next().unwrap();
+    let close = closing_choice.text().to_owned();
+    let accepted = closing_choice.into_successor();
 
     assert_eq!(
         [root, open, first_child, second_child, close].concat(),
-        "C1CC1"
+        "C1CC%01"
     );
     assert!(accepted.is_accepted());
 }
@@ -3635,7 +3841,7 @@ fn explicit_ring_bond_is_emitted_at_closure_before_its_label() {
     let between = incident(&surface, atoms[2], bonds[2]);
     let closing = incident(&surface, atoms[1], bonds[0]);
 
-    let (root, rooted) = choice_at(&initial, atoms[0].index());
+    let (root, rooted) = only_root_atom(&initial, atoms[0]);
     let (open, opened) = choice_at(&rooted, 0);
     assert!(opened
         .labels
@@ -3690,16 +3896,8 @@ fn explicit_ring_opening_choices_refine_the_fixed_endpoint_plan() {
                 .union(BondRepresentation::Ring11.singleton_domain()),
         ),
     ] {
-        let rooted = initial
-            .choices()
-            .unwrap()
-            .into_iter()
-            .find(|choice| choice.successor().active_atom() == Some(root))
-            .unwrap()
-            .into_successor();
-        let choices = rooted
-            .choices()
-            .unwrap()
+        let (_, rooted) = only_root_atom(&initial, root);
+        let choices = ring_witness_choices(&rooted)
             .into_iter()
             .filter(|choice| {
                 choice
@@ -3752,10 +3950,8 @@ fn explicit_ring_closure_resolves_opening_only_closure_only_and_both_plans() {
         ],
     );
     let initial = initial(&surface);
-    let (root_text, rooted) = choice_at(&initial, atoms[0].index());
-    let opening_choices = rooted
-        .choices()
-        .unwrap()
+    let (root_text, rooted) = only_root_atom(&initial, atoms[0]);
+    let opening_choices = ring_witness_choices(&rooted)
         .into_iter()
         .filter(|choice| {
             choice
@@ -3801,7 +3997,7 @@ fn explicit_ring_closure_resolves_opening_only_closure_only_and_both_plans() {
             .singleton_domain()
             .union(BondRepresentation::Ring11.singleton_domain())
     );
-    let closure_choices = walked.choices().unwrap();
+    let closure_choices = ring_witness_choices(&walked);
     assert_eq!(closure_choices.len(), 2);
 
     let omitted_closure = closure_choices
@@ -3882,7 +4078,7 @@ fn fixed_ring_placement_results_from(
     root_index: usize,
 ) -> Vec<(String, Domain)> {
     let (surface, atoms, bonds) = fixture(
-        &["A", "B", "C"],
+        &["A", "R", "Q"],
         &[
             (0, 1, token),
             (0, 2, NonStereoBondToken::Elided),
@@ -3890,34 +4086,11 @@ fn fixed_ring_placement_results_from(
         ],
     );
     let initial = initial(&surface);
-    let root = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[root_index]))
-        .unwrap();
-    let root_text = root.text().to_owned();
-    let mut pending = root
-        .successor()
-        .choices()
-        .unwrap()
-        .into_iter()
-        .filter(|choice| {
-            choice
-                .successor()
-                .labels
-                .bonds_by_slot
-                .values()
-                .any(|bond| *bond == bonds[0])
-        })
-        .map(|choice| {
-            let prefix = format!("{root_text}{}", choice.text());
-            (choice.into_successor(), prefix)
-        })
-        .collect::<Vec<_>>();
+    let (root_text, root_state) = only_root_atom(&initial, atoms[root_index]);
+    let mut pending = vec![(root_state, root_text, 0_usize)];
     let mut complete = Vec::new();
     let mut visited_state_count = 0_usize;
-    while let Some((state, prefix)) = pending.pop() {
+    while let Some((state, prefix, atom_offset)) = pending.pop() {
         visited_state_count += 1;
         assert!(
             visited_state_count <= 100_000,
@@ -3926,12 +4099,19 @@ fn fixed_ring_placement_results_from(
         if state.is_accepted() {
             let plan = state.structural.bond_decision_domain(bonds[0]);
             assert!(plan.is_singleton());
-            complete.push((prefix, plan));
+            if plan != BondRepresentation::Traversal.singleton_domain() {
+                complete.push((surface.normalize_test_atom_classes(&prefix), plan));
+            }
             continue;
         }
-        for choice in state.choices().unwrap() {
+        for choice in ring_witness_choices(&state) {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
             let text = choice.text().to_owned();
-            pending.push((choice.into_successor(), format!("{prefix}{text}")));
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &text);
+            pending.push((successor, format!("{prefix}{text}"), next_offset));
         }
     }
     complete.sort_by(|left, right| left.0.cmp(&right.0));
@@ -3948,7 +4128,11 @@ fn assert_ring_placement_mapping(
     expected: &[(&str, BondRepresentation)],
 ) {
     let actual = fixed_ring_placement_results_from(token, root_index);
-    assert_eq!(actual.len(), expected.len());
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "actual ring witnesses: {actual:?}"
+    );
     for &(text, plan) in expected {
         assert!(
             actual.iter().any(|(actual_text, actual_plan)| {
@@ -3972,9 +4156,9 @@ fn every_prepared_ring_token_uses_endpoint_relative_placement() {
             token,
             0,
             &[
-                (&format!("A{text}1CB1"), BondRepresentation::Ring10),
-                (&format!("A1CB{text}1"), BondRepresentation::Ring01),
-                (&format!("A{text}1CB{text}1"), BondRepresentation::Ring11),
+                (&format!("A{text}1QR1"), BondRepresentation::Ring10),
+                (&format!("A1QR{text}1"), BondRepresentation::Ring01),
+                (&format!("A{text}1QR{text}1"), BondRepresentation::Ring11),
             ],
         );
     }
@@ -3983,42 +4167,42 @@ fn every_prepared_ring_token_uses_endpoint_relative_placement() {
         NonStereoBondToken::DativeAToB,
         0,
         &[
-            ("A->1CB1", BondRepresentation::Ring10),
-            ("A1CB<-1", BondRepresentation::Ring01),
-            ("A->1CB<-1", BondRepresentation::Ring11),
+            ("A->1QR1", BondRepresentation::Ring10),
+            ("A1QR<-1", BondRepresentation::Ring01),
+            ("A->1QR<-1", BondRepresentation::Ring11),
         ],
     );
     assert_ring_placement_mapping(
         NonStereoBondToken::DativeBToA,
         0,
         &[
-            ("A<-1CB1", BondRepresentation::Ring10),
-            ("A1CB->1", BondRepresentation::Ring01),
-            ("A<-1CB->1", BondRepresentation::Ring11),
+            ("A<-1QR1", BondRepresentation::Ring10),
+            ("A1QR->1", BondRepresentation::Ring01),
+            ("A<-1QR->1", BondRepresentation::Ring11),
         ],
     );
     assert_ring_placement_mapping(
         NonStereoBondToken::DativeAToB,
         1,
         &[
-            ("B<-1CA1", BondRepresentation::Ring01),
-            ("B1CA->1", BondRepresentation::Ring10),
-            ("B<-1CA->1", BondRepresentation::Ring11),
+            ("R<-1QA1", BondRepresentation::Ring01),
+            ("R1QA->1", BondRepresentation::Ring10),
+            ("R<-1QA->1", BondRepresentation::Ring11),
         ],
     );
     assert_ring_placement_mapping(
         NonStereoBondToken::DativeBToA,
         1,
         &[
-            ("B->1CA1", BondRepresentation::Ring01),
-            ("B1CA<-1", BondRepresentation::Ring10),
-            ("B->1CA<-1", BondRepresentation::Ring11),
+            ("R->1QA1", BondRepresentation::Ring01),
+            ("R1QA<-1", BondRepresentation::Ring10),
+            ("R->1QA<-1", BondRepresentation::Ring11),
         ],
     );
     assert_eq!(
         fixed_ring_placement_results(NonStereoBondToken::Elided),
         vec![(
-            "A1CB1".to_owned(),
+            "A1QR1".to_owned(),
             BondRepresentation::Ring00.singleton_domain(),
         )]
     );
@@ -4040,10 +4224,8 @@ fn directed_ring_closure_uses_the_emitting_fixed_endpoint_orientation() {
     let between = incident(&surface, atoms[2], bonds[2]);
     let closing = incident(&surface, atoms[1], bonds[0]);
 
-    let (root, rooted) = choice_at(&initial, atoms[0].index());
-    let opening = rooted
-        .choices()
-        .unwrap()
+    let (root, rooted) = only_root_atom(&initial, atoms[0]);
+    let opening = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice
@@ -4077,7 +4259,7 @@ fn explicit_inline_bond_commits_before_child_entry() {
     let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, NonStereoBondToken::Double)]);
     let initial = initial(&surface);
     let edge = incident(&surface, atoms[0], bonds[0]);
-    let (_, rooted) = choice_at(&initial, atoms[0].index());
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
     let (bond, pending) = only_choice(&rooted, "=");
 
     assert_eq!(bond, "=");
@@ -4096,14 +4278,14 @@ fn dative_bond_text_follows_prepared_orientation() {
     let edge_from_n = incident(&surface, atoms[0], bonds[0]);
     let edge_from_b = incident(&surface, atoms[1], bonds[0]);
 
-    let (_, rooted_at_n) = choice_at(&initial, atoms[0].index());
+    let (_, rooted_at_n) = only_root_atom(&initial, atoms[0]);
     assert_eq!(rooted_at_n.pending, None);
     assert_eq!(edge_from_n.bond(), bonds[0]);
-    assert_eq!(rooted_at_n.choices().unwrap()[0].text(), "->");
+    assert_eq!(ring_witness_choices(&rooted_at_n)[0].text(), "->");
 
-    let (_, rooted_at_b) = choice_at(&initial, atoms[1].index());
+    let (_, rooted_at_b) = only_root_atom(&initial, atoms[1]);
     assert_eq!(edge_from_b.bond(), bonds[0]);
-    assert_eq!(rooted_at_b.choices().unwrap()[0].text(), "<-");
+    assert_eq!(ring_witness_choices(&rooted_at_b)[0].text(), "<-");
 }
 
 #[test]
@@ -4118,10 +4300,8 @@ fn explicit_branch_commits_at_open_parenthesis() {
     let initial = initial(&surface);
     let oxygen = incident(&surface, atoms[0], bonds[0]);
     let nitrogen = incident(&surface, atoms[0], bonds[1]);
-    let (root, rooted) = choice_at(&initial, atoms[0].index());
-    let branch_choice = rooted
-        .choices()
-        .unwrap()
+    let (root, rooted) = only_root_atom(&initial, atoms[0]);
+    let branch_choice = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice.successor.pending == Some(PendingEmission::BranchTraversalEmission(oxygen))
@@ -4139,38 +4319,116 @@ fn explicit_branch_commits_at_open_parenthesis() {
     assert!(accepted.is_accepted());
 }
 
-fn reachable_terminal_paths(surface: &PreparedNonStereo) -> Vec<String> {
+/// Explore writer paths constrained to the declared witnesses for each atom.
+fn reachable_declared_witness_paths(surface: &PreparedNonStereo) -> Vec<String> {
     let initial = initial(surface);
-    let mut pending = vec![(initial, String::new())];
+    let mut pending = vec![(initial, String::new(), 0_usize)];
     let mut complete = Vec::new();
     let mut explored = 0_usize;
 
-    while let Some((state, prefix)) = pending.pop() {
+    while let Some((state, prefix, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(
             explored <= 100_000,
             "writer test exceeded its exploration bound"
         );
         if state.is_accepted() {
-            complete.push(prefix);
+            complete.push(normalize_test_atom_spellings(surface, &prefix));
             continue;
         }
 
-        let choices = state.choices().unwrap();
+        let choices = ring_witness_choices(&state);
         assert!(
             !choices.is_empty(),
             "writer must not dead-end before acceptance"
         );
         for choice in choices {
             let token = choice.text().to_owned();
-            pending.push((choice.into_successor(), format!("{prefix}{token}")));
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
+            }
+            let successor = choice.into_successor();
+            let next_offset = next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+            pending.push((successor, format!("{prefix}{token}"), next_offset));
         }
     }
     complete
 }
 
+fn normalize_test_atom_spellings(surface: &PreparedNonStereo, text: &str) -> String {
+    let mut normalized = surface.normalize_test_atom_classes(text);
+    for atom in surface.molecule().graph().atom_ids() {
+        if surface.atom_facts(atom).element.as_str() == "F"
+            && surface.atom_facts(atom).non_graph_hydrogens == 1
+        {
+            normalized = normalized.replace("[FH]", surface.atom_text(atom));
+        }
+    }
+    normalized
+}
+
+fn selected_atom_spelling_transition<S: ConstraintSolver>(
+    state: &NonStereoWriterState<S>,
+    choice: &Choice<NonStereoWriterState<S>>,
+    atom_offset: usize,
+) -> bool {
+    let successor = choice.successor();
+    let finished_source = state.atom_spelling.as_ref().is_some_and(|progress| {
+        progress.state.is_complete()
+            && declared_atom_witnesses(&state.surface, progress.atom)
+                .iter()
+                .any(|target| target.len() == atom_offset)
+            && successor.atom_spelling.as_ref().map(|next| next.atom) != Some(progress.atom)
+    });
+    let atom = state
+        .atom_spelling
+        .as_ref()
+        .filter(|_| !finished_source)
+        .map(|progress| progress.atom)
+        .or_else(|| {
+            successor
+                .atom_spelling
+                .as_ref()
+                .map(|progress| progress.atom)
+        })
+        .or_else(|| {
+            let atom = successor.active_atom()?;
+            (Some(atom) != state.active_atom()
+                && declared_atom_witnesses(&state.surface, atom)
+                    .iter()
+                    .any(|target| target == &choice.text()))
+            .then_some(atom)
+        });
+    if atom.is_none() {
+        return true;
+    }
+    let offset = if state.is_spelling_atom() && !finished_source {
+        atom_offset
+    } else {
+        0
+    };
+    let targets = match atom {
+        Some(atom) => declared_atom_witnesses(&state.surface, atom),
+        None => state
+            .surface
+            .molecule()
+            .graph()
+            .atom_ids()
+            .flat_map(|atom| declared_atom_witnesses(&state.surface, atom))
+            .collect(),
+    };
+    targets.into_iter().any(|target| {
+        target
+            .get(offset..)
+            .and_then(|suffix| suffix.chars().next())
+            .is_some_and(|character| choice.text() == character.to_string())
+    })
+}
+
 fn reachable_strings(surface: &PreparedNonStereo) -> BTreeSet<String> {
-    reachable_terminal_paths(surface).into_iter().collect()
+    reachable_declared_witness_paths(surface)
+        .into_iter()
+        .collect()
 }
 
 fn permutations<T: Copy>(items: &[T]) -> Vec<Vec<T>> {
@@ -4301,7 +4559,7 @@ fn empty_and_isolated_component_semantics_are_exact() {
     let empty = fixture(&[], &[]).0;
     let empty_initial = initial(&empty);
     assert!(empty_initial.is_accepted());
-    assert!(empty_initial.choices().unwrap().is_empty());
+    assert!(ring_witness_choices(&empty_initial).is_empty());
     assert_eq!(reachable_strings(&empty), BTreeSet::from([String::new()]));
 
     let two = fixture(&["A", "B"], &[]).0;
@@ -4311,12 +4569,12 @@ fn empty_and_isolated_component_semantics_are_exact() {
     );
 
     let distinct = fixture(&["A", "B", "C"], &[]).0;
-    let distinct_paths = reachable_terminal_paths(&distinct);
+    let distinct_paths = reachable_declared_witness_paths(&distinct);
     assert_eq!(distinct_paths.len(), 6);
     assert_eq!(distinct_paths.iter().collect::<BTreeSet<_>>().len(), 6);
 
     let identical = fixture(&["C", "C", "C"], &[]).0;
-    let identical_paths = reachable_terminal_paths(&identical);
+    let identical_paths = reachable_declared_witness_paths(&identical);
     assert_eq!(identical_paths.len(), 6);
     assert_eq!(
         identical_paths.into_iter().collect::<BTreeSet<_>>(),
@@ -4335,10 +4593,8 @@ fn branch_closure_and_component_separator_have_distinct_tokens() {
     );
     let initial = initial(&surface);
     let branch_incident = incident(&surface, atoms[0], bonds[0]);
-    let (root, rooted) = choice_at(&initial, atoms[0].index());
-    let branch_choice = rooted
-        .choices()
-        .unwrap()
+    let (root, rooted) = only_root_atom(&initial, atoms[0]);
+    let branch_choice = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice.successor().pending
@@ -4352,7 +4608,7 @@ fn branch_closure_and_component_separator_have_distinct_tokens() {
 
     assert_eq!(boundary.active_atom(), None);
     assert!(boundary.labels.is_clean());
-    let (separator, pending_root) = only_choice(&boundary, ".");
+    let (separator, pending_root) = only_component_separator(&boundary, atoms[3]);
     assert_eq!(
         pending_root.pending,
         Some(PendingEmission::ComponentRootAtom(atoms[3]))
@@ -4411,8 +4667,8 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
         ],
     );
     let initial = initial(&surface);
-    let (first_root, rooted) = choice_at(&initial, atoms[0].index());
-    let first_opening = rooted.choices().unwrap().into_iter().next().unwrap();
+    let (first_root, rooted) = only_root_atom(&initial, atoms[0]);
+    let first_opening = ring_witness_choices(&rooted).into_iter().next().unwrap();
     assert_eq!(first_opening.text(), "1");
     let first_open = first_opening.text;
     let (_, walked) = only_choice(&first_opening.successor, "C");
@@ -4426,21 +4682,10 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
         .structural
         .bond_decision_domain(*bond)
         .is_singleton()));
-    let dot_choice = boundary
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[3]))
-        .unwrap();
-    assert_eq!(dot_choice.text(), ".");
-    assert_eq!(
-        dot_choice.successor().pending,
-        Some(PendingEmission::ComponentRootAtom(atoms[3]))
-    );
-    let separator = dot_choice.text;
-    let (second_root, rooted) = only_choice(&dot_choice.successor, "C");
+    let (separator, pending_root) = only_component_separator(&boundary, atoms[3]);
+    let (second_root, rooted) = only_choice(&pending_root, "C");
     assert!(rooted.labels.is_clean());
-    let second_opening = rooted.choices().unwrap().into_iter().next().unwrap();
+    let second_opening = ring_witness_choices(&rooted).into_iter().next().unwrap();
     assert_eq!(second_opening.text(), "1");
     let second_open = second_opening.text;
     let (_, walked) = only_choice(&second_opening.successor, "C");
@@ -4470,7 +4715,7 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
         .bond_decision_domain(*bond)
         .is_singleton()));
 
-    let terminal_paths = reachable_terminal_paths(&surface);
+    let terminal_paths = reachable_declared_witness_paths(&surface);
     assert_eq!(terminal_paths.len(), 72);
     assert_eq!(
         terminal_paths.into_iter().collect::<BTreeSet<_>>(),
@@ -4500,7 +4745,7 @@ fn connected_tree_support_remains_exact() {
         )
         .0,
         fixture(
-            &["C", "N", "O", "F", "S"],
+            &["C", "A", "O", "F", "S"],
             &[
                 (0, 1, NonStereoBondToken::Elided),
                 (0, 2, NonStereoBondToken::Elided),
@@ -4580,6 +4825,14 @@ fn directional_chain_fixture_with_carrier_tokens(
     left_token: NonStereoBondToken,
     right_token: NonStereoBondToken,
 ) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
+    directional_chain_fixture_with_atoms(["F", "L", "R", "Cl"], left_token, right_token)
+}
+
+fn directional_chain_fixture_with_atoms(
+    atom_texts: [&str; 4],
+    left_token: NonStereoBondToken,
+    right_token: NonStereoBondToken,
+) -> (PreparedNonStereo, Vec<AtomId>, Vec<BondId>) {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..4)
         .map(|_| graph.add_atom().unwrap())
@@ -4592,7 +4845,7 @@ fn directional_chain_fixture_with_carrier_tokens(
     let molecule = PreparedMolecule::new(graph.build());
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
         molecule,
-        ["F", "L", "R", "Cl"]
+        atom_texts
             .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
             .into(),
         vec![left_token, NonStereoBondToken::Double, right_token],
@@ -4626,7 +4879,8 @@ fn directional_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, V
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
         PreparedMolecule::new(graph.build()),
         vec![
-            PreparedAtomToken::Fixed("S".to_owned()),
+            // The source is a symbolic role, not sulfur with its valence-dependent spelling.
+            PreparedAtomToken::Fixed("Q".to_owned()),
             PreparedAtomToken::Fixed("D".to_owned()),
             PreparedAtomToken::Tetrahedral {
                 reference_order: [
@@ -4635,7 +4889,7 @@ fn directional_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, V
                     TetrahedralLigand::Bond(bonds[4]),
                     TetrahedralLigand::Bond(bonds[5]),
                 ],
-                text_by_parity: ["[T@]".to_owned(), "[T@@]".to_owned()],
+                text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
             },
             PreparedAtomToken::Fixed("R".to_owned()),
             PreparedAtomToken::Fixed("A".to_owned()),
@@ -4686,7 +4940,7 @@ fn directional_tetrahedral_parent_fixture() -> (PreparedNonStereo, Vec<AtomId>, 
                     TetrahedralLigand::Bond(bonds[3]),
                     TetrahedralLigand::Bond(bonds[4]),
                 ],
-                text_by_parity: ["[S@]".to_owned(), "[S@@]".to_owned()],
+                text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
             },
             PreparedAtomToken::Fixed("D".to_owned()),
             PreparedAtomToken::Fixed("T".to_owned()),
@@ -5051,17 +5305,9 @@ fn disconnected_directional_fixture() -> (PreparedNonStereo, Vec<BondId>) {
 
 #[test]
 fn one_visible_sign_choice_propagates_the_complete_shared_carrier_component() {
-    let (surface, _, bonds) = shared_directional_chain_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "A")
-        .unwrap()
-        .into_successor();
-    let slash = rooted
-        .choices()
-        .unwrap()
+    let (surface, atoms, bonds) = shared_directional_chain_fixture();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
+    let slash = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| choice.text() == "/")
         .unwrap()
@@ -5079,17 +5325,9 @@ fn one_visible_sign_choice_propagates_the_complete_shared_carrier_component() {
 
 #[test]
 fn shared_site_walk_exposes_only_the_propagated_future_signs() {
-    let (surface, _, _) = shared_directional_chain_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "A")
-        .unwrap()
-        .into_successor();
-    let mut state = rooted
-        .choices()
-        .unwrap()
+    let (surface, atoms, _) = shared_directional_chain_fixture();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
+    let mut state = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| choice.text() == "/")
         .unwrap()
@@ -5098,7 +5336,7 @@ fn shared_site_walk_exposes_only_the_propagated_future_signs() {
     (_, state) = only_choice(&state, "=");
     (_, state) = only_choice(&state, "C");
 
-    let middle_signs = state.choices().unwrap();
+    let middle_signs = ring_witness_choices(&state);
     assert_eq!(middle_signs.len(), 1);
     assert!(matches!(middle_signs[0].text(), "/" | "\\"));
     state = middle_signs.into_iter().next().unwrap().into_successor();
@@ -5106,7 +5344,7 @@ fn shared_site_walk_exposes_only_the_propagated_future_signs() {
     (_, state) = only_choice(&state, "=");
     (_, state) = only_choice(&state, "E");
 
-    let outer_signs = state.choices().unwrap();
+    let outer_signs = ring_witness_choices(&state);
     assert_eq!(outer_signs.len(), 1);
     assert!(matches!(outer_signs[0].text(), "/" | "\\"));
     state = outer_signs.into_iter().next().unwrap().into_successor();
@@ -5298,13 +5536,7 @@ fn multi_carrier_region_is_admitted_but_marked_incomplete() {
         surface.directional_status(bonds[2]),
         PreparedDirectionalBondStatus::IncompleteSelection(_)
     ));
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "F")
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
     let before = rooted.observe_raw();
     assert!(matches!(
         rooted.choices(),
@@ -5473,7 +5705,7 @@ fn selectable_tetrahedral_child_fixture() -> (PreparedNonStereo, Vec<AtomId>, Ve
                     TetrahedralLigand::Bond(bonds[1]),
                     TetrahedralLigand::Bond(bonds[3]),
                 ],
-                text_by_parity: ["[L@H]".to_owned(), "[L@@H]".to_owned()],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
             },
             PreparedAtomToken::Fixed("R".to_owned()),
             PreparedAtomToken::Fixed("Cl".to_owned()),
@@ -5565,16 +5797,8 @@ fn explicit_directional_ring_carriers_offer_plain_and_marked_endpoint_tokens() {
     ] {
         let (surface, atoms, bonds) = selectable_directional_ring_fixture_with_token(token);
         for (root, endpoint_is_a) in [(atoms[0], true), (atoms[1], false)] {
-            let rooted = initial(&surface)
-                .choices()
-                .unwrap()
-                .into_iter()
-                .find(|choice| choice.successor().active_atom() == Some(root))
-                .unwrap()
-                .into_successor();
-            let choices = rooted
-                .choices()
-                .unwrap()
+            let (_, rooted) = only_root_atom(&initial(&surface), root);
+            let choices = ring_witness_choices(&rooted)
                 .into_iter()
                 .filter(|choice| {
                     matches!(
@@ -5625,10 +5849,10 @@ fn explicit_plain_directional_ring_plans_render_at_either_or_both_endpoints() {
         else {
             panic!("directional ring carrier must compile");
         };
-        let mut pending = vec![(String::new(), initial(&surface))];
+        let mut pending = vec![(String::new(), initial(&surface), 0_usize)];
         let mut observed = BTreeSet::new();
         let mut explored = 0_usize;
-        while let Some((text, state)) = pending.pop() {
+        while let Some((text, state, atom_offset)) = pending.pop() {
             explored += 1;
             assert!(
                 explored <= 100_000,
@@ -5644,14 +5868,26 @@ fn explicit_plain_directional_ring_plans_render_at_either_or_both_endpoints() {
                     if plan == candidate.singleton_domain() {
                         let expected_count =
                             usize::from(candidate == DirectionalRingPlan::PlainAtBoth) + 1;
-                        assert_eq!(text.matches(glyph).count(), expected_count);
+                        let ring_glyph_count = text
+                            .match_indices(&format!("{glyph}1"))
+                            .filter(|(index, _)| text[index + 2..].chars().next() != Some(']'))
+                            .count()
+                            + text.match_indices(&format!("1{glyph}")).count();
+                        assert_eq!(ring_glyph_count, expected_count, "ring output: {text:?}");
                         observed.insert(candidate.value_index());
                     }
                 }
                 continue;
             }
-            for choice in state.choices().unwrap() {
-                pending.push((format!("{text}{}", choice.text()), choice.into_successor()));
+            for choice in ring_witness_choices(&state) {
+                if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                    continue;
+                }
+                let token = choice.text().to_owned();
+                let successor = choice.into_successor();
+                let next_offset =
+                    next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+                pending.push((format!("{text}{token}"), successor, next_offset));
             }
         }
         assert_eq!(
@@ -5669,35 +5905,34 @@ fn explicit_plain_directional_ring_plans_render_at_either_or_both_endpoints() {
 fn selectable_inline_elision_exposes_plain_atom_and_directional_tokens() {
     let (surface, atoms, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
 
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
+    let directional = choices
+        .iter()
+        .filter(|choice| matches!(choice.text(), "/" | "\\"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
-        BTreeSet::from(["L", "/", "\\"])
+        directional
+            .iter()
+            .map(|choice| choice.text())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["/", "\\"])
     );
     let site = match surface.directional_status(bonds[0]) {
         PreparedDirectionalBondStatus::CompiledSite(site) => site,
         _ => panic!("selectable carrier must compile"),
     };
-    let plain = choices.iter().find(|choice| choice.text() == "L").unwrap();
-    assert_eq!(plain.successor().active_atom(), Some(atoms[1]));
-    assert_eq!(plain.successor().pending, None);
-    assert_eq!(
-        plain
-            .successor()
-            .structural
-            .semantic_domain(site.mark_variable),
-        CarrierMark::Plain.singleton_domain()
-    );
-    for choice in choices.iter().filter(|choice| choice.text() != "L") {
-        assert_eq!(choice.successor().active_atom(), Some(atoms[0]));
+    let plain = choices
+        .iter()
+        .flat_map(|choice| atom_witness_completions_after_choice(choice, atoms[1]))
+        .collect::<Vec<_>>();
+    assert!(!plain.is_empty(), "the child AtomId has a declared witness");
+    assert!(plain.iter().all(|(_, state)| {
+        state.structural.semantic_domain(site.mark_variable)
+            == CarrierMark::Plain.singleton_domain()
+    }));
+    for choice in directional {
         assert_eq!(
             choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident(
@@ -5711,15 +5946,9 @@ fn selectable_inline_elision_exposes_plain_atom_and_directional_tokens() {
 fn selectable_explicit_plain_and_directional_tokens_share_one_inline_frontier() {
     let (surface, atoms, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[4]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[4]);
 
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
     assert_eq!(
         choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
         BTreeSet::from(["-", "/", "\\"])
@@ -5744,18 +5973,10 @@ fn contradictory_explicit_plain_mark_does_not_suppress_directional_siblings() {
     let initial = NonStereoWriterState::<RejectPlainDirectionalMarkSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[4]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[4]);
     let before = rooted.observe_raw();
     assert_eq!(
-        rooted
-            .choices()
-            .unwrap()
+        ring_witness_choices(&rooted)
             .iter()
             .map(Choice::text)
             .collect::<BTreeSet<_>>(),
@@ -5803,16 +6024,8 @@ fn selectable_directional_ring_walks_have_bounded_complete_suffixes() {
 fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
     let (surface, atoms, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
-    let branch = rooted
-        .choices()
-        .unwrap()
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
+    let branch = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice.text() == "("
@@ -5832,19 +6045,18 @@ fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
         CarrierMark::domain()
     );
 
-    let choices = branch.choices().unwrap();
+    let choices = ring_witness_choices(&branch);
+    let directional = choices
+        .iter()
+        .filter(|choice| choice.text() == "/" || choice.text() == "\\")
+        .map(Choice::text)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(directional, BTreeSet::from(["/", "\\"]));
+    let plain = completed_atom_witnesses(&branch, atoms[0]);
+    assert_eq!(plain.len(), 1);
+    assert!(plain[0].1.pending.is_none());
     assert_eq!(
-        choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
-        BTreeSet::from(["F", "/", "\\"])
-    );
-    let plain = choices.iter().find(|choice| choice.text() == "F").unwrap();
-    assert_eq!(plain.successor().active_atom(), Some(atoms[0]));
-    assert_eq!(plain.successor().pending, None);
-    assert_eq!(
-        plain
-            .successor()
-            .structural
-            .semantic_domain(site.mark_variable),
+        plain[0].1.structural.semantic_domain(site.mark_variable),
         CarrierMark::Plain.singleton_domain()
     );
 }
@@ -5852,34 +6064,28 @@ fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
 #[test]
 fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
     let (surface, atoms, bonds) = selectable_tetrahedral_child_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
+    let plain_children = completed_atom_witnesses(&rooted, atoms[1]);
     assert_eq!(
-        rooted
-            .choices()
-            .unwrap()
+        plain_children
             .iter()
-            .map(Choice::text)
+            .map(|(text, _)| text.as_str())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["[L@H]", "[L@@H]", "/", "\\"])
+        BTreeSet::from(["[C@H]", "[C@@H]"])
     );
     for token in ["/", "\\"] {
-        let pending = rooted
-            .choices()
-            .unwrap()
+        let pending = ring_witness_choices(&rooted)
             .into_iter()
             .find(|choice| choice.text() == token)
             .unwrap()
             .into_successor();
-        let choices = pending.choices().unwrap();
+        let choices = completed_atom_witnesses(&pending, atoms[1]);
         assert_eq!(
-            choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
-            BTreeSet::from(["[L@H]", "[L@@H]"])
+            choices
+                .iter()
+                .map(|(text, _)| text.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["[C@H]", "[C@@H]"])
         );
 
         let center = surface.tetrahedral_center(atoms[1]).unwrap();
@@ -5894,8 +6100,8 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
             "\\" => CarrierMark::BackslashAtFixedA,
             _ => unreachable!(),
         };
-        for choice in choices {
-            let parity_index = usize::from(choice.text() == "[L@@H]");
+        for (text, successor) in choices {
+            let parity_index = usize::from(text == "[C@@H]");
             let expected_orders = (0..24_u8)
                 .filter(|value| {
                     let order = independent_tetrahedral_order(reference, *value);
@@ -5908,7 +6114,6 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
                             == (parity_index == 0)
                 })
                 .collect::<BTreeSet<_>>();
-            let successor = choice.successor();
             assert_eq!(successor.pending, None);
             assert_eq!(successor.active_atom(), Some(atoms[1]));
             let observed_orders = successor.structural.semantic_domain(center.order_variable);
@@ -5918,7 +6123,7 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
                     .collect::<BTreeSet<_>>(),
                 expected_orders,
                 "{} after {token} must identify its exact ligand-order successor",
-                choice.text()
+                text
             );
             assert_eq!(
                 successor.structural.semantic_domain(site.mark_variable),
@@ -5964,13 +6169,7 @@ fn selectable_tetrahedral_child_has_bounded_complete_mixed_walks() {
 #[test]
 fn selectable_ring_opening_preserves_unresolved_future_mark_spelling() {
     let (surface, atoms, bonds) = selectable_directional_ring_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
     let opening_incident = incident(&surface, atoms[1], bonds[0]);
     let candidate = rooted
         .structural
@@ -5995,7 +6194,9 @@ fn selectable_ring_opening_preserves_unresolved_future_mark_spelling() {
         unrestricted
             .iter()
             .filter_map(|attempt| match attempt {
-                CandidateAttempt::Accepted { text, .. } => Some(text.as_str()),
+                CandidateAttempt::Accepted { text, successor }
+                    if text == "1" || (matches!(text.as_str(), "/" | "\\")
+                        && successor.labels.slot_for_bond(bonds[0]) == RingLabelSlot(1)) => Some(text.as_str()),
                 _ => None,
             })
             .collect::<BTreeSet<_>>(),
@@ -6049,43 +6250,43 @@ fn selectable_ring_opening_preserves_unresolved_future_mark_spelling() {
 #[test]
 fn label_only_directional_ring_opening_resolves_mark_at_the_closure_token() {
     let (surface, atoms, bonds) = selectable_directional_ring_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
-    let opened = rooted
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| {
-            choice.text() == "1"
-                && matches!(
-                    choice.successor().observe_raw().structural.traversal.bond_progress[bonds[0].index()],
-                    ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[1]
-                )
-        })
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
+    let mut pending = vec![(rooted, 0_usize)];
+    let opened = loop {
+        let (state, atom_offset) = pending.pop().expect("fixture reaches a ring opening");
+        let mut found = None;
+        for (successor, next_offset) in declared_successors(&state, atom_offset) {
+            if matches!(
+                successor.observe_raw().structural.traversal.bond_progress[bonds[0].index()],
+                ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[1]
+            ) {
+                found = Some(successor);
+                break;
+            }
+            pending.push((successor, next_offset));
+        }
+        if let Some(opened) = found {
+            break opened;
+        }
+    };
     let PreparedDirectionalBondStatus::CompiledSite(site) = surface.directional_status(bonds[0])
     else {
         panic!("selectable ring carrier must compile");
     };
 
-    let mut stack = vec![opened];
+    let mut stack = vec![(opened, 0_usize)];
     let closure_source = loop {
-        let state = stack
+        let (state, atom_offset) = stack
             .pop()
             .expect("opened ring must reach its other endpoint");
         let observed = state.observe_raw();
-        if observed
-            .structural
-            .traversal
-            .active_frame
-            .as_ref()
-            .is_some_and(|frame| frame.atom == atoms[0])
+        if !state.is_spelling_atom()
+            && observed
+                .structural
+                .traversal
+                .active_frame
+                .as_ref()
+                .is_some_and(|frame| frame.atom == atoms[0])
             && matches!(
                 observed.structural.traversal.bond_progress[bonds[0].index()],
                 ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[1]
@@ -6093,17 +6294,11 @@ fn label_only_directional_ring_opening_resolves_mark_at_the_closure_token() {
         {
             break state;
         }
-        stack.extend(
-            state
-                .choices()
-                .unwrap()
-                .into_iter()
-                .map(Choice::into_successor),
-        );
+        stack.extend(declared_successors(&state, atom_offset));
     };
 
     let before = closure_source.observe_raw();
-    let choices = closure_source.choices().unwrap();
+    let choices = ring_witness_choices(&closure_source);
     assert_eq!(closure_source.observe_raw(), before);
     let closure_choices = choices
         .iter()
@@ -6159,14 +6354,10 @@ fn label_only_directional_ring_opening_resolves_mark_at_the_closure_token() {
 #[test]
 fn exhausted_marked_ring_labels_are_spelling_rejections_before_incompleteness() {
     let (surface, atoms, bonds) = selectable_directional_ring_fixture();
-    let mut rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
+    let (_, mut rooted) = only_root_atom(&initial(&surface), atoms[1]);
     rooted.labels.maximum_spelling_label = Some(0);
+    // ID zero is legal; reserve it to exhaust this test-only label domain.
+    rooted.labels.allocate_at(RingLabelSlot(0), BondId::new(999));
     let opening_incident = incident(&surface, atoms[1], bonds[0]);
     let candidate = rooted
         .structural
@@ -6286,16 +6477,10 @@ fn repeated_directional_relation_for_one_double_bond_is_rejected() {
 #[test]
 fn inline_directional_carrier_emits_sign_before_the_child_atom() {
     let (surface, atoms, bonds) = directional_chain_fixture();
-    let root = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "F")
-        .unwrap()
-        .into_successor();
+    let (_, root) = only_root_atom(&initial(&surface), atoms[0]);
     assert_eq!(root.active_atom(), Some(atoms[0]));
 
-    let choices = root.choices().unwrap();
+    let choices = ring_witness_choices(&root);
     assert_eq!(
         choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
         BTreeSet::from(["/", "\\"])
@@ -6332,18 +6517,16 @@ fn inline_directional_carrier_emits_sign_before_the_child_atom() {
 
 #[test]
 fn rdkit_anchor_restricts_an_incoming_mark_before_publishing_its_token() {
-    let (surface, atoms, bonds) = directional_chain_fixture();
+    let (surface, atoms, bonds) = directional_chain_fixture_with_atoms(
+        ["C", "C", "C", "C"],
+        NonStereoBondToken::Elided,
+        NonStereoBondToken::Elided,
+    );
     let root = State::initial_with_regime(&surface, crate::WriterRegime::RdkitRandomNoncanonical)
         .unwrap()
         .unwrap_consistent();
-    let root = root
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "F")
-        .unwrap()
-        .into_successor();
-    let choices = root.choices().unwrap();
+    let (_, root) = only_root_atom(&root, atoms[0]);
+    let choices = ring_witness_choices(&root);
 
     assert_eq!(
         choices.iter().map(Choice::text).collect::<BTreeSet<_>>(),
@@ -6377,19 +6560,11 @@ fn rdkit_anchor_restricts_an_incoming_mark_before_publishing_its_token() {
 #[test]
 fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
     for token in [NonStereoBondToken::Single, NonStereoBondToken::Aromatic] {
-        let (surface, _, _) =
+        let (surface, atoms, _) =
             directional_chain_fixture_with_carrier_tokens(token, NonStereoBondToken::Elided);
-        let rooted = initial(&surface)
-            .choices()
-            .unwrap()
-            .into_iter()
-            .find(|choice| choice.text() == "F")
-            .unwrap()
-            .into_successor();
+        let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
         assert_eq!(
-            rooted
-                .choices()
-                .unwrap()
+            ring_witness_choices(&rooted)
                 .iter()
                 .map(Choice::text)
                 .collect::<BTreeSet<_>>(),
@@ -6401,16 +6576,8 @@ fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
 #[test]
 fn branch_directional_mark_is_selected_after_the_parenthesis() {
     let (surface, atoms, bonds) = directional_chain_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "L")
-        .unwrap()
-        .into_successor();
-    let branch = rooted
-        .choices()
-        .unwrap()
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
+    let branch = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
             choice.text() == "("
@@ -6431,7 +6598,7 @@ fn branch_directional_mark_is_selected_after_the_parenthesis() {
         "the parenthesis commits traversal but not the directional mark"
     );
 
-    let signs = branch.choices().unwrap();
+    let signs = ring_witness_choices(&branch);
     assert_eq!(
         signs.iter().map(Choice::text).collect::<BTreeSet<_>>(),
         BTreeSet::from(["/", "\\"])
@@ -6456,17 +6623,11 @@ fn branch_directional_mark_is_selected_after_the_parenthesis() {
 
 #[test]
 fn backend_failure_on_second_directional_mark_aborts_the_complete_frontier() {
-    let (surface, _, _) = directional_chain_fixture();
+    let (surface, atoms, _) = directional_chain_fixture();
     let initial = NonStereoWriterState::<FailSecondDirectionalMarkSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "F")
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
     let before = rooted.observe_raw();
     assert!(matches!(
         rooted.choices(),
@@ -6477,19 +6638,14 @@ fn backend_failure_on_second_directional_mark_aborts_the_complete_frontier() {
 
 #[test]
 fn each_directional_mark_choice_uses_one_solver_restriction_batch() {
-    let (surface, _, _) = directional_chain_fixture();
+    let _counter_guard = DIRECTIONAL_RESTRICTION_TEST_LOCK.lock().unwrap();
+    let (surface, atoms, _) = directional_chain_fixture();
     let initial = NonStereoWriterState::<CountDirectionalRestrictionsSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "F")
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
     DIRECTIONAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
     assert_eq!(choices.len(), 2);
     assert_eq!(
         DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
@@ -6499,19 +6655,15 @@ fn each_directional_mark_choice_uses_one_solver_restriction_batch() {
 }
 
 #[test]
-fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative() {
+fn directional_ring_endpoints_use_one_solver_transition_per_semantic_plan() {
+    let _counter_guard = DIRECTIONAL_RESTRICTION_TEST_LOCK.lock().unwrap();
     type CountingState = NonStereoWriterState<CountDirectionalRestrictionsSolver>;
 
     let (surface, atoms, bonds) = selectable_directional_ring_fixture();
-    let rooted = CountingState::initial(&surface)
+    let initial = CountingState::initial(&surface)
         .unwrap()
-        .unwrap_consistent()
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[1]))
-        .unwrap()
-        .into_successor();
+        .unwrap_consistent();
+    let (_, rooted) = only_root_atom(&initial, atoms[1]);
     let opening_incident = incident(&surface, atoms[1], bonds[0]);
     let opening = rooted
         .structural
@@ -6527,7 +6679,7 @@ fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative(
     let opening_attempts = rooted.attempt_directional_ring_candidate(opening, opening_incident);
     assert_eq!(
         DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
-        opening_attempts.len()
+        3
     );
     let opened = opening_attempts
         .into_iter()
@@ -6537,9 +6689,9 @@ fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative(
         })
         .unwrap();
 
-    let mut stack = vec![opened];
+    let mut stack = vec![(opened, 0_usize)];
     let closure_source = loop {
-        let state = stack
+        let (state, atom_offset) = stack
             .pop()
             .expect("opened ring must reach its closure endpoint");
         let observed = state.observe_raw();
@@ -6556,13 +6708,7 @@ fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative(
         {
             break state;
         }
-        stack.extend(
-            state
-                .choices()
-                .unwrap()
-                .into_iter()
-                .map(Choice::into_successor),
-        );
+        stack.extend(declared_successors(&state, atom_offset));
     };
     let incident = incident(&surface, atoms[0], bonds[0]);
     let closure = closure_source
@@ -6577,25 +6723,25 @@ fn directional_ring_endpoints_use_one_solver_transition_per_visible_alternative(
         .unwrap();
     DIRECTIONAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
     let closure_attempts = closure_source.attempt_directional_ring_candidate(closure, incident);
+    // The walked prefix resolves one sign, leaving omission and one marked endpoint plan.
+    assert!(!closure_attempts.is_empty());
     assert_eq!(
         DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed),
-        closure_attempts.len()
+        2
     );
 }
 
 #[test]
 fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection() {
     let (surface, atoms, bonds) = directional_tetrahedral_parent_fixture();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
+    let rooted = completed_atom_witnesses(&initial(&surface), atoms[0])
         .into_iter()
-        .find(|choice| choice.text() == "[S@]")
-        .unwrap()
-        .into_successor();
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .map(|(_, state)| state)
+        .unwrap();
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
     let before = rooted.structural.semantic_domain(center.order_variable);
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
     let branch_choices = choices
         .into_iter()
         .filter(|choice| {
@@ -6636,38 +6782,57 @@ fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection(
 #[test]
 fn directional_token_leading_to_tetrahedral_child_preserves_the_atom_parity_frontier() {
     let (surface, atoms, bonds) = directional_tetrahedral_child_fixture();
-    let mut stack = vec![initial(&surface)];
-    let mut directional_child = None;
-    for _ in 0..20_000 {
-        let Some(state) = stack.pop() else {
-            break;
-        };
-        for choice in state.choices().unwrap() {
-            let successor = choice.into_successor();
-            if matches!(
-                successor.pending,
-                Some(PendingEmission::InlineAtom(incident))
-                    if incident.bond() == bonds[0] && incident.atom() == atoms[2]
-            ) {
-                directional_child = Some(successor);
-                break;
+    let mut stack = vec![(String::new(), initial(&surface), 0_usize)];
+    let mut directional_children = BTreeMap::<String, Vec<State>>::new();
+    let mut explored = 0_usize;
+    while let Some((prefix, state, atom_offset)) = stack.pop() {
+        explored += 1;
+        assert!(explored <= 100_000, "incoming-carrier witness exceeded its path bound");
+        for choice in ring_witness_choices(&state) {
+            if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                continue;
             }
-            stack.push(successor);
-        }
-        if directional_child.is_some() {
-            break;
+            let token = choice.text().to_owned();
+            let next_prefix = format!("{prefix}{token}");
+            let successor = choice.successor();
+            let next_offset = next_atom_spelling_offset(&state, successor, atom_offset, &token);
+            if matches!(choice.text(), "/" | "\\")
+                && state.active_atom() == Some(atoms[0])
+                && successor.pending
+                    == Some(PendingEmission::InlineAtom(incident(
+                        &surface, atoms[0], bonds[0],
+                    )))
+            {
+                assert_eq!(successor.active_atom(), Some(atoms[0]));
+                assert!(successor.atom_spelling.is_none());
+                directional_children
+                    .entry(next_prefix)
+                    .or_default()
+                    .push(choice.into_successor());
+            } else {
+                stack.push((next_prefix, choice.into_successor(), next_offset));
+            }
         }
     }
-    let directional_child = directional_child.expect("fixture must reach the carrier inline");
-    assert_eq!(
-        directional_child
-            .choices()
-            .unwrap()
-            .iter()
-            .map(Choice::text)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["[T@]", "[T@@]"])
+    assert!(
+        !directional_children.is_empty(),
+        "fixture must reach the carrier inline"
     );
+    let expected = declared_atom_witnesses(&surface, atoms[2])
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    for (prefix, states) in &directional_children {
+        // A decoder prefix may retain several hidden states that partition the spellings.
+        let witnesses = states
+            .iter()
+            .flat_map(|state| completed_atom_witnesses(state, atoms[2]))
+            .map(|(text, _)| text)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            witnesses, expected,
+            "incoming carrier prefix {prefix:?} must preserve both tetrahedral spellings"
+        );
+    }
 }
 
 #[test]
@@ -6723,15 +6888,9 @@ fn compiled_directional_ring_candidate_publishes_complete_endpoint_choices() {
         }],
     )
     .unwrap();
-    let rooted = initial(&surface)
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.text() == "A")
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial(&surface), atoms[0]);
     let before = rooted.observe_raw();
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
     assert!(choices
         .iter()
         .any(|choice| matches!(choice.text(), "1" | "/" | "\\")));
@@ -6787,15 +6946,9 @@ fn contradictory_incomplete_ring_candidate_does_not_suppress_valid_siblings() {
     let initial = NonStereoWriterState::<RejectFirstVariableSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
 
-    let choices = rooted.choices().unwrap();
+    let choices = ring_witness_choices(&rooted);
 
     assert!(!choices.is_empty());
     assert!(choices.iter().all(|choice| choice.text() == "1"));
@@ -6807,13 +6960,7 @@ fn backend_failure_while_filtering_incomplete_ring_candidate_aborts_the_batch() 
     let initial = NonStereoWriterState::<FailingRestrictionSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
-    let rooted = initial
-        .choices()
-        .unwrap()
-        .into_iter()
-        .find(|choice| choice.successor().active_atom() == Some(atoms[0]))
-        .unwrap()
-        .into_successor();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
 
     assert!(matches!(
         rooted.choices(),
@@ -6881,13 +7028,7 @@ fn native_work_count_probe_fixed_interior_prefix() {
 
     fn probe(name: &str, surface: PreparedNonStereo, inactive_center: Option<usize>) {
         let initial = initial(&surface);
-        let root = initial
-            .choices()
-            .unwrap()
-            .into_iter()
-            .find(|choice| choice.successor().active_atom() == Some(AtomId::new(0)))
-            .expect("fixture must expose atom zero as a root")
-            .into_successor();
+        let (_, root) = only_root_atom(&initial, AtomId::new(0));
         assert_eq!(root.active_atom(), Some(AtomId::new(0)));
         if let Some(index) = inactive_center {
             let center = surface
@@ -6917,14 +7058,18 @@ fn native_work_count_probe_fixed_interior_prefix() {
         root.structural.reset_traversal_copy_counts();
         root.reset_writer_work_counts();
 
-        let choices = root.choices().unwrap();
+        let choices = ring_witness_choices(&root);
         let interior = choices
             .iter()
-            .filter(|choice| choice.successor().active_atom() == Some(AtomId::new(1)))
+            .filter(|choice| {
+                pending_atom(choice.successor()) == Some(AtomId::new(1))
+                    || choice.successor().active_atom() == Some(AtomId::new(1))
+            })
             .count();
         assert!(interior > 0, "{name}: fixed 0-to-1 transition is required");
         assert!(choices.iter().all(|choice| {
             choice.successor().active_atom().is_some()
+                || choice.successor().is_spelling_atom()
                 || choice.successor().is_accepted()
                 || choice.successor().pending.is_some()
         }));
@@ -7067,13 +7212,7 @@ fn native_work_count_probe_fixed_interior_prefix() {
             disconnected_tetra,
             distant_connected_tetra,
         );
-        let root = initial(&surface)
-            .choices()
-            .unwrap()
-            .into_iter()
-            .find(|choice| choice.successor().active_atom() == Some(AtomId::new(0)))
-            .expect("triangle case must expose atom zero as a root")
-            .into_successor();
+        let (_, root) = only_root_atom(&initial(&surface), AtomId::new(0));
         assert_eq!(root.active_atom(), Some(AtomId::new(0)));
         let unresolved_seed_domains =
             triangle.map(|bond| root.structural.bond_role_domain_for_test(bond).len());
@@ -7108,7 +7247,7 @@ fn native_work_count_probe_fixed_interior_prefix() {
         native.reset_solver_copy_counts();
         root.structural.reset_traversal_copy_counts();
         root.reset_writer_work_counts();
-        let choices = root.choices().unwrap();
+        let choices = ring_witness_choices(&root);
         assert!(!choices.is_empty());
         let strings = choices
             .iter()
@@ -7247,10 +7386,10 @@ fn native_work_count_probe_fixed_interior_prefix() {
         std::array::from_fn(|index| center_factors[index].iter().any(|id| active.contains(id)))
     };
     let shared_bond = bonds[0];
-    let mut pending = vec![initial(&surface)];
+    let mut pending = vec![(initial(&surface), 0_usize)];
     let mut selected = None;
     let mut explored = 0;
-    while let Some(state) = pending.pop() {
+    while let Some((state, atom_offset)) = pending.pop() {
         explored += 1;
         assert!(
             explored < 100_000,
@@ -7286,9 +7425,12 @@ fn native_work_count_probe_fixed_interior_prefix() {
             native.reset_solver_copy_counts();
             state.structural.reset_traversal_copy_counts();
             state.reset_writer_work_counts();
-            let choices = state.choices().unwrap();
+            let choices = ring_witness_choices(&state);
             let revisions = native.tetrahedral_factor_revision_count();
             let narrowed = choices.iter().find_map(|choice| {
+                if !selected_atom_spelling_transition(&state, choice, atom_offset) {
+                    return None;
+                }
                 let after = center_domains(choice.successor());
                 let active_after = family_activity(choice.successor());
                 let shared_bond_after = choice
@@ -7331,15 +7473,18 @@ fn native_work_count_probe_fixed_interior_prefix() {
                     break;
                 }
             }
-            pending.extend(choices.into_iter().map(Choice::into_successor));
+            for choice in choices {
+                if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
+                    continue;
+                }
+                let token = choice.text().to_owned();
+                let successor = choice.into_successor();
+                let next_offset =
+                    next_atom_spelling_offset(&state, &successor, atom_offset, &token);
+                pending.push((successor, next_offset));
+            }
         } else {
-            pending.extend(
-                state
-                    .choices()
-                    .unwrap()
-                    .into_iter()
-                    .map(Choice::into_successor),
-            );
+            pending.extend(declared_successors(&state, atom_offset));
         }
     }
 
@@ -7391,7 +7536,7 @@ fn native_work_count_probe_fixed_interior_prefix() {
         "shared bond remains role-fixed across the local propagation"
     );
     assert!(!state.pending.is_some());
-    assert_eq!(narrowing_text, "[L@H]");
+    assert_eq!(narrowing_text, "[C@H]");
     assert_eq!(revisions, 2);
     assert!(revisions > 0);
     assert!(after.iter().enumerate().any(|(center, values)| {

@@ -14,6 +14,9 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 
 
 FIXTURE_PATH = checked_in_fixture_path("opensmiles_examples", "representational_aliases.json")
+CHEMISTRY_FACTS_PATH = checked_in_fixture_path(
+    "opensmiles_examples", "native_chemistry_facts.json"
+)
 PARSER_OBSERVATION_ROOT = checked_in_fixture_path(
     "rdkit_opensmiles_parser_observations"
 )
@@ -21,6 +24,10 @@ PARSER_OBSERVATION_ROOT = checked_in_fixture_path(
 
 def _fixture() -> dict[str, object]:
     return json.loads(FIXTURE_PATH.read_text())
+
+
+def _chemistry_fixture() -> dict[str, object]:
+    return json.loads(CHEMISTRY_FACTS_PATH.read_text())
 
 
 def _parse(smiles: str) -> Chem.Mol:
@@ -105,6 +112,8 @@ def _assert_same_mapped_graph(
                 atom.GetIsotope(),
                 atom.GetIsAromatic(),
                 atom.GetTotalNumHs(),
+                atom.GetAtomMapNum(),
+                atom.GetNumRadicalElectrons(),
                 atom.GetChiralTag(),
             )
             parsed_facts = (
@@ -113,6 +122,8 @@ def _assert_same_mapped_graph(
                 mapped.GetIsotope(),
                 mapped.GetIsAromatic(),
                 mapped.GetTotalNumHs(),
+                mapped.GetAtomMapNum(),
+                mapped.GetNumRadicalElectrons(),
                 mapped.GetChiralTag(),
             )
             if parsed_facts != target_facts:
@@ -136,18 +147,18 @@ def _assert_same_mapped_graph(
     test.fail("no atom mapping preserves graph bonds, hydrogens, and stereo facts")
 
 
-def _public_outputs(mol: Chem.Mol) -> set[str]:
-    pending = [(decoding.start(mol), "")]
-    outputs: set[str] = set()
+def _public_prefix_accepts(mol: Chem.Mol, text: str) -> bool:
+    pending = [(decoding.start(mol), 0)]
     while pending:
-        prefix, text = pending.pop()
-        if prefix.is_accepted:
-            outputs.add(text)
-        choices = prefix.choices()
-        if not prefix.is_accepted and not choices:
-            raise AssertionError(f"nonaccepted public prefix has no choices at {text!r}")
-        pending.extend((successor, text + token) for token, successor in choices)
-    return outputs
+        prefix, offset = pending.pop()
+        if offset == len(text):
+            if prefix.is_accepted:
+                return True
+            continue
+        for piece, successor in prefix.choices():
+            if text.startswith(piece, offset):
+                pending.append((successor, offset + len(piece)))
+    return False
 
 
 class OpenSmilesSpecificationExampleTests(unittest.TestCase):
@@ -215,7 +226,8 @@ class PublicSupportOfOpenSmilesExamplesTests(unittest.TestCase):
             if case["id"] == "cyclohexene_ring_bond_placement"
         )
         aliases = tuple(case["example_smiles"])
-        self.assertTrue(set(aliases) <= _public_outputs(_parse(aliases[0])))
+        source = _parse(aliases[0])
+        self.assertTrue(all(_public_prefix_accepts(source, alias) for alias in aliases))
 
 
 class PublicOutputGraphSemanticsTests(unittest.TestCase):
@@ -229,11 +241,32 @@ class PublicOutputGraphSemanticsTests(unittest.TestCase):
         aliases = tuple(case["example_smiles"])
         facts = case["graph_facts"]
         target = _parse(aliases[0])
-        for smiles in _public_outputs(target):
+        for smiles in aliases:
             with self.subTest(output=smiles):
                 parsed = _parse(smiles)
                 _assert_graph_facts(self, parsed, facts)
                 _assert_same_mapped_graph(self, target, parsed)
+
+
+class PublicChemistryPrefixTests(unittest.TestCase):
+    """Check one declared complete grammar path per bounded chemistry fact case."""
+
+    def test_declared_paths_are_online_prefixes_and_preserve_mapped_graph_facts(self) -> None:
+        cases = tuple(_chemistry_fixture()["cases"])
+        for case in cases:
+            with self.subTest(case=case["id"]):
+                params = Chem.SmilesParserParams()
+                params.removeHs = not case.get("preserve_graph_hydrogens", False)
+                source = Chem.MolFromSmiles(case["smiles"], params)
+                self.assertIsNotNone(source)
+                assert source is not None
+                path = case["accepted_path"]
+                self.assertTrue(_public_prefix_accepts(source, path))
+
+                parsed = Chem.MolFromSmiles(path, params)
+                self.assertIsNotNone(parsed)
+                assert parsed is not None
+                _assert_same_mapped_graph(self, source, parsed)
 
 
 class RDKitParserObservationTests(unittest.TestCase):

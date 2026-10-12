@@ -1,0 +1,203 @@
+{
+  "source": {
+    "name": "OpenSMILES Specification",
+    "url": "https://opensmiles.org/opensmiles.html",
+    "version": "1.0",
+    "date": "2016-05-15",
+    "fact_fields": [
+      "source_atom_id",
+      "element",
+      "aromatic",
+      "isotope",
+      "formal_charge",
+      "non_graph_hydrogens",
+      "atom_class"
+    ],
+    "authority_scope": "Version-independent syntax and atom/bond facts transcribed from the specification. RDKit is used only as a compatible input and parse-back implementation."
+  },
+  "cases": [
+    {
+      "id": "organic_n_b_p_s",
+      "source_section": "3.1.5 Organic subset and valence",
+      "smiles": "N.B.P.S",
+      "accepted_path": "N.B.P.S",
+      "atoms": [
+        ["n0", "N", false, null, 0, 3, 0],
+        ["b0", "B", false, null, 0, 3, 0],
+        ["p0", "P", false, null, 0, 3, 0],
+        ["s0", "S", false, null, 0, 2, 0]
+      ],
+      "bonds": []
+    },
+    {
+      "id": "organic_halogen_subset",
+      "source_section": "3.1.5 Organic subset and valence",
+      "smiles": "C(F)(Cl)(Br)I",
+      "accepted_path": "C(F)(Cl)(Br)I",
+      "atoms": [
+        ["c0", "C", false, null, 0, 0, 0],
+        ["f0", "F", false, null, 0, 0, 0],
+        ["cl0", "Cl", false, null, 0, 0, 0],
+        ["br0", "Br", false, null, 0, 0, 0],
+        ["i0", "I", false, null, 0, 0, 0]
+      ],
+      "bonds": [["c0", "f0", "single"], ["c0", "cl0", "single"], ["c0", "br0", "single"], ["c0", "i0", "single"]]
+    },
+    {
+      "id": "triple_nitrile",
+      "source_section": "3.2 Bonds",
+      "smiles": "C#N",
+      "accepted_path": "C#N",
+      "atoms": [["c0", "C", false, null, 0, 1, 0], ["n0", "N", false, null, 0, 0, 0]],
+      "bonds": [["c0", "n0", "triple"]]
+    },
+    {
+      "id": "charged_ammonium",
+      "source_section": "3.1.3 Charges and 3.1.5 Valence",
+      "smiles": "[NH4+]",
+      "accepted_path": "[NH4+]",
+      "atoms": [["n0", "N", false, null, 1, 4, 0]],
+      "bonds": []
+    },
+    {
+      "id": "carboxylate",
+      "source_section": "3.1.3 Charges and 3.2 Bonds",
+      "smiles": "CC(=O)[O-]",
+      "accepted_path": "CC(=O)[O-]",
+      "atoms": [
+        ["c0", "C", false, null, 0, 3, 0],
+        ["c1", "C", false, null, 0, 0, 0],
+        ["o0", "O", false, null, 0, 0, 0],
+        ["o1", "O", false, null, -1, 0, 0]
+      ],
+      "bonds": [["c0", "c1", "single"], ["c1", "o0", "double"], ["c1", "o1", "single"]]
+    },
+    {
+      "id": "isotope_carbon",
+      "source_section": "3.1.4 Isotopes",
+      "smiles": "[13CH4]",
+      "accepted_path": "[13CH4]",
+      "atoms": [["c0", "C", false, 13, 0, 4, 0]],
+      "bonds": []
+    },
+    {
+      "id": "atom_class",
+      "source_section": "3.1.7 Atom classes",
+      "smiles": "[CH3:7]C",
+      "accepted_path": "[CH3:7]C",
+      "atoms": [["c0", "C", false, null, 0, 3, 7], ["c1", "C", false, null, 0, 3, 0]],
+      "bonds": [["c0", "c1", "single"]]
+    },
+    {
+      "id": "implicit_hydrogen_methane",
+      "source_section": "3.6 Hydrogens",
+      "smiles": "C",
+      "accepted_path": "C",
+      "atoms": [["c0", "C", false, null, 0, 4, 0]],
+      "bonds": []
+    },
+    {
+      "id": "bracket_hydrogen_count_methane",
+      "source_section": "3.6 Hydrogens",
+      "smiles": "[CH4]",
+      "accepted_path": "[CH4]",
+      "atoms": [["c0", "C", false, null, 0, 4, 0]],
+      "bonds": []
+    },
+    {
+      "id": "graph_hydrogen_methane",
+      "source_section": "3.6 Hydrogens",
+      "smiles": "[H]C([H])([H])[H]",
+      "accepted_path": "[H]C([H])([H])[H]",
+      "preserve_graph_hydrogens": true,
+      "atoms": [
+        ["h0", "H", false, null, 0, 0, 0],
+        ["c0", "C", false, null, 0, 0, 0],
+        ["h1", "H", false, null, 0, 0, 0],
+        ["h2", "H", false, null, 0, 0, 0],
+        ["h3", "H", false, null, 0, 0, 0]
+      ],
+      "bonds": [["h0", "c0", "single"], ["c0", "h1", "single"], ["c0", "h2", "single"], ["c0", "h3", "single"]]
+    },
+    {
+      "id": "wildcard",
+      "source_section": "3.1.2 Atoms",
+      "smiles": "*",
+      "accepted_path": "*",
+      "atoms": [["wildcard0", "*", false, null, 0, 0, 0]],
+      "bonds": []
+    },
+    {
+      "id": "benzene",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "c1ccccc1",
+      "accepted_path": "c1:c:c:c:c:c:1",
+      "atoms": [["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0], ["c4", "C", true, null, 0, 1, 0], ["c5", "C", true, null, 0, 1, 0]],
+      "bonds": [["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "c4", "aromatic"], ["c4", "c5", "aromatic"], ["c5", "c0", "aromatic"]]
+    },
+    {
+      "id": "pyridine",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "n1ccccc1",
+      "accepted_path": "n1:c:c:c:c:c:1",
+      "atoms": [["n0", "N", true, null, 0, 0, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0], ["c4", "C", true, null, 0, 1, 0]],
+      "bonds": [["n0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "c4", "aromatic"], ["c4", "n0", "aromatic"]]
+    },
+    {
+      "id": "pyrrole",
+      "source_section": "3.5 Aromaticity and 3.6 Hydrogens",
+      "smiles": "[nH]1cccc1",
+      "accepted_path": "[nH]1:c:c:c:c:1",
+      "atoms": [["n0", "N", true, null, 0, 1, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0]],
+      "bonds": [["n0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "n0", "aromatic"]]
+    },
+    {
+      "id": "n_substituted_pyrrole",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "Cn1cccc1",
+      "accepted_path": "Cn1:c:c:c:c:1",
+      "atoms": [["cmethyl", "C", false, null, 0, 3, 0], ["n0", "N", true, null, 0, 0, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0]],
+      "bonds": [["cmethyl", "n0", "single"], ["n0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "n0", "aromatic"]]
+    },
+    {
+      "id": "furan",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "o1cccc1",
+      "accepted_path": "o1:c:c:c:c:1",
+      "atoms": [["o0", "O", true, null, 0, 0, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0]],
+      "bonds": [["o0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "o0", "aromatic"]]
+    },
+    {
+      "id": "thiophene",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "s1cccc1",
+      "accepted_path": "s1:c:c:c:c:1",
+      "atoms": [["s0", "S", true, null, 0, 0, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0]],
+      "bonds": [["s0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "s0", "aromatic"]]
+    },
+    {
+      "id": "naphthalene",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "c1ccc2ccccc2c1",
+      "accepted_path": "c1:c:c:c2:c:c:c:c:c:2:c:1",
+      "atoms": [["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 0, 0], ["c4", "C", true, null, 0, 1, 0], ["c5", "C", true, null, 0, 1, 0], ["c6", "C", true, null, 0, 1, 0], ["c7", "C", true, null, 0, 1, 0], ["c8", "C", true, null, 0, 0, 0], ["c9", "C", true, null, 0, 1, 0]],
+      "bonds": [["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "c4", "aromatic"], ["c4", "c5", "aromatic"], ["c5", "c6", "aromatic"], ["c6", "c7", "aromatic"], ["c7", "c8", "aromatic"], ["c8", "c9", "aromatic"], ["c9", "c0", "aromatic"], ["c8", "c3", "aromatic"]]
+    },
+    {
+      "id": "biphenyl",
+      "source_section": "3.5 Aromaticity",
+      "smiles": "c1ccccc1-c2ccccc2",
+      "accepted_path": "c1:c:c:c:c:c:1-c2:c:c:c:c:c:2",
+      "atoms": [["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0], ["c4", "C", true, null, 0, 1, 0], ["c5", "C", true, null, 0, 0, 0], ["c6", "C", true, null, 0, 0, 0], ["c7", "C", true, null, 0, 1, 0], ["c8", "C", true, null, 0, 1, 0], ["c9", "C", true, null, 0, 1, 0], ["c10", "C", true, null, 0, 1, 0], ["c11", "C", true, null, 0, 1, 0]],
+      "bonds": [["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "c4", "aromatic"], ["c4", "c5", "aromatic"], ["c5", "c6", "single"], ["c6", "c7", "aromatic"], ["c7", "c8", "aromatic"], ["c8", "c9", "aromatic"], ["c9", "c10", "aromatic"], ["c10", "c11", "aromatic"], ["c5", "c0", "aromatic"], ["c11", "c6", "aromatic"]]
+    },
+    {
+      "id": "charged_aromatic_pyridinium",
+      "source_section": "3.1.3 Charges and 3.5 Aromaticity",
+      "smiles": "[nH+]1ccccc1",
+      "accepted_path": "[nH+]1:c:c:c:c:c:1",
+      "atoms": [["n0", "N", true, null, 1, 1, 0], ["c0", "C", true, null, 0, 1, 0], ["c1", "C", true, null, 0, 1, 0], ["c2", "C", true, null, 0, 1, 0], ["c3", "C", true, null, 0, 1, 0], ["c4", "C", true, null, 0, 1, 0]],
+      "bonds": [["n0", "c0", "aromatic"], ["c0", "c1", "aromatic"], ["c1", "c2", "aromatic"], ["c2", "c3", "aromatic"], ["c3", "c4", "aromatic"], ["c4", "n0", "aromatic"]]
+    }
+  ]
+}

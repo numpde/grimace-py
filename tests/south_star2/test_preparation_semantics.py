@@ -17,7 +17,69 @@ PINNED_STEREO_FIXTURES = checked_in_fixture_path("rdkit_south_star2_stereo_evide
 
 
 def _accepted_strings(mol: Chem.Mol) -> set[str]:
-    writer = prepare_molecule(mol).build_writer()
+    """Collect finite RDKit writer support for pinned parity and witness checks."""
+    return _collect_writer_strings(
+        prepare_molecule(mol).build_writer(style="rdkit_random_noncanonical")
+    )
+
+
+def _generic_witness_prefix(text: str) -> bool:
+    """Restrict lexical choices, preserving every matching native hidden state.
+
+    This finite semantic witness uses bare C/O, short carbon tetrahedral
+    markers, and canonical lowest-free positive ring labels. Native Generic
+    traversal, bond placement, and stereo constraints remain unrestricted;
+    this does not enumerate the full Generic SMILES language.
+    """
+    brackets = ("[C@H]", "[C@@H]", "[C@]", "[C@@]")
+    open_labels: set[int] = set()
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "[":
+            end = text.find("]", index)
+            if end == -1:
+                return any(marker.startswith(text[index:]) for marker in brackets)
+            if text[index:end + 1] not in brackets:
+                return False
+            index = end + 1
+            continue
+        if char.isdigit() or char == "%":
+            first_free = 1
+            while first_free in open_labels:
+                first_free += 1
+            allowed = open_labels | {first_free}
+            spellings = {
+                str(label) if label < 10 else f"%{label}": label
+                for label in allowed
+            }
+            length = 3 if char == "%" else 1
+            spelling = text[index:index + length]
+            if len(spelling) < length:
+                return any(candidate.startswith(spelling) for candidate in spellings)
+            if spelling not in spellings:
+                return False
+            label = spellings[spelling]
+            if label in open_labels:
+                open_labels.remove(label)
+            else:
+                open_labels.add(label)
+            index += length
+            continue
+        if char not in "CO()-=/#\\.":
+            return False
+        index += 1
+    return True
+
+
+def _accepted_generic_witness_strings(mol: Chem.Mol) -> set[str]:
+    return _collect_writer_strings(
+        prepare_molecule(mol).build_writer(style=None),
+        finite_generic_witness=True,
+    )
+
+
+def _collect_writer_strings(writer, *, finite_generic_witness: bool = False) -> set[str]:
     frontier = [(writer.initial_state(), "")]
     accepted: set[str] = set()
     while frontier:
@@ -28,12 +90,18 @@ def _accepted_strings(mol: Chem.Mol) -> set[str]:
         choices = state.choices()
         if not choices:
             raise AssertionError(f"Native walker stopped before acceptance at {text!r}")
-        frontier.extend((successor, text + token) for token, successor in choices)
+        frontier.extend(
+            (successor, text + token) for token, successor in choices
+            if not finite_generic_witness or _generic_witness_prefix(text + token)
+        )
     return accepted
 
 
-def _prefix_strings(mol: Chem.Mol) -> tuple[list[str], list[str]]:
-    prefix = prepare_molecule(mol).build_writer().initial_prefix()
+def _prefix_strings(
+    mol: Chem.Mol, *, style: str | None
+) -> tuple[list[str], list[str]]:
+    """Collect writer parity, or the declared finite Generic lexical witness."""
+    prefix = prepare_molecule(mol).build_writer(style=style).initial_prefix()
     pending = [(prefix, "")]
     accepted: list[str] = []
     dead: list[str] = []
@@ -44,7 +112,10 @@ def _prefix_strings(mol: Chem.Mol) -> tuple[list[str], list[str]]:
         choices = current.choices()
         if not current.is_accepted and not choices:
             dead.append(text)
-        pending.extend((successor, text + token) for token, successor in choices)
+        pending.extend(
+            (successor, text + token) for token, successor in choices
+            if style is not None or _generic_witness_prefix(text + token)
+        )
     return accepted, dead
 
 
@@ -128,7 +199,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
                 fixture_path=mixed.fixture_path, case_id=mixed.case_id,
             )
         )
-        mixed_actual, mixed_dead = _prefix_strings(mixed_source)
+        mixed_actual, mixed_dead = _prefix_strings(mixed_source, style="rdkit_random_noncanonical")
         self.assertEqual(set(mixed_actual), mixed_expected)
         self.assertEqual(len(mixed_actual), len(mixed_expected))
         self.assertFalse(mixed_dead)
@@ -138,7 +209,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
         self.assertIsNotNone(e_source)
         assert e_source is not None
         e_expected = {row["rendered_smiles"] for row in e_case.raw["source_schedule_rows"]}
-        e_actual, e_dead = _prefix_strings(e_source)
+        e_actual, e_dead = _prefix_strings(e_source, style="rdkit_random_noncanonical")
         self.assertEqual(set(e_actual), e_expected)
         self.assertEqual(len(e_actual), len(e_expected))
         self.assertFalse(e_dead)
@@ -148,7 +219,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
         self.assertIsNotNone(z_source)
         assert z_source is not None
         z_expected = {row["rendered_smiles"] for row in z_case.raw["source_schedule_rows"]}
-        z_actual, z_dead = _prefix_strings(z_source)
+        z_actual, z_dead = _prefix_strings(z_source, style="rdkit_random_noncanonical")
         self.assertEqual(set(z_actual), z_expected)
         self.assertEqual(len(z_actual), len(z_expected))
         self.assertFalse(z_dead)
@@ -161,13 +232,13 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
 
 
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
-    """Check parsed molecular meaning independently from writer support parity."""
+    """Check the finite Generic lexical witness, independently from writer parity."""
     def test_native_outputs_parse_to_each_source_graph(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "CC(O)CO"):
             with self.subTest(smiles=smiles):
                 source = Chem.MolFromSmiles(smiles)
                 assert source is not None
-                outputs = _accepted_strings(source)
+                outputs = _accepted_generic_witness_strings(source)
                 self.assertTrue(outputs, "the prepared source graph must have an accepted output")
 
                 for output in outputs:
@@ -208,7 +279,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
             source = Chem.MolFromSmiles(case.raw["input_smiles"])
             self.assertIsNotNone(source)
             assert source is not None
-            outputs = _accepted_strings(source)
+            outputs = _accepted_generic_witness_strings(source)
             self.assertTrue(outputs)
             for output in outputs:
                 with self.subTest(case=case.case_id, output=output):
@@ -238,7 +309,9 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
         source = Chem.MolFromSmiles(case.raw["input_smiles"])
         self.assertIsNotNone(source)
         assert source is not None
-        for output in _accepted_strings(source):
+        outputs = _accepted_generic_witness_strings(source)
+        self.assertTrue(outputs)
+        for output in outputs:
             parsed = Chem.MolFromSmiles(output)
             self.assertIsNotNone(parsed, output)
             assert parsed is not None
@@ -282,7 +355,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                     and bond.GetStereo() != Chem.BondStereo.STEREONONE
                 ]
                 self.assertEqual(len(prepared.directional), len(configured))
-                outputs, dead = _prefix_strings(source)
+                outputs, dead = _prefix_strings(source, style=None)
                 self.assertTrue(outputs)
                 self.assertFalse(dead)
                 for output in outputs:

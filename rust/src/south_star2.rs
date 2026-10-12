@@ -1,9 +1,9 @@
 //! Private Python transport for the independent South Star 2 native walker.
 
 use grimace_south_star2::{
-    AtomId, AtomToken, BondId, BondToken, ComponentOrder, DirectionalCarrier, DirectionalRelation,
-    PreparedGraphBuilder, PreparedWriter, TetrahedralLigand, TextPrefix, Walker, WalkerFailure,
-    WalkerFailureKind, WriterRegime,
+    AtomFacts, AtomId, AtomToken, BondId, BondToken, ComponentOrder, DirectionalCarrier,
+    DirectionalRelation, ElementSymbol, PreparedGraphBuilder, PreparedWriter, TetrahedralLigand,
+    TextPrefix, Walker, WalkerFailure, WalkerFailureKind, WriterRegime,
 };
 use pyo3::exceptions::{PyAssertionError, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -133,32 +133,65 @@ fn directional_relation(fact: &Bound<'_, PyAny>, index: usize) -> PyResult<Direc
 }
 
 fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken> {
-    if atom.is_instance_of::<PyString>() {
-        return atom.extract::<String>().map(AtomToken::Fixed).map_err(|_| {
-            PyValueError::new_err(format!("Cannot read fixed atom text at {atom_index}"))
-        });
-    }
     let fact = atom.cast::<PyTuple>().map_err(|_| {
         PyValueError::new_err(format!(
-            "Cannot prepare atom {atom_index}: expected fixed text or a tagged tetrahedral atom fact"
+            "Cannot prepare atom {atom_index}: expected an atom-fact tuple"
         ))
     })?;
-    if fact.len() != 3 {
+    if fact.len() != 9 {
         return Err(PyValueError::new_err(format!(
-            "Cannot prepare atom {atom_index}: tetrahedral fact must contain its tag, reference order, and parity spellings"
+            "Cannot prepare atom {atom_index}: expected nine atom-fact fields, got {}",
+            fact.len()
         )));
     }
-    let kind = fact.get_item(0)?.extract::<String>().map_err(|_| {
-        PyValueError::new_err(format!(
-            "Cannot prepare atom {atom_index}: invalid atom-fact tag"
-        ))
+    let symbol = fact.get_item(0)?.extract::<String>().map_err(|_| {
+        PyValueError::new_err(format!("Cannot prepare atom {atom_index}: element must be text"))
     })?;
-    if kind != "tetrahedral" {
+    let element = ElementSymbol::new(&symbol)
+        .map_err(|error| PyValueError::new_err(format!("Cannot prepare atom {atom_index}: {error}")))?;
+    let aromatic_value = fact.get_item(1)?;
+    if !aromatic_value.is_instance_of::<PyBool>() {
+        return Err(PyValueError::new_err(format!("Cannot prepare atom {atom_index}: aromatic flag must be boolean")));
+    }
+    let aromatic = aromatic_value.extract::<bool>()?;
+    let isotope_value = fact.get_item(2)?;
+    let isotope = if isotope_value.is_none() {
+        None
+    } else {
+        Some(isotope_value.extract::<u32>().map_err(|_| PyValueError::new_err(format!(
+            "Cannot prepare atom {atom_index}: isotope must be an unsigned integer or None"
+        )))?)
+    };
+    let formal_charge = fact.get_item(3)?.extract::<i8>().map_err(|_| PyValueError::new_err(format!(
+        "Cannot prepare atom {atom_index}: formal charge must be an 8-bit integer"
+    )))?;
+    let non_graph_hydrogens = fact.get_item(4)?.extract::<u8>().map_err(|_| PyValueError::new_err(format!(
+        "Cannot prepare atom {atom_index}: non-graph hydrogen count must be an 8-bit integer"
+    )))?;
+    let atom_class = fact.get_item(5)?.extract::<u64>().map_err(|_| PyValueError::new_err(format!(
+        "Cannot prepare atom {atom_index}: atom class must be an unsigned 64-bit integer"
+    )))?;
+    let class_property_present = fact.get_item(8)?;
+    if !class_property_present.is_instance_of::<PyBool>() {
         return Err(PyValueError::new_err(format!(
-            "Cannot prepare atom {atom_index}: unsupported atom-fact tag {kind:?}"
+            "Cannot prepare atom {atom_index}: atom-class property presence must be boolean"
         )));
     }
-    let reference_order = fact.get_item(1)?;
+    let source_context = grimace_south_star2::AtomSourceContext {
+        atom_class_property_present: class_property_present.extract::<bool>()?,
+    };
+    let facts = AtomFacts::new(element, aromatic, isotope, formal_charge, non_graph_hydrogens, atom_class)
+        .map_err(|error| PyValueError::new_err(format!("Cannot prepare atom {atom_index}: {error}")))?;
+    let parity_context = fact.get_item(6)?;
+    let at_for_even_parity = if parity_context.is_none() {
+        None
+    } else {
+        if !parity_context.is_instance_of::<PyBool>() {
+            return Err(PyValueError::new_err(format!("Cannot prepare atom {atom_index}: tetrahedral parity context must be boolean or None")));
+        }
+        Some(parity_context.extract::<bool>()?)
+    };
+    let reference_order = fact.get_item(7)?;
     let references = reference_order.cast::<PyTuple>().map_err(|_| {
         PyValueError::new_err(format!(
             "Cannot prepare tetrahedral atom {atom_index}: reference order must be a tuple"
@@ -189,41 +222,26 @@ fn atom_token(atom: &Bound<'_, PyAny>, atom_index: usize) -> PyResult<AtomToken>
              must be a bond ID or VirtualHydrogen"
         )));
     }
-    let reference_order = ligands
-        .try_into()
-        .map_err(|ligands: Vec<TetrahedralLigand>| {
+    let tetrahedral = if let Some(at_for_even_parity) = at_for_even_parity {
+        let reference_order = ligands.try_into().map_err(|ligands: Vec<TetrahedralLigand>| {
             PyValueError::new_err(format!(
-            "Cannot prepare tetrahedral atom {atom_index}: expected four ligand references, got {}",
-            ligands.len()
-        ))
+                "Cannot prepare tetrahedral atom {atom_index}: expected four ligand references, got {}",
+                ligands.len()
+            ))
         })?;
-    let parity_spellings = fact.get_item(2)?;
-    let spellings = parity_spellings.cast::<PyTuple>().map_err(|_| {
-        PyValueError::new_err(format!(
-            "Cannot prepare tetrahedral atom {atom_index}: parity spellings must be a tuple"
-        ))
-    })?;
-    if spellings.len() != 2 {
+        Some((reference_order, at_for_even_parity))
+    } else if ligands.is_empty() {
+        None
+    } else {
         return Err(PyValueError::new_err(format!(
-            "Cannot prepare tetrahedral atom {atom_index}: expected two parity spellings"
+            "Cannot prepare atom {atom_index}: reference ligands require tetrahedral parity context"
         )));
-    }
-    let text_by_parity = [
-        spellings.get_item(0)?.extract::<String>().map_err(|_| {
-            PyValueError::new_err(format!(
-                "Cannot prepare tetrahedral atom {atom_index}: parity spelling 0 must be text"
-            ))
-        })?,
-        spellings.get_item(1)?.extract::<String>().map_err(|_| {
-            PyValueError::new_err(format!(
-                "Cannot prepare tetrahedral atom {atom_index}: parity spelling 1 must be text"
-            ))
-        })?,
-    ];
-    Ok(AtomToken::Tetrahedral {
-        reference_order,
-        text_by_parity,
-    })
+    };
+    let (tetrahedral_reference_order, at_for_even_parity) = match tetrahedral {
+        Some((reference_order, flip)) => (Some(reference_order), flip),
+        None => (None, false),
+    };
+    Ok(AtomToken::Facts { facts, source_context, tetrahedral_reference_order, at_for_even_parity })
 }
 
 #[pyclass(name = "_SouthStar2TextPrefix", module = "grimace._core", frozen)]

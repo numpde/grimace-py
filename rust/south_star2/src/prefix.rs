@@ -135,13 +135,13 @@ mod tests {
         assert_eq!(selected.frontier_size(), 2);
         assert_eq!(prefix.frontier_size(), 1);
         let initial_choices = prefix.choices().unwrap();
-        assert_eq!(initial_choices.len(), 2);
+        assert_eq!(initial_choices.len(), 3);
         assert_eq!(
             initial_choices
                 .iter()
                 .map(|choice| (choice.text.as_str(), choice.successor.frontier_size()))
                 .collect::<BTreeMap<_, _>>(),
-            BTreeMap::from([("C", 2), ("O", 1)])
+            BTreeMap::from([("[", 3), ("C", 2), ("O", 1)])
         );
 
         let grouped = selected.choices().unwrap();
@@ -194,8 +194,12 @@ mod tests {
         };
         assert!(prefix.is_accepted());
         let choices = prefix.choices().unwrap();
-        assert_eq!(choices.len(), 1);
-        assert_eq!(choices[0].text, "C");
-        assert_eq!(choices[0].successor.frontier_size(), 1);
+        assert_eq!(
+            choices
+                .iter()
+                .map(|choice| (choice.text.as_str(), choice.successor.frontier_size()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from([("[", 1), ("C", 1)])
+        );
     }
 }

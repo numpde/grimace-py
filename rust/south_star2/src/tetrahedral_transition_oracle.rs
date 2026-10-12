@@ -31,6 +31,7 @@ const RING_01: u8 = 3;
 const RING_11: u8 = 4;
 
 const EDGES: [(usize, usize); 4] = [(CENTER, A), (CENTER, B), (A, B), (CENTER, D)];
+const TETRAHEDRAL_SPELLINGS: [&str; 2] = ["[C@H]", "[C@@H]"];
 
 #[derive(Clone)]
 struct Fixture {
@@ -57,7 +58,7 @@ fn fixture() -> Fixture {
                     TetrahedralLigand::Bond(bonds[CENTER_D]),
                     TetrahedralLigand::VirtualHydrogen,
                 ],
-                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+                text_by_parity: TETRAHEDRAL_SPELLINGS.map(str::to_owned),
             },
             PreparedAtomToken::Fixed("A".to_owned()),
             PreparedAtomToken::Fixed("B".to_owned()),
@@ -122,7 +123,7 @@ enum Pending {
     OpeningLabel {
         bond: usize,
         endpoint: usize,
-        label: usize,
+        label: Option<usize>,
     },
     ClosureLabel {
         bond: usize,
@@ -446,11 +447,11 @@ fn opening_choices(source: &OracleState) -> Vec<VisibleSuccessor> {
             state.emitted_bonds.push(bond);
             state.ring_occurrence_count += 1;
             state.progress[bond] = Progress::RingOpen { first: CENTER };
-            state.labels.push((bond, 0));
+            state.labels.push((bond, 1));
             state.pending = matches!(spelling, Spelling::Emit).then_some(Pending::OpeningLabel {
                 bond,
                 endpoint: CENTER,
-                label: 0,
+                label: Some(1),
             });
             choices.push(VisibleSuccessor {
                 text: match spelling {
@@ -504,7 +505,7 @@ fn entered_center_choices() -> Vec<VisibleSuccessor> {
                         Progress::Unrepresented,
                     ],
                     context: facts.context,
-                    labels: vec![(CENTER_A, 0)],
+                    labels: vec![(CENTER_A, 1)],
                     pending: None,
                 }),
             })
@@ -546,7 +547,7 @@ fn entered_oracle_state(text: &str) -> OracleState {
                     Progress::Unrepresented,
                 ],
                 context: facts.context,
-                labels: vec![(CENTER_A, 0)],
+                labels: vec![(CENTER_A, 1)],
                 pending: None,
             }
         })
@@ -579,7 +580,7 @@ fn closure_choices(source: &OracleState) -> Vec<VisibleSuccessor> {
     state.pending = Some(Pending::ClosureLabel {
         bond: CENTER_A,
         endpoint: CENTER,
-        label: 0,
+        label: 1,
     });
     vec![VisibleSuccessor {
         text: "=".to_owned(),
@@ -748,12 +749,78 @@ fn production_plan_domain(domain: Domain) -> Vec<u8> {
     .collect()
 }
 
-fn visible(fixture: &Fixture, choices: &[Choice<State>]) -> Vec<VisibleSuccessor> {
-    let mut values = choices
+fn complete_choices(choices: &[Choice<State>]) -> Vec<(String, State)> {
+    let mut completed = Vec::new();
+    for choice in choices {
+        let prefix = choice.text().to_owned();
+        let states = finish_atom_spellings(choice.successor(), prefix);
+        assert!(!states.is_empty(), "a selected atom prefix must match a finite fixture witness");
+        completed.extend(states);
+    }
+    completed
+}
+
+fn finish_spelling(state: &State, prefix: String, spelling: &str) -> Vec<State> {
+    if !state.is_spelling_atom() {
+        return (prefix == spelling).then(|| state.clone()).into_iter().collect();
+    }
+    let next = spelling
+        .chars()
+        .nth(prefix.chars().count())
+        .expect("an incomplete atom spelling has a selected next character");
+    let matching = state
+        .choices()
+        .expect("a selected atom spelling remains live")
+        .into_iter()
+        .filter(|choice| choice.text() == next.to_string())
+        .collect::<Vec<_>>();
+    if matching.is_empty() {
+        return Vec::new();
+    }
+    matching
+        .into_iter()
+        .flat_map(|choice| {
+            let mut next_prefix = prefix.clone();
+            next_prefix.push(next);
+            finish_spelling(choice.successor(), next_prefix, spelling)
+        })
+        .collect()
+}
+
+fn spelling_witnesses(atom: AtomId) -> &'static [&'static str] {
+    match atom.index() {
+        CENTER => &TETRAHEDRAL_SPELLINGS,
+        A => &["[*:2]"],
+        B => &["B"],
+        D => &["[*:4]"],
+        _ => panic!("the tetrahedral fixture has no spelling for atom {}", atom.index()),
+    }
+}
+
+fn finish_atom_spellings(state: &State, prefix: String) -> Vec<(String, State)> {
+    if !state.is_spelling_atom() {
+        return vec![(prefix, state.clone())];
+    }
+    let atom = state
+        .active_atom()
+        .expect("a spelling witness belongs to the active fixture atom");
+    spelling_witnesses(atom)
         .iter()
-        .map(|choice| VisibleSuccessor {
-            text: choice.text().to_owned(),
-            successor: observe(fixture, choice.successor()),
+        .filter(|spelling| spelling.starts_with(&prefix))
+        .flat_map(|spelling| {
+            finish_spelling(state, prefix.clone(), spelling)
+                .into_iter()
+                .map(|state| ((*spelling).to_owned(), state))
+        })
+        .collect()
+}
+
+fn visible(fixture: &Fixture, choices: &[Choice<State>]) -> Vec<VisibleSuccessor> {
+    let mut values = complete_choices(choices)
+        .into_iter()
+        .map(|(text, state)| VisibleSuccessor {
+            text,
+            successor: observe(fixture, &state),
         })
         .collect::<Vec<_>>();
     values.sort();
@@ -776,13 +843,12 @@ fn root_activation_and_ring_openings_match_primitive_one_step_oracle() {
     let fixture = fixture();
     let state = initial(&fixture);
     let source = state.observe_raw();
-    let production_root_choices = state
-        .choices()
-        .unwrap()
+    let production_root_choices = super::tests::ring_witness_choices(&state)
         .into_iter()
         .filter(|choice| choice.successor().active_atom() == Some(fixture.atoms[CENTER]))
         .collect::<Vec<_>>();
 
+    let completed_roots = complete_choices(&production_root_choices);
     assert_eq!(
         visible(&fixture, &production_root_choices),
         sorted(root_choices())
@@ -793,21 +859,20 @@ fn root_activation_and_ring_openings_match_primitive_one_step_oracle() {
         "root choice derivation mutated its source"
     );
 
-    for root in production_root_choices {
-        let oracle_source = root_oracle_state(root.text());
+    for (root_text, root_successor) in completed_roots {
+        let oracle_source = root_oracle_state(&root_text);
         assert_eq!(
-            observe(&fixture, root.successor()),
+            observe(&fixture, &root_successor),
             semantic(&oracle_source)
         );
-        let production_source = root.successor().clone();
+        let production_source = root_successor;
         let source_observed = production_source.observe_raw();
-        let openings = production_source.choices().unwrap();
+        let openings = super::tests::ring_witness_choices(&production_source);
 
         assert_eq!(
             visible(&fixture, &openings),
             sorted(opening_choices(&oracle_source)),
-            "root token {} has a different ring-opening relation",
-            root.text()
+            "root token {root_text} has a different ring-opening relation"
         );
         assert_eq!(
             production_source.observe_raw(),
@@ -817,114 +882,127 @@ fn root_activation_and_ring_openings_match_primitive_one_step_oracle() {
     }
 }
 
-fn select_choice(
+fn select_choices(
     state: State,
-    predicate: impl Fn(&State, &Choice<State>) -> bool,
+    predicate: impl Fn(&State, &str, &State) -> bool,
     description: &str,
-) -> State {
+) -> Vec<State> {
     let source = state.observe_raw();
-    let mut matches = state
-        .choices()
-        .unwrap()
-        .into_iter()
-        .filter(|choice| predicate(&state, choice))
-        .collect::<Vec<_>>();
-    assert_eq!(matches.len(), 1, "expected one {description}");
+    let mut matches = Vec::new();
+    for choice in super::tests::ring_witness_choices(&state) {
+        matches.extend(
+            finish_atom_spellings(choice.successor(), choice.text().to_owned())
+                .into_iter()
+                .filter(|(text, successor)| predicate(&state, text, successor))
+                .map(|(_, successor)| successor),
+        );
+    }
+    assert!(!matches.is_empty(), "expected {description}");
     assert_eq!(
         state.observe_raw(),
         source,
         "selecting {description} mutated its source"
     );
-    matches.remove(0).into_successor()
+    matches
 }
 
 #[test]
 fn entered_activation_and_explicit_closure_match_primitive_one_step_oracle() {
     let fixture = fixture();
-    let rooted_at_a = select_choice(
+    let rooted_at_a = select_choices(
         initial(&fixture),
-        |_, choice| {
-            choice.text() == "A" && choice.successor().active_atom() == Some(fixture.atoms[A])
+        |_, _, successor| {
+            successor.active_atom() == Some(fixture.atoms[A])
         },
         "root at A",
     );
-    let opened = select_choice(
-        rooted_at_a,
-        |source, choice| {
-            choice.text() == "1"
-                && matches!(
-                    (
-                        &source.observe_raw().structural.traversal.bond_progress[CENTER_A],
-                        &choice.successor().observe_raw().structural.traversal.bond_progress
-                            [CENTER_A],
-                    ),
-                    (
-                        ObservedBondProgress::Unrepresented,
-                        ObservedBondProgress::RingOpen { first_endpoint },
-                    ) if *first_endpoint == fixture.atoms[A]
-                )
-        },
-        "omitted opening of the explicit center-A bond",
-    );
-    let entered_b = select_choice(
-        opened,
-        |_, choice| {
-            choice.text() == "B"
-                && choice.successor().active_atom() == Some(fixture.atoms[B])
-                && matches!(
-                    choice.successor().observe_raw().structural.traversal.bond_progress[A_B],
-                    ObservedBondProgress::Traversed { from, to }
-                        if from == fixture.atoms[A] && to == fixture.atoms[B]
-                )
-        },
-        "inline traversal from A to B",
-    );
-    let source = entered_b.observe_raw();
-    let atom_choices = entered_b
-        .choices()
-        .unwrap()
+    let opened = rooted_at_a
         .into_iter()
-        .filter(|choice| {
-            choice.successor().active_atom() == Some(fixture.atoms[CENTER])
-                && matches!(
-                    choice.successor().observe_raw().structural.traversal.bond_progress
-                        [CENTER_B],
-                    ObservedBondProgress::Traversed { from, to }
-                        if from == fixture.atoms[B] && to == fixture.atoms[CENTER]
-                )
+        .flat_map(|state| {
+            select_choices(
+                state,
+                |source, text, successor| {
+                    text == "1"
+                        && matches!(
+                            (
+                                &source.observe_raw().structural.traversal.bond_progress[CENTER_A],
+                                &successor.observe_raw().structural.traversal.bond_progress
+                                    [CENTER_A],
+                            ),
+                            (
+                                ObservedBondProgress::Unrepresented,
+                                ObservedBondProgress::RingOpen { first_endpoint },
+                            ) if *first_endpoint == fixture.atoms[A]
+                        )
+                },
+                "omitted opening of the explicit center-A bond",
+            )
+        })
+        .collect::<Vec<_>>();
+    let entered_b = opened
+        .into_iter()
+        .flat_map(|state| {
+            select_choices(
+                state,
+                |_, _, successor| {
+                    successor.active_atom() == Some(fixture.atoms[B])
+                        && matches!(
+                            successor.observe_raw().structural.traversal.bond_progress[A_B],
+                            ObservedBondProgress::Traversed { from, to }
+                                if from == fixture.atoms[A] && to == fixture.atoms[B]
+                        )
+                },
+                "inline traversal from A to B",
+            )
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(
-        visible(&fixture, &atom_choices),
-        sorted(entered_center_choices())
-    );
-    assert_eq!(
-        entered_b.observe_raw(),
-        source,
-        "atom choices mutated their source"
-    );
+    for entered_b in entered_b {
+        let source = entered_b.observe_raw();
+        let atom_choices = super::tests::ring_witness_choices(&entered_b)
+            .into_iter()
+            .filter(|choice| {
+                choice.successor().active_atom() == Some(fixture.atoms[CENTER])
+                    && matches!(
+                        choice.successor().observe_raw().structural.traversal.bond_progress
+                            [CENTER_B],
+                        ObservedBondProgress::Traversed { from, to }
+                            if from == fixture.atoms[B] && to == fixture.atoms[CENTER]
+                    )
+            })
+            .collect::<Vec<_>>();
 
-    for atom_choice in atom_choices {
-        let oracle_source = entered_oracle_state(atom_choice.text());
+        let completed_atom_choices = complete_choices(&atom_choices);
         assert_eq!(
-            observe(&fixture, atom_choice.successor()),
-            semantic(&oracle_source)
+            visible(&fixture, &atom_choices),
+            sorted(entered_center_choices())
         );
-        let production_source = atom_choice.successor().clone();
-        let source_observed = production_source.observe_raw();
-        let closures = production_source.choices().unwrap();
+        assert_eq!(
+            entered_b.observe_raw(),
+            source,
+            "atom choices mutated their source"
+        );
 
-        assert_eq!(
-            visible(&fixture, &closures),
-            sorted(closure_choices(&oracle_source)),
-            "entered token {} has a different explicit closure relation",
-            atom_choice.text()
-        );
-        assert_eq!(
-            production_source.observe_raw(),
-            source_observed,
-            "ring-closure choice derivation mutated its source"
-        );
+        for (atom_text, atom_successor) in completed_atom_choices {
+            let oracle_source = entered_oracle_state(&atom_text);
+            assert_eq!(
+                observe(&fixture, &atom_successor),
+                semantic(&oracle_source)
+            );
+            let production_source = atom_successor;
+            let source_observed = production_source.observe_raw();
+            let closures = super::tests::ring_witness_choices(&production_source);
+
+            assert_eq!(
+                visible(&fixture, &closures),
+                sorted(closure_choices(&oracle_source)),
+                "entered token {atom_text} has a different explicit closure relation"
+            );
+            assert_eq!(
+                production_source.observe_raw(),
+                source_observed,
+                "ring-closure choice derivation mutated its source"
+            );
+        }
     }
 }

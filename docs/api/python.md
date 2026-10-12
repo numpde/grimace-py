@@ -29,7 +29,7 @@ Current top-level exports:
 
 ## Additive South Star prefix API
 
-The source tree also provides `grimace.decoding.start(mol)`. This is an
+The source tree also provides `grimace.decoding.start(mol, *, style=None)`. This is an
 unreleased repository interface; current published `grimace-py` distributions
 do not provide it. To try the checkout, install the repository's declared
 dependencies and build the local package in the same environment:
@@ -61,15 +61,15 @@ nonaccepted state without a successor raises an error from the native writer.
 The molecule is prepared once by Python, and subsequent choices use the owned
 Rust prefix state without RDKit or the older support enumerators.
 
-The installed RDKit prepares molecular facts; it does not select the native
-writer convention. South Star 2 exact-support tests load fixtures for the
-installed RDKit version, and the named gate requires both the exact-support
-and stereo-evidence fixture families. The checked-in cases bound that claim to
-their represented molecules and facts; runtime success alone does not certify
-an unrepresented RDKit release or broader writer support. Preparation may also
-need revision if a future RDKit changes how supported facts are represented or
-interpreted. Strict version-keyed parity runners fail when a required fixture
-set is absent for the installed version.
+With `style=None`, the prefix explores the implemented OpenSMILES atom-spelling
+subset. `style="rdkit_random_noncanonical"` applies the native writer
+convention's supported restrictions to the same spelling state. The latter is
+qualified by version-keyed fixtures for represented molecules and facts; it
+does not certify the installed RDKit serializer or arbitrary chemistry.
+Strict version-keyed parity runners fail when a required fixture set is absent
+for the installed version. Leading-zero numeric fields make the default
+language unbounded, so exhaustive finite writer-support walks select the named
+style.
 
 In this source revision, preparation represents neutral, nonaromatic carbon
 and oxygen atoms with implicit valence hydrogens; nonaromatic single and double

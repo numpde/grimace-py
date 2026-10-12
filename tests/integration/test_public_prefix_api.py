@@ -64,6 +64,10 @@ def _collect_outputs(prefix: object, text: str = "") -> set[str]:
     return outputs
 
 
+def _rdkit_prefix(decoding: object, mol: Chem.Mol):
+    return decoding.start(mol, style="rdkit_random_noncanonical")
+
+
 def _immediate_signature(prefix: object) -> tuple[bool, tuple[str, ...]]:
     return (
         prefix.is_accepted,
@@ -173,7 +177,7 @@ class PublicPrefixPinnedSupportTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case.case_id):
                 source = _input_molecule(case)
-                prefix = self.decoding.start(source)
+                prefix = _rdkit_prefix(self.decoding, source)
                 self.assertEqual(_expected(case), _collect_outputs(prefix))
 
 
@@ -200,7 +204,7 @@ class PublicPrefixLivenessTests(unittest.TestCase):
 
     def test_prefix_liveness_eos_union_and_sibling_ownership(self) -> None:
         case = next(case for case in self.nonstereo_cases if case.case_id == "ss2_c_o_linear_ethanol")
-        root = self.decoding.start(_input_molecule(case))
+        root = _rdkit_prefix(self.decoding, _input_molecule(case))
         initial = root.choices()
         token_texts = tuple(token for token, _ in initial)
         self.assertEqual(len(token_texts), len(set(token_texts)))
@@ -218,7 +222,7 @@ class PublicPrefixLivenessTests(unittest.TestCase):
         # Acceptance contributes EOS independently of longer continuations.
         for case in (*self.nonstereo_cases, *self.stereo_cases):
             with self.subTest(case=case.case_id):
-                prefix = self.decoding.start(_input_molecule(case))
+                prefix = _rdkit_prefix(self.decoding, _input_molecule(case))
                 self.assertEqual(
                     _collect_outputs(prefix),
                     _assert_prefix_liveness_and_union(prefix),
@@ -228,7 +232,7 @@ class PublicPrefixLivenessTests(unittest.TestCase):
             case for case in _cases(STEREO_FIXTURES, "South Star 2 stereo evidence")
             if case.case_id == "unspecified_middle_alkene_receives_writer_directional_marks"
         )
-        triene_prefix = self.decoding.start(_triene_molecule(triene))
+        triene_prefix = _rdkit_prefix(self.decoding, _triene_molecule(triene))
         self.assertEqual(
             _collect_outputs(triene_prefix),
             _assert_prefix_liveness_and_union(triene_prefix),
@@ -237,7 +241,7 @@ class PublicPrefixLivenessTests(unittest.TestCase):
         atom = Chem.MolFromSmiles("C")
         self.assertIsNotNone(atom)
         assert atom is not None
-        atom_choices = self.decoding.start(atom).choices()
+        atom_choices = _rdkit_prefix(self.decoding, atom).choices()
         self.assertEqual(1, len(atom_choices))
         _token, accepted = atom_choices[0]
         self.assertTrue(accepted.is_accepted)
@@ -245,7 +249,7 @@ class PublicPrefixLivenessTests(unittest.TestCase):
 
     def test_choices_after_start_use_only_the_owned_native_prefix(self) -> None:
         case = next(case for case in self.stereo_cases if case.case_id == "stereo_mixed_alkene_tetra_tree")
-        prefix = self.decoding.start(_input_molecule(case))
+        prefix = _rdkit_prefix(self.decoding, _input_molecule(case))
         from grimace import _runtime
         from grimace._south_star2 import preparation
         from grimace._south_star1 import public_continuation_asset
@@ -283,13 +287,13 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
     def test_additive_api_has_only_the_selected_prefix_surface(self) -> None:
         from grimace import decoding
 
-        self.assertEqual(tuple(inspect.signature(decoding.start).parameters), ("mol",))
+        self.assertEqual(tuple(inspect.signature(decoding.start).parameters), ("mol", "style"))
         self.assertFalse(hasattr(grimace, "Prefix"))
         self.assertFalse(hasattr(grimace, "start"))
         mol = Chem.MolFromSmiles("C")
         self.assertIsNotNone(mol)
         assert mol is not None
-        prefix = decoding.start(mol)
+        prefix = _rdkit_prefix(decoding, mol)
         for name in ("advance", "select_text", "frontier_size", "count", "enumerate"):
             self.assertFalse(hasattr(prefix, name), name)
 
@@ -318,14 +322,25 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
             labeled_choices = tuple(token for token, _ in decoding.start(mol).choices())
         self.assertEqual(actual_choices, labeled_choices)
 
-    def test_unsupported_molecular_facts_still_fail_preparation(self) -> None:
+    def test_supported_element_facts_enter_the_standard_spelling_frontier(self) -> None:
         from grimace import decoding
 
         nitrogen = Chem.MolFromSmiles("N")
         self.assertIsNotNone(nitrogen)
         assert nitrogen is not None
-        with self.assertRaisesRegex(ValueError, "atomic number"):
-            decoding.start(nitrogen)
+        choices = decoding.start(nitrogen).choices()
+        self.assertIn("N", tuple(text for text, _successor in choices))
+        self.assertTrue(next(successor for text, successor in choices if text == "N").is_accepted)
+
+    def test_standard_default_exposes_bare_and_bracketed_carbon_spellings(self) -> None:
+        from grimace import decoding
+
+        carbon = Chem.MolFromSmiles("C")
+        self.assertIsNotNone(carbon)
+        assert carbon is not None
+        choices = decoding.start(carbon).choices()
+        self.assertEqual(tuple(text for text, _successor in choices), ("[", "C"))
+        self.assertTrue(next(successor for text, successor in choices if text == "C").is_accepted)
 
     def test_prefix_and_choices_are_immutable_and_source_is_not_mutated(self) -> None:
         from grimace import decoding
@@ -334,7 +349,7 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
         self.assertIsNotNone(mol)
         assert mol is not None
         before = _mapped_identity(mol)
-        prefix = decoding.start(mol)
+        prefix = _rdkit_prefix(decoding, mol)
         self.assertEqual(before, _mapped_identity(mol))
         outputs_before = _collect_outputs(prefix)
         choices_before = prefix.choices()
@@ -351,6 +366,32 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
 
 class PublicPrefixSemanticTests(unittest.TestCase):
     """Check graph, hydrogen, and stereo identity independently of parity."""
+
+    def test_standard_ring_aliases_remain_live_through_partial_prefixes(self) -> None:
+        from grimace import decoding
+
+        source = Chem.MolFromSmiles("C1CC1")
+        self.assertIsNotNone(source)
+        assert source is not None
+        # OpenSMILES 3.4 gives ring labels numeric identity, so each occurrence
+        # independently permits the single-digit or percent-prefixed alias.
+        for target in ("C0CC%00", "C1CC%01", "C%01CC1", "C%99CC%99"):
+            with self.subTest(target=target):
+                prefix = decoding.start(source, style=None)
+                text = ""
+                while text != target:
+                    self.assertFalse(prefix.is_accepted, text)
+                    remaining = target[len(text):]
+                    matches = [
+                        (piece, successor)
+                        for piece, successor in prefix.choices()
+                        if piece and remaining.startswith(piece)
+                    ]
+                    self.assertTrue(matches, text)
+                    self.assertEqual(1, len(matches), text)
+                    piece, prefix = matches[0]
+                    text += piece
+                self.assertTrue(prefix.is_accepted, text)
 
     def test_outputs_preserve_mapped_graph_hydrogen_and_stereo_identity(self) -> None:
         from grimace import decoding
@@ -371,7 +412,7 @@ class PublicPrefixSemanticTests(unittest.TestCase):
         for case in cases:
             source = _input_molecule(case)
             expected_identity = _mapped_identity(source)
-            for output in _collect_outputs(decoding.start(source)):
+            for output in _collect_outputs(_rdkit_prefix(decoding, source)):
                 with self.subTest(case=case.case_id, output=output):
                     parsed = Chem.MolFromSmiles(output)
                     self.assertIsNotNone(parsed, output)
@@ -414,7 +455,7 @@ class PublicPrefixSemanticTests(unittest.TestCase):
         ):
             case = cases[case_id]
             source = _input_molecule(case)
-            outputs = _collect_outputs(decoding.start(source))
+            outputs = _collect_outputs(_rdkit_prefix(decoding, source))
             witnesses = {row["smiles"] for row in case.raw["witnesses"]}
             self.assertTrue(witnesses <= outputs, case_id)
             for output in witnesses:
@@ -454,7 +495,7 @@ class PublicPrefixSemanticTests(unittest.TestCase):
             if case.case_id == "unspecified_middle_alkene_receives_writer_directional_marks"
         )
         source = _triene_molecule(case)
-        outputs = _collect_outputs(decoding.start(source))
+        outputs = _collect_outputs(_rdkit_prefix(decoding, source))
         for witness in case.raw["witnesses"]:
             with self.subTest(seed=witness["seed"]):
                 output = witness["smiles"]

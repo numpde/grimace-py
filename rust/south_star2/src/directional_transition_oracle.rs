@@ -493,19 +493,35 @@ fn rooted_state(production: &ProductionFixture, root: usize) -> State {
         .unwrap()
         .unwrap_consistent();
     let before = initial.observe_raw();
-    let mut roots = initial
-        .choices()
-        .unwrap()
+    let atom = production.atoms[root];
+    let facts = production.surface.atom_facts(atom);
+    let spelling = if facts.atom_class == 0 {
+        facts.element.as_str().to_owned()
+    } else {
+        format!("[*:{}]", facts.atom_class)
+    };
+    let mut states = vec![initial.clone()];
+    for character in spelling.chars() {
+        states = states
+            .into_iter()
+            .flat_map(|state| state.choices().unwrap())
+            .filter(|choice| choice.text() == character.to_string())
+            .map(Choice::into_successor)
+            .collect();
+    }
+    let roots = states
         .into_iter()
-        .filter(|choice| choice.text() == production.surface.atom_text(production.atoms[root]))
+        .filter(|state| {
+            state.active_atom() == Some(atom) && !state.is_spelling_atom()
+        })
         .collect::<Vec<_>>();
     assert_eq!(
         initial.observe_raw(),
         before,
         "root choices mutated their source"
     );
-    assert_eq!(roots.len(), 1, "fixture atom text must select one root");
-    roots.pop().unwrap().into_successor()
+    assert_eq!(roots.len(), 1, "fixture facts must select one complete root spelling");
+    roots.into_iter().next().unwrap()
 }
 
 fn directional_source(
@@ -626,7 +642,7 @@ fn ring_production_fixture() -> ProductionFixture {
     ];
     let surface = PreparedNonStereo::with_atom_tokens_and_directional(
         PreparedMolecule::new(graph.build()),
-        ["A", "L", "R", "X", "B"]
+        ["C", "C", "C", "C", "C"]
             .map(|text| PreparedAtomToken::Fixed(text.to_owned()))
             .into(),
         vec![
@@ -691,6 +707,12 @@ fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
         .iter()
         .filter_map(|choice| {
             let observed = choice.successor().observe_raw();
+            // Keep one canonical numeric label witness and every directional operator row.
+            if !matches!(choice.text(), "1" | "/" | "\\")
+                || !observed.labels_by_bond.contains(&(production.bonds[0], 1))
+            {
+                return None;
+            }
             matches!(
                 observed.structural.traversal.bond_progress[production.bonds[0].index()],
                 ObservedBondProgress::RingOpen { first_endpoint }
@@ -719,7 +741,7 @@ fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
                         .map(|(bond, label)| (bond_index(&production, *bond), *label)),
                     pending_label: matches!(
                         observed.pending,
-                        Some(ObservedPending::RingOpeningLabel { bond, endpoint, label: 0 })
+                        Some(ObservedPending::RingOpeningLabel { bond, endpoint, .. })
                             if bond == production.bonds[0] && endpoint == production.atoms[1]
                     ),
                 }
@@ -737,7 +759,7 @@ fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
                 OracleRingPlan::BackslashAtA,
             ],
             factor_active: true,
-            label_owner: Some((0, 0)),
+            label_owner: Some((0, 1)),
             pending_label: false,
         },
         RingOpeningSuccessor {
@@ -745,7 +767,7 @@ fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
             mark_values: vec![2],
             plan_values: vec![OracleRingPlan::BackslashAtB],
             factor_active: true,
-            label_owner: Some((0, 0)),
+            label_owner: Some((0, 1)),
             pending_label: true,
         },
         RingOpeningSuccessor {
@@ -753,7 +775,7 @@ fn label_only_ring_opening_keeps_future_directional_marks_in_one_successor() {
             mark_values: vec![1],
             plan_values: vec![OracleRingPlan::SlashAtB],
             factor_active: true,
-            label_owner: Some((0, 0)),
+            label_owner: Some((0, 1)),
             pending_label: true,
         },
     ]);
@@ -799,13 +821,22 @@ fn label_only_ring_opening_resolves_by_the_independent_closure_law() {
         {
             break state;
         }
-        pending.extend(
-            state
-                .choices()
-                .unwrap()
-                .into_iter()
-                .map(Choice::into_successor),
-        );
+        let visited = observed.structural.traversal.visited_atoms.len();
+        pending.extend(state.choices().unwrap().into_iter().filter_map(|choice| {
+            let successor = choice.successor();
+            let next_visited = successor
+                .observe_raw()
+                .structural
+                .traversal
+                .visited_atoms
+                .len();
+            // This is a finite structural witness using bare carbon at every entered atom;
+            // lexical spelling families are exercised separately by the spelling tests.
+            if next_visited > visited && choice.text() != "C" {
+                return None;
+            }
+            Some(choice.into_successor())
+        }));
     };
     let before = source.observe_raw();
     let (_, source_plan_domain, _) = before
@@ -824,6 +855,9 @@ fn label_only_ring_opening_resolves_by_the_independent_closure_law() {
     let actual = choices
         .iter()
         .filter_map(|choice| {
+            if choice.text() == "%01" {
+                return None;
+            }
             let observed = choice.successor().observe_raw();
             matches!(
                 observed.structural.traversal.bond_progress[production.bonds[0].index()],
@@ -852,7 +886,7 @@ fn label_only_ring_opening_resolves_by_the_independent_closure_law() {
                         .map(|(bond, label)| (bond_index(&production, *bond), *label)),
                     pending_label: matches!(
                         observed.pending,
-                        Some(ObservedPending::RingClosureLabel { bond, endpoint, label: 0 })
+                        Some(ObservedPending::RingClosureLabel { bond, endpoint, label: 1 })
                             if bond == production.bonds[0] && endpoint == production.atoms[0]
                     ),
                 }
@@ -876,7 +910,7 @@ fn label_only_ring_opening_resolves_by_the_independent_closure_law() {
                 mark_values: vec![1],
                 plan_values: vec![plan],
                 factor_active: true,
-                label_owner: Some((0, 0)),
+                label_owner: Some((0, 1)),
                 pending_label: true,
             },
             OracleRingPlan::BackslashAtA => RingOpeningSuccessor {
@@ -1142,7 +1176,9 @@ fn selectable_inline_frontier_matches_independent_side_phase_assignments() {
     let production = selectable_production_fixture();
     let source = rooted_state(&production, 0);
     let source_before = source.observe_raw();
-    let expected = expected_selectable_inline_choices(0, 0, 0, 1, true, "L", true);
+    // This atom has test-only wildcard class facts, so its production spelling starts at '['.
+    // The oracle compares this transition's structural effects, not a whole-token emission.
+    let expected = expected_selectable_inline_choices(0, 0, 0, 1, true, "[", true);
     let actual = source
         .choices()
         .unwrap()

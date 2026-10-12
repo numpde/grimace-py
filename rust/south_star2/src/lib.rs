@@ -36,7 +36,7 @@ pub use model::{
     SpanningTreeFactor, VariableDefinition,
 };
 pub use nonstereo_writer::{
-    NonStereoBondToken as BondToken, PreparedAtomToken as AtomToken,
+    AtomSourceContext, NonStereoBondToken as BondToken, PreparedAtomToken as AtomToken,
     PreparedDirectionalCarrier as DirectionalCarrier,
     PreparedDirectionalRelation as DirectionalRelation,
 };

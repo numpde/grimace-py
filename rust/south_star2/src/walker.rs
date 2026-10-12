@@ -256,12 +256,22 @@ mod tests {
         reverse_right_carrier: bool,
         left_sibling: bool,
     ) -> BTreeSet<String> {
-        fn collect(walker: Walker, prefix: String, support: &mut BTreeSet<String>) {
+        fn collect(
+            walker: Walker,
+            prefix: String,
+            support: &mut BTreeSet<String>,
+        ) {
             if walker.is_accepted() {
                 support.insert(prefix);
                 return;
             }
             for choice in walker.choices().unwrap() {
+                if (walker.0.is_spelling_atom()
+                    || choice.successor.0.is_spelling_atom())
+                    && choice.text != "C"
+                {
+                    continue;
+                }
                 collect(
                     choice.successor,
                     format!("{prefix}{}", choice.text),
@@ -361,7 +371,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_ne!(next[0], next[1]);
-        assert_eq!(source.choices().unwrap().len(), 3);
+        assert_eq!(source.choices().unwrap().len(), 6);
         assert!(!source.is_accepted());
     }
 
@@ -386,8 +396,11 @@ mod tests {
         .unwrap();
 
         let choices = prepared.initial().unwrap().choices().unwrap();
-        assert_eq!(choices.len(), 2);
-        assert!(choices.iter().all(|choice| choice.text == "C"));
+        assert_eq!(choices.len(), 4);
+        assert_eq!(
+            choices.iter().map(|choice| choice.text.as_str()).collect::<Vec<_>>(),
+            ["[", "C", "[", "C"]
+        );
     }
 
     #[test]
@@ -417,14 +430,14 @@ mod tests {
             .choices()
             .unwrap()
             .into_iter()
-            .next()
+            .find(|choice| choice.text == "C")
             .unwrap();
         let first_component_child = first_component_root
             .successor
             .choices()
             .unwrap()
             .into_iter()
-            .next()
+            .find(|choice| choice.text == "C")
             .unwrap();
         let separators = first_component_child.successor.choices().unwrap();
         assert_eq!(separators.len(), 2);
@@ -432,8 +445,10 @@ mod tests {
 
         for separator in separators {
             let next_component_roots = separator.successor.choices().unwrap();
-            assert_eq!(next_component_roots.len(), 1);
-            assert_eq!(next_component_roots[0].text, "O");
+            assert!(next_component_roots.iter().any(|choice| choice.text == "O"));
+            assert!(next_component_roots.iter().all(|choice| {
+                choice.text == "[" || choice.text == "O"
+            }));
         }
     }
 
@@ -461,7 +476,7 @@ mod tests {
                 .iter()
                 .map(|choice| choice.text.as_str())
                 .collect::<Vec<_>>(),
-            ["C", "O"]
+            ["[", "C", "[", "O"]
         );
     }
 

@@ -1,13 +1,13 @@
-"""Immutable prefixes for Grimace's RDKit random noncanonical convention.
+"""Immutable prefixes for a bounded OpenSMILES atom-and-writer language.
 
-The installed RDKit prepares molecule facts; Rust owns online traversal under
-the fixed writer convention. Runtime success does not certify writer parity.
+RDKit supplies molecular facts once; Rust owns spelling and online traversal.
+The default is an implemented language subset, not a complete SMILES grammar.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from rdkit import Chem
 
@@ -45,19 +45,24 @@ class Prefix:
         )
 
 
-def start(mol: Chem.Mol) -> Prefix:
+def start(
+    mol: Chem.Mol,
+    *,
+    style: Literal["rdkit_random_noncanonical"] | None = None,
+) -> Prefix:
     """Prepare an RDKit molecule and return its initial immutable prefix.
 
     Preparation snapshots supported molecular and stereo facts from the
-    installed RDKit. Subsequent choices use the fixed native RDKit random
-    noncanonical writer convention; the installed RDKit serializer is not
-    called or certified by this entry point.
+    installed RDKit. ``style=None`` exposes the implemented OpenSMILES subset;
+    ``style="rdkit_random_noncanonical"`` further applies the qualified
+    writer-convention restrictions. Neither mode calls RDKit while choices
+    are made. The RDKit style label does not certify installed-writer parity.
     """
 
     from ._south_star2 import preparation
 
     prepared = preparation.prepare_molecule(mol)
-    native_prefix = prepared.build_writer().initial_prefix()
+    native_prefix = prepared.build_writer(style=style).initial_prefix()
     return Prefix._from_native(native_prefix)
 
 

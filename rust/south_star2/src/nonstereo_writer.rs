@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
+use crate::atom_spelling::{AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::model::{BondRole, EdgeRolePartition, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
@@ -372,6 +373,8 @@ pub(crate) struct PreparedNonStereo {
     directional_bonds: Arc<[PreparedDirectionalBondStatus]>,
     directional_sides: Arc<[PreparedDirectionalSide]>,
     #[cfg(test)]
+    test_atom_labels: Arc<[String]>,
+    #[cfg(test)]
     work_counters: Arc<WriterWorkCounters>,
 }
 
@@ -384,23 +387,50 @@ struct WriterWorkCounters {
 
 #[derive(Clone, Debug)]
 pub enum PreparedAtomToken {
+    Facts {
+        facts: AtomFacts,
+        source_context: AtomSourceContext,
+        tetrahedral_reference_order: Option<[TetrahedralLigand; 4]>,
+        at_for_even_parity: bool,
+    },
+    #[cfg(test)]
     Fixed(String),
+    #[cfg(test)]
     Tetrahedral {
         reference_order: [TetrahedralLigand; 4],
         text_by_parity: [String; 2],
     },
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AtomSourceContext {
+    pub atom_class_property_present: bool,
+}
+
 #[derive(Clone, Debug)]
 enum PreparedAtom {
-    Fixed(Box<str>),
-    Tetrahedral(PreparedTetrahedralCenter),
+    Facts {
+        facts: AtomFacts,
+        source_context: AtomSourceContext,
+        tetrahedral: Option<PreparedTetrahedralCenter>,
+    },
+}
+
+#[derive(Clone, Debug)]
+enum AtomSpellingStart {
+    Grammar { atom: AtomId, state: AtomSpellingState },
+}
+
+#[derive(Clone, Debug)]
+struct AtomSpellingProgress {
+    atom: AtomId,
+    state: AtomSpellingState,
 }
 
 #[derive(Clone, Debug)]
 struct PreparedTetrahedralCenter {
     reference_order: [TetrahedralLigand; 4],
-    text_by_parity: [Box<str>; 2],
+    at_for_even_parity: bool,
     order_variable: VariableId,
     role_pattern_variable: VariableId,
     bond_pattern_bits: Box<[(BondId, u8)]>,
@@ -467,6 +497,7 @@ impl PreparedTetrahedralCenter {
 }
 
 impl PreparedNonStereo {
+    #[cfg(test)]
     pub(crate) fn new(
         molecule: PreparedMolecule,
         atom_text: Vec<String>,
@@ -496,6 +527,16 @@ impl PreparedNonStereo {
         bond_tokens: Vec<NonStereoBondToken>,
         directional_relations: Vec<PreparedDirectionalRelation>,
     ) -> Result<Self, PreparedNonStereoError> {
+        #[cfg(test)]
+        let test_atom_labels = atoms
+            .iter()
+            .map(|atom| match atom {
+                PreparedAtomToken::Facts { facts, .. } => facts.element.as_str().to_owned(),
+                PreparedAtomToken::Fixed(text) => text.clone(),
+                PreparedAtomToken::Tetrahedral { text_by_parity, .. } => text_by_parity[0].clone(),
+            })
+            .collect::<Vec<_>>();
+
         let graph = molecule.graph();
         if atoms.len() != graph.atom_count() {
             return Err(PreparedNonStereoError::AtomTextCountMismatch {
@@ -538,16 +579,45 @@ impl PreparedNonStereo {
             PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
         let atoms = atoms
             .into_iter()
-            .map(|prepared| match prepared {
-                PreparedAtomToken::Fixed(text) => PreparedAtom::Fixed(text.into_boxed_str()),
-                PreparedAtomToken::Tetrahedral {
-                    reference_order,
-                    text_by_parity,
-                } => PreparedAtom::Tetrahedral(prepare_tetrahedral_center(
-                    &mut assembly,
-                    reference_order,
-                    text_by_parity,
-                )),
+            .enumerate()
+            .map(|(index, prepared)| match prepared {
+                PreparedAtomToken::Facts {
+                    facts,
+                    source_context,
+                    tetrahedral_reference_order,
+                    at_for_even_parity,
+                } => {
+                    let tetrahedral = tetrahedral_reference_order.map(|reference_order| {
+                        prepare_tetrahedral_center(
+                            &mut assembly,
+                            reference_order,
+                            at_for_even_parity,
+                        )
+                    });
+                    PreparedAtom::Facts { facts, source_context, tetrahedral }
+                }
+                #[cfg(test)]
+                #[cfg(test)]
+                PreparedAtomToken::Fixed(text) => PreparedAtom::Facts {
+                    facts: test_atom_facts(&molecule.graph(), &bond_tokens, AtomId::new(u32::try_from(index).unwrap()), &text, None),
+                    source_context: AtomSourceContext::default(),
+                    tetrahedral: None,
+                },
+                #[cfg(test)]
+                PreparedAtomToken::Tetrahedral { reference_order, text_by_parity } => {
+                    let facts = test_tetrahedral_facts(
+                        reference_order.contains(&TetrahedralLigand::VirtualHydrogen),
+                    );
+                    PreparedAtom::Facts {
+                        facts,
+                        source_context: AtomSourceContext::default(),
+                        tetrahedral: Some(prepare_tetrahedral_center(
+                            &mut assembly,
+                            reference_order,
+                            text_by_parity[0].contains('@') && !text_by_parity[0].contains("@@"),
+                        )),
+                    }
+                }
             })
             .collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
@@ -561,6 +631,8 @@ impl PreparedNonStereo {
             directional_bonds: Arc::from(directional_bonds.into_boxed_slice()),
             directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             #[cfg(test)]
+            test_atom_labels: Arc::from(test_atom_labels.into_boxed_slice()),
+            #[cfg(test)]
             work_counters: Arc::new(WriterWorkCounters::default()),
         })
     }
@@ -569,24 +641,69 @@ impl PreparedNonStereo {
         &self.molecule
     }
 
-    fn atom_text(&self, atom: AtomId) -> &str {
-        let prepared = self
-            .atoms
-            .get(atom.index())
-            .expect("prepared atom text must match the bound molecule");
+    fn atom_facts(&self, atom: AtomId) -> &AtomFacts {
+        let prepared = self.atoms.get(atom.index()).expect("prepared atom facts must match the bound molecule");
         match prepared {
-            PreparedAtom::Fixed(text) => text,
-            PreparedAtom::Tetrahedral(_) => {
-                panic!("tetrahedral atom text requires a parity choice")
+            PreparedAtom::Facts { facts, .. } => facts,
+        }
+    }
+
+    fn atom_source_context(&self, atom: AtomId) -> AtomSourceContext {
+        match self.atoms.get(atom.index()).expect("prepared atom facts must match the bound molecule") {
+            PreparedAtom::Facts { source_context, .. } => *source_context,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn atom_text(&self, atom: AtomId) -> &str {
+        &self.test_atom_labels[atom.index()]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn normalize_test_atom_classes(&self, text: &str) -> String {
+        let mut normalized = text.to_owned();
+        for (index, atom) in self.atoms.iter().enumerate() {
+            let PreparedAtom::Facts { facts, .. } = atom;
+            if facts.atom_class != 0 {
+                normalized = normalized.replace(
+                    &format!("[*:{}]", facts.atom_class),
+                    &self.test_atom_labels[index],
+                );
             }
         }
+        normalized
     }
 
     fn tetrahedral_center(&self, atom: AtomId) -> Option<&PreparedTetrahedralCenter> {
         match self.atoms.get(atom.index())? {
-            PreparedAtom::Fixed(_) => None,
-            PreparedAtom::Tetrahedral(center) => Some(center),
+            PreparedAtom::Facts { tetrahedral, .. } => tetrahedral.as_ref(),
         }
+    }
+
+    fn atom_spelling_context(
+        &self,
+        atom: AtomId,
+        parity: Option<TetrahedralParity>,
+    ) -> AtomSpellingContext {
+        let mut bonds = AtomBondContext::default();
+        for incident in self.molecule.graph().neighbors(atom).expect("prepared atom belongs to graph") {
+            match self.bond_tokens[incident.bond().index()] {
+                NonStereoBondToken::Elided | NonStereoBondToken::Single => bonds.single_bonds += 1,
+                NonStereoBondToken::Double => bonds.double_bonds += 1,
+                NonStereoBondToken::Triple => bonds.triple_bonds += 1,
+                NonStereoBondToken::Aromatic => bonds.aromatic_bonds += 1,
+                NonStereoBondToken::DativeAToB | NonStereoBondToken::DativeBToA => {}
+            }
+        }
+        let tetrahedral_marker = match (self.tetrahedral_center(atom), parity) {
+            (Some(center), Some(parity)) => {
+                let is_at = center.at_for_even_parity == (parity == TetrahedralParity::Even);
+                Some(if is_at { TetrahedralMarker::At } else { TetrahedralMarker::AtAt })
+            }
+            (None, None) => None,
+            _ => panic!("tetrahedral spelling parity must match prepared center"),
+        };
+        AtomSpellingContext { tetrahedral_marker, bonds }
     }
 
     fn bond_text(&self, bond: BondId, from: AtomId) -> &'static str {
@@ -688,7 +805,7 @@ fn provisionally_compiled_directional_bonds(
 fn prepare_tetrahedral_center(
     assembly: &mut PreparedConstraintAssembly,
     reference_order: [TetrahedralLigand; 4],
-    text_by_parity: [String; 2],
+    at_for_even_parity: bool,
 ) -> PreparedTetrahedralCenter {
     let bond_pattern_bits = reference_order
         .iter()
@@ -740,7 +857,7 @@ fn prepare_tetrahedral_center(
 
     PreparedTetrahedralCenter {
         reference_order,
-        text_by_parity: text_by_parity.map(String::into_boxed_str),
+        at_for_even_parity,
         order_variable,
         role_pattern_variable,
         bond_pattern_bits: bond_pattern_bits.into_boxed_slice(),
@@ -1140,21 +1257,33 @@ fn validate_prepared_atom(
     prepared: &PreparedAtomToken,
 ) -> Result<(), PreparedNonStereoError> {
     match prepared {
-        PreparedAtomToken::Fixed(text) => {
-            if text.is_empty() {
-                return Err(PreparedNonStereoError::EmptyAtomText(atom));
-            }
+        PreparedAtomToken::Facts { tetrahedral_reference_order: None, .. } => {}
+        PreparedAtomToken::Facts { tetrahedral_reference_order: Some(reference_order), .. } => {
+            validate_tetrahedral_references(graph, atom, reference_order)?;
         }
-        PreparedAtomToken::Tetrahedral {
-            reference_order,
-            text_by_parity,
-        } => {
+        #[cfg(test)]
+        PreparedAtomToken::Fixed(text) if !text.is_empty() => {}
+        #[cfg(test)]
+        PreparedAtomToken::Fixed(_) => return Err(PreparedNonStereoError::EmptyAtomText(atom)),
+        #[cfg(test)]
+        PreparedAtomToken::Tetrahedral { reference_order, text_by_parity } => {
             if text_by_parity.iter().any(String::is_empty) {
                 return Err(PreparedNonStereoError::EmptyTetrahedralAtomText(atom));
             }
             if text_by_parity[0] == text_by_parity[1] {
                 return Err(PreparedNonStereoError::RepeatedTetrahedralAtomText(atom));
             }
+            validate_tetrahedral_references(graph, atom, reference_order)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_tetrahedral_references(
+    graph: &crate::prepared::PreparedGraph,
+    atom: AtomId,
+    reference_order: &[TetrahedralLigand; 4],
+) -> Result<(), PreparedNonStereoError> {
             let hydrogen_count = reference_order
                 .iter()
                 .filter(|ligand| **ligand == TetrahedralLigand::VirtualHydrogen)
@@ -1184,9 +1313,67 @@ fn validate_prepared_atom(
                     atom,
                 ));
             }
-        }
-    }
     Ok(())
+}
+
+#[cfg(test)]
+fn test_atom_facts(
+    graph: &crate::prepared::PreparedGraph,
+    bond_tokens: &[NonStereoBondToken],
+    atom: AtomId,
+    symbol: &str,
+    fixed_hydrogens: Option<u8>,
+) -> AtomFacts {
+    let element = ElementSymbol::new(symbol).ok();
+    if let Some(element) = element {
+        let valence = match symbol {
+            "B" | "N" | "P" => 3_i16,
+            "C" => 4,
+            "O" | "S" => 2,
+            "F" | "Cl" | "Br" | "I" => 1,
+            _ => 0,
+        };
+        let bond_valence = graph
+            .neighbors(atom)
+            .expect("test atom exists")
+            .iter()
+            .map(|incident| match bond_tokens[incident.bond().index()] {
+                NonStereoBondToken::Elided | NonStereoBondToken::Single => 1_i16,
+                NonStereoBondToken::Double => 2,
+                NonStereoBondToken::Triple => 3,
+                NonStereoBondToken::Aromatic
+                | NonStereoBondToken::DativeAToB
+                | NonStereoBondToken::DativeBToA => 0,
+            })
+            .sum::<i16>();
+        let hydrogens = fixed_hydrogens.unwrap_or_else(|| {
+            u8::try_from((valence - bond_valence).max(0)).expect("test hydrogen count fits")
+        });
+        return AtomFacts::new(element, false, None, 0, hydrogens, 0)
+            .expect("test atom facts are valid");
+    }
+    AtomFacts::new(
+        ElementSymbol::new("*").expect("wildcard is an OpenSMILES element"),
+        false,
+        None,
+        0,
+        0,
+        u64::try_from(atom.index() + 1).expect("test atom class fits"),
+    )
+    .expect("test atom facts are valid")
+}
+
+#[cfg(test)]
+fn test_tetrahedral_facts(has_virtual_hydrogen: bool) -> AtomFacts {
+    AtomFacts::new(
+        ElementSymbol::new("C").expect("carbon is an OpenSMILES element"),
+        false,
+        None,
+        0,
+        u8::from(has_virtual_hydrogen),
+        0,
+    )
+    .expect("tetrahedral test facts are valid")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1344,7 +1531,11 @@ struct RingLabels {
 
 impl RingLabels {
     fn next_available(&self) -> RingLabelSlot {
-        let mut candidate = RingLabelSlot(0);
+        self.next_available_from(0)
+    }
+
+    fn next_available_from(&self, first: usize) -> RingLabelSlot {
+        let mut candidate = RingLabelSlot(first);
         while self.bonds_by_slot.contains_key(&candidate) {
             candidate = RingLabelSlot(
                 candidate
@@ -1354,10 +1545,6 @@ impl RingLabels {
             );
         }
         candidate
-    }
-
-    fn next_label_text(&self, slot: RingLabelSlot) -> Option<String> {
-        try_ring_label_text_with_maximum(slot, self.maximum_spelling_label())
     }
 
     fn maximum_spelling_label(&self) -> usize {
@@ -1372,17 +1559,21 @@ impl RingLabels {
     }
 
     fn allocate(&mut self, bond: BondId) -> RingLabelSlot {
+        let slot = self.next_available();
+        self.allocate_at(slot, bond);
+        slot
+    }
+
+    fn allocate_at(&mut self, slot: RingLabelSlot, bond: BondId) {
         assert!(
             self.bonds_by_slot.values().all(|owner| *owner != bond),
             "one ring bond may own only one visible label"
         );
-        let slot = self.next_available();
         assert_eq!(
             self.bonds_by_slot.insert(slot, bond),
             None,
             "a newly allocated visible ring label must be free"
         );
-        slot
     }
 
     fn slot_for_bond(&self, bond: BondId) -> RingLabelSlot {
@@ -1456,7 +1647,7 @@ pub(crate) enum ObservedPending {
     RingOpeningLabel {
         bond: BondId,
         endpoint: AtomId,
-        label: usize,
+        label: Option<usize>,
     },
     RingClosureLabel {
         bond: BondId,
@@ -1722,6 +1913,7 @@ pub(crate) struct NonStereoWriterState<S> {
     structural: WriterState<S>,
     labels: RingLabels,
     pending: Option<PendingEmission>,
+    atom_spelling: Option<AtomSpellingProgress>,
 }
 
 impl<S: ConstraintSolver> NonStereoWriterState<S> {
@@ -1752,6 +1944,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 structural,
                 labels: RingLabels::default(),
                 pending: None,
+                atom_spelling: None,
             }),
         )
     }
@@ -1760,12 +1953,18 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         self.structural.active_atom()
     }
 
+    #[cfg(test)]
+    pub(crate) fn is_spelling_atom(&self) -> bool {
+        self.atom_spelling.is_some()
+    }
+
     pub(crate) const fn graph_is_complete(&self) -> bool {
         self.structural.graph_is_complete()
     }
 
     pub(crate) fn is_accepted(&self) -> bool {
         self.pending.is_none()
+            && self.atom_spelling.is_none()
             && self.labels.is_clean()
             && self.structural.active_atom().is_none()
             && self.structural.graph_is_complete()
@@ -1805,7 +2004,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             } => ObservedPending::RingOpeningLabel {
                 bond: incident.bond(),
                 endpoint: active_endpoint(),
-                label: label_slot.index(),
+                label: Some(label_slot.index()),
             },
             PendingEmission::RingClosureLabel {
                 incident,
@@ -1952,6 +2151,33 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 )),
             };
         }
+        if let Some(spelling) = &self.atom_spelling {
+            let attempts = self.atom_spelling_attempts(spelling.clone());
+            let mut choices = Vec::new();
+            for attempt in attempts {
+                match attempt {
+                    CandidateAttempt::Accepted { text, successor } => {
+                        choices.push(Choice { text, successor });
+                    }
+                    CandidateAttempt::Rejected { .. } => {}
+                    CandidateAttempt::Incomplete(failure) => {
+                        return Err(ChoiceFailure::Incomplete(failure));
+                    }
+                    CandidateAttempt::Invariant(failure) => {
+                        return Err(ChoiceFailure::Invariant(failure));
+                    }
+                    CandidateAttempt::Failed(failure) => {
+                        return Err(ChoiceFailure::Backend(failure));
+                    }
+                }
+            }
+            if choices.is_empty() {
+                return Err(ChoiceFailure::Invariant(
+                    WriterInvariantFailure::PendingEmissionRejected,
+                ));
+            }
+            return Ok(choices);
+        }
 
         let batch = self.structural.derive_candidates();
         if batch.is_contradiction() {
@@ -2091,65 +2317,128 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     continue;
                 }
             };
-            let label_slot = self.labels.next_available();
-            let mut labels = self.labels.clone();
-            let allocated = labels.allocate(incident.bond());
-            assert_eq!(
-                allocated, label_slot,
-                "advertised ring label must match the allocated label"
-            );
-            let pending = match spelling {
-                RingEndpointSpelling::Omit => None,
-                RingEndpointSpelling::Emit => Some(PendingEmission::RingOpeningLabel {
-                    incident,
-                    label_slot,
-                }),
-            };
-            let successor = Self {
-                surface: self.surface.clone(),
-                regime: self.regime,
-                structural,
-                labels,
-                pending,
-            };
-            let attempt = match spelling {
-                RingEndpointSpelling::Omit => match successor.normalize_and_check() {
-                    SuccessorAttempt::Accepted(successor) => {
-                        let Some(text) = self.labels.next_label_text(label_slot) else {
-                            attempts.push(CandidateAttempt::Rejected {
-                                reason: CandidateRejection::RingLabelUnavailable {
-                                    next_label: label_slot.index() + 1,
-                                    maximum_label: self.labels.maximum_spelling_label(),
-                                },
-                            });
-                            continue;
-                        };
-                        CandidateAttempt::Accepted { text, successor }
+            let available = self.available_ring_label_options();
+            if available.is_empty() {
+                let first = match self.regime {
+                    WriterRegime::Generic { .. } => 0,
+                    WriterRegime::RdkitRandomNoncanonical => 1,
+                };
+                attempts.push(self.ring_label_exhaustion_attempt(
+                    self.labels.next_available_from(first).index(),
+                ));
+                continue;
+            }
+            match spelling {
+                RingEndpointSpelling::Omit => {
+                    for (label_slot, text) in available {
+                        let mut labels = self.labels.clone();
+                        labels.allocate_at(label_slot, incident.bond());
+                        let attempt = self.finish_attempt(
+                            text,
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: structural.clone(),
+                                labels,
+                                pending: None,
+                                atom_spelling: None,
+                            },
+                        );
+                        match attempt {
+                            CandidateAttempt::Failed(failure) => return Err(failure),
+                            attempt => attempts.push(attempt),
+                        }
                     }
-                    SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
-                    SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
-                    SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
-                    SuccessorAttempt::Failed(failure) => return Err(failure),
-                },
+                }
                 RingEndpointSpelling::Emit => {
                     let text = self.surface.bond_text(incident.bond(), active);
                     assert!(
                         !text.is_empty(),
                         "an emitted ring endpoint must have prepared bond text"
                     );
-                    self.finish_attempt(text.to_owned(), successor)
+                    let slots = available
+                        .into_iter()
+                        .map(|(slot, _)| slot)
+                        .fold(Vec::new(), |mut slots, slot| {
+                            if slots.last() != Some(&slot) {
+                                slots.push(slot);
+                            }
+                            slots
+                        });
+                    for label_slot in slots {
+                        let mut labels = self.labels.clone();
+                        labels.allocate_at(label_slot, incident.bond());
+                        let attempt = self.finish_attempt(
+                            text.to_owned(),
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: structural.clone(),
+                                labels,
+                                pending: Some(PendingEmission::RingOpeningLabel { incident, label_slot }),
+                                atom_spelling: None,
+                            },
+                        );
+                        match attempt {
+                            CandidateAttempt::Failed(failure) => return Err(failure),
+                            CandidateAttempt::Invariant(_) => {
+                                attempts.push(attempt);
+                                break;
+                            }
+                            attempt => attempts.push(attempt),
+                        }
+                    }
                 }
-            };
-            match attempt {
-                CandidateAttempt::Failed(failure) => return Err(failure),
-                CandidateAttempt::Invariant(_) => {
-                    attempts.push(attempt);
-                    break;
-                }
-                attempt => attempts.push(attempt),
             }
         }
         Ok(attempts)
+    }
+
+    fn available_ring_label_options(&self) -> Vec<(RingLabelSlot, String)> {
+        let maximum = self.labels.maximum_spelling_label();
+        match self.regime {
+            WriterRegime::Generic { .. } => (0..=maximum)
+                .map(RingLabelSlot)
+                .filter(|slot| !self.labels.bonds_by_slot.contains_key(slot))
+                .flat_map(|slot| {
+                    ring_label_spellings(slot.index())
+                        .into_iter()
+                        .map(move |text| (slot, text))
+                })
+                .collect(),
+            WriterRegime::RdkitRandomNoncanonical => {
+                let slot = self.labels.next_available_from(1);
+                if slot.index() <= maximum {
+                    vec![(slot, ring_label_number_text(slot.index()))]
+                } else {
+                    Vec::new()
+                }
+            }
+        }
+    }
+
+    fn label_text_options(&self, slot: RingLabelSlot) -> Vec<String> {
+        if slot.index() > self.labels.maximum_spelling_label() {
+            return Vec::new();
+        }
+        match self.regime {
+            WriterRegime::Generic { .. } => ring_label_spellings(slot.index()),
+            WriterRegime::RdkitRandomNoncanonical => {
+                vec![ring_label_number_text(slot.index())]
+            }
+        }
+    }
+
+    fn ring_label_exhaustion_attempt(
+        &self,
+        next_label: usize,
+    ) -> CandidateAttempt<Self, S::Failure> {
+        CandidateAttempt::Rejected {
+            reason: CandidateRejection::RingLabelUnavailable {
+                next_label,
+                maximum_label: self.labels.maximum_spelling_label(),
+            },
+        }
     }
 
     fn attempt_incomplete_ring_candidate(
@@ -2262,32 +2551,75 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     continue;
                 }
             };
-            let label_slot = self.labels.next_available();
-            let mut labels = self.labels.clone();
-            assert_eq!(labels.allocate(incident.bond()), label_slot);
-            let successor = Self {
-                surface: self.surface.clone(),
-                regime: self.regime,
-                structural,
-                labels,
-                pending: text.map(|_| PendingEmission::RingOpeningLabel {
-                    incident,
-                    label_slot,
-                }),
-            };
-            let attempt = match text {
-                Some(text) => self.finish_attempt(text.to_owned(), successor),
-                None => self.finish_ring_label_attempt(label_slot, successor),
-            };
-            let stop = matches!(
-                attempt,
-                CandidateAttempt::Incomplete(_)
-                    | CandidateAttempt::Invariant(_)
-                    | CandidateAttempt::Failed(_)
-            );
-            attempts.push(attempt);
-            if stop {
-                break;
+            let available = self.available_ring_label_options();
+            if available.is_empty() {
+                let first = match self.regime {
+                    WriterRegime::Generic { .. } => 0,
+                    WriterRegime::RdkitRandomNoncanonical => 1,
+                };
+                attempts.push(self.ring_label_exhaustion_attempt(
+                    self.labels.next_available_from(first).index(),
+                ));
+                continue;
+            }
+            match text {
+                Some(text) => {
+                    let slots = available
+                        .into_iter()
+                        .map(|(slot, _)| slot)
+                        .fold(Vec::new(), |mut slots, slot| {
+                            if slots.last() != Some(&slot) {
+                                slots.push(slot);
+                            }
+                            slots
+                        });
+                    for label_slot in slots {
+                        let mut labels = self.labels.clone();
+                        labels.allocate_at(label_slot, incident.bond());
+                        let attempt = self.finish_attempt(
+                            text.to_owned(),
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: structural.clone(),
+                                labels,
+                                pending: Some(PendingEmission::RingOpeningLabel { incident, label_slot }),
+                                atom_spelling: None,
+                            },
+                        );
+                        let stop = matches!(
+                            attempt,
+                            CandidateAttempt::Incomplete(_)
+                                | CandidateAttempt::Invariant(_)
+                                | CandidateAttempt::Failed(_)
+                        );
+                        attempts.push(attempt);
+                        if stop {
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    for (label_slot, label_text) in available {
+                        let mut labels = self.labels.clone();
+                        labels.allocate_at(label_slot, incident.bond());
+                        let attempt = self.finish_attempt(
+                            label_text,
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: structural.clone(),
+                                labels,
+                                pending: None,
+                                atom_spelling: None,
+                            },
+                        );
+                        match attempt {
+                            CandidateAttempt::Failed(failure) => return Err(failure),
+                            attempt => attempts.push(attempt),
+                        }
+                    }
+                }
             }
         }
         Ok(attempts)
@@ -2331,42 +2663,54 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             assert!(structural
                 .semantic_domain(site.ring_plan_variable)
                 .is_singleton());
-            let successor = match text {
-                None => {
-                    let mut labels = self.labels.clone();
-                    labels.release(label_slot, incident.bond());
-                    Self {
-                        surface: self.surface.clone(),
-                        regime: self.regime,
-                        structural,
-                        labels,
-                        pending: None,
+            match text {
+                Some(text) => {
+                    let attempt = self.finish_attempt(
+                        text.to_owned(),
+                        Self {
+                            surface: self.surface.clone(),
+                            regime: self.regime,
+                            structural,
+                            labels: self.labels.clone(),
+                            pending: Some(PendingEmission::RingClosureLabel {
+                                incident,
+                                label_slot,
+                            }),
+                            atom_spelling: None,
+                        },
+                    );
+                    let stop = matches!(
+                        attempt,
+                        CandidateAttempt::Incomplete(_)
+                            | CandidateAttempt::Invariant(_)
+                            | CandidateAttempt::Failed(_)
+                    );
+                    attempts.push(attempt);
+                    if stop {
+                        break;
                     }
                 }
-                Some(_) => Self {
-                    surface: self.surface.clone(),
-                    regime: self.regime,
-                    structural,
-                    labels: self.labels.clone(),
-                    pending: Some(PendingEmission::RingClosureLabel {
-                        incident,
-                        label_slot,
-                    }),
-                },
-            };
-            let attempt = match text {
-                Some(text) => self.finish_attempt(text.to_owned(), successor),
-                None => self.finish_ring_label_attempt(label_slot, successor),
-            };
-            let stop = matches!(
-                attempt,
-                CandidateAttempt::Incomplete(_)
-                    | CandidateAttempt::Invariant(_)
-                    | CandidateAttempt::Failed(_)
-            );
-            attempts.push(attempt);
-            if stop {
-                break;
+                None => {
+                    for label_text in self.label_text_options(label_slot) {
+                        let mut labels = self.labels.clone();
+                        labels.release(label_slot, incident.bond());
+                        let attempt = self.finish_attempt(
+                            label_text,
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: structural.clone(),
+                                labels,
+                                pending: None,
+                                atom_spelling: None,
+                            },
+                        );
+                        match attempt {
+                            CandidateAttempt::Failed(failure) => return Err(failure),
+                            attempt => attempts.push(attempt),
+                        }
+                    }
+                }
             }
         }
         Ok(attempts)
@@ -2421,6 +2765,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             );
             let attempt = match spelling {
                 RingEndpointSpelling::Omit => {
+                    if label_slot.index() > self.labels.maximum_spelling_label() {
+                        attempts.push(self.ring_label_exhaustion_attempt(label_slot.index()));
+                        continue;
+                    }
                     let mut labels = self.labels.clone();
                     labels.release(label_slot, incident.bond());
                     let successor = Self {
@@ -2429,19 +2777,17 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         structural,
                         labels,
                         pending: None,
-                    };
+                    atom_spelling: None,
+};
                     match successor.normalize_and_check() {
                         SuccessorAttempt::Accepted(successor) => {
-                            let Some(text) = self.labels.next_label_text(label_slot) else {
-                                attempts.push(CandidateAttempt::Rejected {
-                                    reason: CandidateRejection::RingLabelUnavailable {
-                                        next_label: label_slot.index() + 1,
-                                        maximum_label: self.labels.maximum_spelling_label(),
-                                    },
+                            for text in self.label_text_options(label_slot) {
+                                attempts.push(CandidateAttempt::Accepted {
+                                    text,
+                                    successor: successor.clone(),
                                 });
-                                continue;
-                            };
-                            CandidateAttempt::Accepted { text, successor }
+                            }
+                            continue;
                         }
                         SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
                         SuccessorAttempt::Incomplete(failure) => {
@@ -2472,7 +2818,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 incident,
                                 label_slot,
                             }),
-                        },
+                        atom_spelling: None,
+},
                     )
                 }
             };
@@ -2493,10 +2840,17 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         atom: AtomId,
         entry_bond: Option<BondId>,
         context: &LocalLayoutContext,
-    ) -> Vec<(String, Vec<(VariableId, Domain)>, Vec<FactorId>)> {
+    ) -> Vec<(AtomSpellingStart, Vec<(VariableId, Domain)>, Vec<FactorId>)> {
+        let facts = *self.surface.atom_facts(atom);
         let Some(center) = self.surface.tetrahedral_center(atom) else {
             return vec![(
-                self.surface.atom_text(atom).to_owned(),
+                AtomSpellingStart::Grammar {
+                    atom,
+                    state: AtomSpellingState::initial(
+                        facts,
+                        self.surface.atom_spelling_context(atom, None),
+                    ),
+                },
                 Vec::new(),
                 Vec::new(),
             )];
@@ -2511,8 +2865,15 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         TetrahedralParity::ALL
             .into_iter()
             .map(|parity| {
+                let spelling = AtomSpellingStart::Grammar {
+                    atom,
+                    state: AtomSpellingState::initial(
+                        facts,
+                        self.surface.atom_spelling_context(atom, Some(parity)),
+                    ),
+                };
                 (
-                    center.text_by_parity[parity.index()].to_string(),
+                    spelling,
                     vec![
                         (
                             center.order_variable,
@@ -2948,13 +3309,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             structural,
                             labels: self.labels.clone(),
                             pending: Some(PendingEmission::ComponentRootAtom(atom)),
-                        },
+                        atom_spelling: None,
+},
                     )]
                 } else {
                     let context = self.structural.prospective_root_layout_context(atom);
                     collect_attempts_fail_fast(
-                        self.atom_token_specs(atom, None, &context).into_iter().map(
-                            |(text, mut restriction, activate)| {
+                        self.atom_token_specs(atom, None, &context).into_iter().flat_map(
+                            |(spelling, mut restriction, activate)| {
                                 restriction.extend_from_slice(&anchor);
                                 let structural = match self.attempt_candidate_with_transition(
                                     candidate,
@@ -2964,22 +3326,25 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 ) {
                                     Ok(Consistency::Consistent(structural)) => structural,
                                     Ok(Consistency::Contradiction) => {
-                                        return CandidateAttempt::Rejected {
+                                        return vec![CandidateAttempt::Rejected {
                                             reason: CandidateRejection::Contradiction,
-                                        };
+                                        }];
                                     }
-                                    Err(failure) => return CandidateAttempt::Failed(failure),
+                                    Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                                 };
-                                self.finish_attempt(
-                                    text,
-                                    Self {
+                                let state = Self {
                                         surface: self.surface.clone(),
                                         regime: self.regime,
                                         structural,
                                         labels: self.labels.clone(),
                                         pending: None,
-                                    },
-                                )
+                                        atom_spelling: None,
+                                    };
+                                match spelling {
+                                    AtomSpellingStart::Grammar { atom, state: spelling } => {
+                                        state.atom_spelling_attempts(AtomSpellingProgress { atom, state: spelling })
+                                    }
+                                }
                             },
                         ),
                     )
@@ -3035,7 +3400,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         structural,
                         labels,
                         pending: Some(PendingEmission::BranchTraversalEmission(incident)),
-                    },
+                    atom_spelling: None,
+},
                 )]
             }
             StructuralCandidate::InlineChild { incident } => {
@@ -3085,7 +3451,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         let context = self
                             .structural
                             .prospective_inline_child_layout_context(incident);
-                        for (text, mut child_restriction, activate) in
+                        for (spelling, mut child_restriction, activate) in
                             self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
                         {
                             let mut restrictions = parent_restriction.clone();
@@ -3117,25 +3483,30 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 attempts.push(CandidateAttempt::Invariant(failure));
                                 return attempts;
                             }
-                            let attempt = self.finish_attempt(
-                                text,
-                                Self {
+                            let state = Self {
                                     surface: self.surface.clone(),
                                     regime: self.regime,
                                     structural: structural.enter_committed_inline_child(incident),
                                     labels: self.labels.clone(),
                                     pending: None,
-                                },
-                            );
-                            let stop = matches!(
-                                attempt,
-                                CandidateAttempt::Incomplete(_)
-                                    | CandidateAttempt::Invariant(_)
-                                    | CandidateAttempt::Failed(_)
-                            );
-                            attempts.push(attempt);
-                            if stop {
-                                return attempts;
+                                    atom_spelling: None,
+                                };
+                            let spellings = match spelling {
+                                AtomSpellingStart::Grammar { atom, state: spelling } => {
+                                    state.atom_spelling_attempts(AtomSpellingProgress { atom, state: spelling })
+                                }
+                            };
+                            for attempt in spellings {
+                                let stop = matches!(
+                                    attempt,
+                                    CandidateAttempt::Incomplete(_)
+                                        | CandidateAttempt::Invariant(_)
+                                        | CandidateAttempt::Failed(_)
+                                );
+                                attempts.push(attempt);
+                                if stop {
+                                    return attempts;
+                                }
                             }
                         }
                     } else {
@@ -3174,7 +3545,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 structural,
                                 labels: self.labels.clone(),
                                 pending: Some(PendingEmission::InlineAtom(incident)),
-                            },
+                            atom_spelling: None,
+},
                         );
                         let stop = matches!(
                             attempt,
@@ -3212,7 +3584,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         structural,
                         labels,
                         pending: None,
-                    },
+                    atom_spelling: None,
+},
                 )]
             }
             StructuralCandidate::FinishComponent => {
@@ -3287,7 +3660,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 structural,
                                 labels: self.labels.clone(),
                                 pending: Some(PendingEmission::BranchAtom(incident)),
-                            },
+                            atom_spelling: None,
+},
                         );
                         let stop = matches!(
                             attempt,
@@ -3318,16 +3692,25 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     label_slot,
                     "a pending opening label must retain its assignment"
                 );
-                vec![self.finish_ring_label_attempt(
-                    label_slot,
-                    Self {
-                        surface: self.surface.clone(),
-                        regime: self.regime,
-                        structural: self.structural.clone(),
-                        labels: self.labels.clone(),
-                        pending: None,
-                    },
-                )]
+                if label_slot.index() > self.labels.maximum_spelling_label() {
+                    return vec![self.ring_label_exhaustion_attempt(label_slot.index())];
+                }
+                self.label_text_options(label_slot)
+                    .into_iter()
+                    .map(|text| {
+                        self.finish_attempt(
+                            text,
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: self.structural.clone(),
+                                labels: self.labels.clone(),
+                                pending: None,
+                                atom_spelling: None,
+                            },
+                        )
+                    })
+                    .collect()
             }
             PendingEmission::RingClosureLabel {
                 incident,
@@ -3338,18 +3721,27 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     label_slot,
                     "a pending ring label must retain its assignment"
                 );
-                let mut labels = self.labels.clone();
-                labels.release(label_slot, incident.bond());
-                vec![self.finish_ring_label_attempt(
-                    label_slot,
-                    Self {
-                        surface: self.surface.clone(),
-                        regime: self.regime,
-                        structural: self.structural.clone(),
-                        labels,
-                        pending: None,
-                    },
-                )]
+                if label_slot.index() > self.labels.maximum_spelling_label() {
+                    return vec![self.ring_label_exhaustion_attempt(label_slot.index())];
+                }
+                self.label_text_options(label_slot)
+                    .into_iter()
+                    .map(|text| {
+                        let mut labels = self.labels.clone();
+                        labels.release(label_slot, incident.bond());
+                        self.finish_attempt(
+                            text,
+                            Self {
+                                surface: self.surface.clone(),
+                                regime: self.regime,
+                                structural: self.structural.clone(),
+                                labels,
+                                pending: None,
+                                atom_spelling: None,
+                            },
+                        )
+                    })
+                    .collect()
             }
         }
     }
@@ -3378,16 +3770,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         collect_attempts_fail_fast(
             self.atom_token_specs(atom, entry_bond, &context)
                 .into_iter()
-                .map(|(text, mut restrictions, activate)| {
+                .flat_map(|(spelling, mut restrictions, activate)| {
                     restrictions.extend_from_slice(semantic_restrictions);
                     let structural = match self.restrict_semantics(&restrictions, &activate) {
                         Ok(Consistency::Consistent(structural)) => structural,
                         Ok(Consistency::Contradiction) => {
-                            return CandidateAttempt::Rejected {
+                            return vec![CandidateAttempt::Rejected {
                                 reason: CandidateRejection::Contradiction,
-                            };
+                            }];
                         }
-                        Err(failure) => return CandidateAttempt::Failed(failure),
+                        Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                     };
                     let structural = match entry {
                         PendingAtomEntry::AlreadyEntered => structural,
@@ -3398,42 +3790,63 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             structural.enter_committed_branch_child(incident)
                         }
                     };
-                    self.finish_attempt(
-                        text,
-                        Self {
+                    let state = Self {
                             surface: self.surface.clone(),
                             regime: self.regime,
                             structural,
                             labels: self.labels.clone(),
                             pending: None,
-                        },
-                    )
+                        atom_spelling: None,
+};
+                    match spelling {
+                        AtomSpellingStart::Grammar { atom, state: spelling } => {
+                            state.atom_spelling_attempts(AtomSpellingProgress { atom, state: spelling })
+                        }
+                    }
                 }),
         )
     }
 
-    fn finish_ring_label_attempt(
+    fn atom_spelling_attempts(
         &self,
-        label_slot: RingLabelSlot,
-        successor: Self,
-    ) -> CandidateAttempt<Self, S::Failure> {
-        match successor.normalize_and_check() {
-            SuccessorAttempt::Accepted(successor) => {
-                let Some(text) = self.labels.next_label_text(label_slot) else {
-                    return CandidateAttempt::Rejected {
-                        reason: CandidateRejection::RingLabelUnavailable {
-                            next_label: label_slot.index() + 1,
-                            maximum_label: self.labels.maximum_spelling_label(),
-                        },
-                    };
+        spelling: AtomSpellingProgress,
+    ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        let atom = spelling.atom;
+        let facts = self.surface.atom_facts(atom);
+        let source_context = self.surface.atom_source_context(atom);
+        let tetrahedral = self.surface.tetrahedral_center(atom).is_some();
+        spelling
+            .state
+            .choices()
+            .into_iter()
+            .filter(|choice| {
+                self.regime != WriterRegime::RdkitRandomNoncanonical
+                    || rdkit_atom_field_allowed(
+                        facts,
+                        source_context,
+                        tetrahedral,
+                        choice.field,
+                        choice.text,
+                    )
+            })
+            .map(|choice| {
+                let successor_spelling = (!choice.successor.is_complete()).then_some(
+                    AtomSpellingProgress {
+                        atom,
+                        state: choice.successor,
+                    },
+                );
+                let successor = Self {
+                    surface: self.surface.clone(),
+                    regime: self.regime,
+                    structural: self.structural.clone(),
+                    labels: self.labels.clone(),
+                    pending: None,
+                    atom_spelling: successor_spelling,
                 };
-                CandidateAttempt::Accepted { text, successor }
-            }
-            SuccessorAttempt::Rejected(reason) => CandidateAttempt::Rejected { reason },
-            SuccessorAttempt::Incomplete(failure) => CandidateAttempt::Incomplete(failure),
-            SuccessorAttempt::Invariant(failure) => CandidateAttempt::Invariant(failure),
-            SuccessorAttempt::Failed(failure) => CandidateAttempt::Failed(failure),
-        }
+                self.finish_attempt(choice.text.to_string(), successor)
+            })
+            .collect()
     }
 
     fn finish_attempt(&self, text: String, successor: Self) -> CandidateAttempt<Self, S::Failure> {
@@ -3447,6 +3860,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     }
 
     fn normalize_and_check(mut self) -> SuccessorAttempt<Self, S::Failure> {
+        if self.atom_spelling.is_some() {
+            return SuccessorAttempt::Accepted(self);
+        }
         if let Some(pending) = self.pending {
             assert!(
                 self.structural.active_atom().is_some(),
@@ -3562,16 +3978,36 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     }
 }
 
-fn try_ring_label_text_with_maximum(label_slot: RingLabelSlot, maximum: usize) -> Option<String> {
-    let label = label_slot
-        .index()
-        .checked_add(1)
-        .expect("visible ring-label number must not overflow");
-    (label <= maximum).then(|| ring_label_number_text(label))
+fn rdkit_atom_field_allowed(
+    facts: &AtomFacts,
+    source_context: AtomSourceContext,
+    tetrahedral: bool,
+    field: AtomSpellingField,
+    text: char,
+) -> bool {
+    if tetrahedral {
+        match field {
+            AtomSpellingField::OpenBracket
+            | AtomSpellingField::Element
+            | AtomSpellingField::CloseBracket => true,
+            AtomSpellingField::TetrahedralMarker => matches!(text, '@'),
+            AtomSpellingField::HydrogenCount => {
+                facts.non_graph_hydrogens != 1 || text == 'H'
+            }
+            _ => false,
+        }
+    } else {
+        field == AtomSpellingField::BareElement
+            && matches!(facts.element.as_str(), "C" | "O")
+            && !facts.aromatic
+            && facts.isotope.is_none()
+            && facts.formal_charge == 0
+            && facts.atom_class == 0
+            && !source_context.atom_class_property_present
+    }
 }
 
 fn ring_label_number_text(label: usize) -> String {
-    assert!(label > 0, "visible ring labels are one-based");
     assert!(
         label <= 99,
         "ring labels above 99 require an explicit dialect policy"
@@ -3583,9 +4019,22 @@ fn ring_label_number_text(label: usize) -> String {
     }
 }
 
+fn ring_label_spellings(label: usize) -> Vec<String> {
+    let canonical = ring_label_number_text(label);
+    if label < 10 {
+        vec![canonical, format!("%{label:02}")]
+    } else {
+        vec![canonical]
+    }
+}
+
 #[cfg(test)]
 #[path = "nonstereo_writer_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "generic_ring_label_tests.rs"]
+mod generic_ring_label_tests;
 
 #[cfg(test)]
 #[path = "nonstereo_transition_oracle.rs"]

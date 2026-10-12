@@ -38,41 +38,75 @@ class DirectionalDoubleBond:
 
 @dataclass(frozen=True, slots=True)
 class TetrahedralAtom:
-    """Native bond identities followed by non-graph ligands and parity spellings."""
+    """Native bond identities followed by the atom's non-graph ligand facts."""
 
+    facts: AtomFacts
     reference_order: tuple[TetrahedralLigandReference, ...]
-    text_by_parity: tuple[str, str]
+    at_for_even_parity: bool
 
     def __post_init__(self) -> None:
-        if type(self.reference_order) is not tuple or type(self.text_by_parity) is not tuple:
+        if type(self.reference_order) is not tuple or type(self.at_for_even_parity) is not bool:
             raise TypeError("tetrahedral atom facts must use immutable tuples")
+        if type(self.facts) is not AtomFacts:
+            raise TypeError("tetrahedral atom requires immutable AtomFacts")
         if any(
             type(value) is not int and type(value) is not VirtualHydrogen
             for value in self.reference_order
         ):
             raise TypeError("tetrahedral reference order must contain bond IDs or VirtualHydrogen")
-        if any(type(value) is not str for value in self.text_by_parity):
-            raise TypeError("tetrahedral parity spellings must be strings")
+
+
+@dataclass(frozen=True, slots=True)
+class AtomFacts:
+    """RDKit graph facts used by Rust to generate atom spellings."""
+
+    element: str
+    aromatic: bool
+    isotope: int | None
+    formal_charge: int
+    non_graph_hydrogens: int
+    atom_class: int
+
+    def __post_init__(self) -> None:
+        if type(self.element) is not str or type(self.aromatic) is not bool:
+            raise TypeError("atom facts require an element symbol and aromatic flag")
+        if self.isotope is not None and type(self.isotope) is not int:
+            raise TypeError("atom isotope must be an integer or None")
+        if any(type(value) is not int for value in (
+            self.formal_charge, self.non_graph_hydrogens, self.atom_class,
+        )):
+            raise TypeError("atom numeric facts must be integers")
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedMolecule:
-    """Immutable atom facts and indexed bonds for the Rust writer."""
+    """Immutable atom facts, source annotations, and indexed bonds for Rust."""
 
-    atoms: tuple[str | TetrahedralAtom, ...]
+    atoms: tuple[AtomFacts | TetrahedralAtom, ...]
     bonds: tuple[tuple[int, int, str], ...]
     directional: tuple[DirectionalDoubleBond, ...] = ()
+    source_atom_class_property_present: tuple[bool, ...] = ()
 
     def __post_init__(self) -> None:
-        if any(type(value) is not tuple for value in (self.atoms, self.bonds, self.directional)):
+        if any(type(value) is not tuple for value in (
+            self.atoms, self.bonds, self.directional, self.source_atom_class_property_present,
+        )):
             raise TypeError("prepared molecule facts must use immutable tuples")
+        if not self.source_atom_class_property_present and self.atoms:
+            object.__setattr__(
+                self,
+                "source_atom_class_property_present",
+                (False,) * len(self.atoms),
+            )
+        if len(self.source_atom_class_property_present) != len(self.atoms) or any(
+            type(value) is not bool for value in self.source_atom_class_property_present
+        ):
+            raise TypeError("source atom-class presence must be one immutable bool per atom")
         if any(
-            type(value) is not str and type(value) is not TetrahedralAtom
+            type(value) is not AtomFacts and type(value) is not TetrahedralAtom
             for value in self.atoms
         ):
-            raise TypeError("prepared atoms must be fixed spellings or TetrahedralAtom facts")
-        if any(type(value) is str and value not in ("C", "O") for value in self.atoms):
-            raise ValueError("prepared atom spellings must be fixed aliphatic C or O tokens")
+            raise TypeError("prepared atoms must be AtomFacts or TetrahedralAtom facts")
         for bond in self.bonds:
             if (
                 type(bond) is not tuple
@@ -85,8 +119,10 @@ class PreparedMolecule:
                 or bond[0] == bond[1]
             ):
                 raise ValueError("prepared bonds must contain two valid atom indexes and a token")
-            if bond[2] not in ("", "="):
-                raise ValueError("prepared bonds must use an elided single-bond token or a double-bond token")
+            if bond[2] not in ("", "-", ":", "=", "#"):
+                raise ValueError(
+                    "prepared bonds must use an elided, single, aromatic, double, or triple bond token"
+                )
         for relation in self.directional:
             if type(relation) is not DirectionalDoubleBond:
                 raise TypeError("prepared directional facts must be DirectionalDoubleBond values")
@@ -110,8 +146,30 @@ class PreparedMolecule:
                 if token != "" or endpoint not in (a, b):
                     raise ValueError("prepared directional carrier must be an incident single-bond edge")
 
-    def build_writer(self) -> object:
+    def build_writer(self, *, style: str | None = None) -> object:
         """Construct the private Rust writer when its extension is available."""
+
+        if style not in (None, "rdkit_random_noncanonical"):
+            raise ValueError("style must be None or 'rdkit_random_noncanonical'")
+        if style is not None:
+            for index, atom in enumerate(self.atoms):
+                facts = atom.facts if type(atom) is TetrahedralAtom else atom
+                if (
+                    facts.element not in ("C", "O")
+                    or facts.aromatic
+                    or facts.isotope is not None
+                    or facts.formal_charge != 0
+                    or facts.atom_class != 0
+                    or self.source_atom_class_property_present[index]
+                ):
+                    raise ValueError(
+                        "style='rdkit_random_noncanonical' is only qualified for neutral, "
+                        "nonaromatic C/O atom facts without isotope or class fields"
+                    )
+            if any(token in (":", "#") for _, _, token in self.bonds):
+                raise ValueError(
+                    "style='rdkit_random_noncanonical' is not qualified for aromatic or triple bonds"
+                )
 
         try:
             core = import_module("grimace._core")
@@ -125,16 +183,26 @@ class PreparedMolecule:
 
         atom_facts = []
         for atom in self.atoms:
-            if type(atom) is str:
-                atom_facts.append(atom)
-            else:
+            if type(atom) is TetrahedralAtom:
+                facts = atom.facts
                 reference_order = tuple(
-                    "virtual_hydrogen"
-                    if ligand is VirtualHydrogen.INSTANCE
-                    else ligand
+                    "virtual_hydrogen" if ligand is VirtualHydrogen.INSTANCE else ligand
                     for ligand in atom.reference_order
                 )
-                atom_facts.append(("tetrahedral", reference_order, atom.text_by_parity))
+            else:
+                facts = atom
+                reference_order = ()
+            atom_facts.append((
+                facts.element,
+                facts.aromatic,
+                facts.isotope,
+                facts.formal_charge,
+                facts.non_graph_hydrogens,
+                facts.atom_class,
+                atom.at_for_even_parity if type(atom) is TetrahedralAtom else None,
+                reference_order,
+                self.source_atom_class_property_present[len(atom_facts)],
+            ))
         directional_facts = tuple(
             (
                 relation.bond,
@@ -147,18 +215,20 @@ class PreparedMolecule:
             for relation in self.directional
         )
         return core._SouthStar2PreparedWriter(
-            atom_facts, self.bonds, "rdkit_random_noncanonical", directional_facts
+            atom_facts,
+            self.bonds,
+            "generic_any_order" if style is None else style,
+            directional_facts,
         )
 
 
 def prepare_molecule(mol: object) -> PreparedMolecule:
-    """Prepare neutral nonaromatic aliphatic C/O graphs with single/double bonds.
+    """Prepare finite graph facts supported by the native OpenSMILES writer.
 
     Tetrahedral facts cover degree-three carbon with one hydrogen. E/Z double
     bonds require one adjacent single-bond reference carrier per end. The
-    native writer retains its narrower anchoring admission. Bond-order valence
-    determines implicit hydrogens, which preparation checks against RDKit's
-    count. Atom spelling does not come from an RDKit SMILES writer.
+    native writer retains its narrower anchoring admission. Atom spelling does
+    not come from an RDKit SMILES writer.
     """
 
     from rdkit import Chem
@@ -175,10 +245,24 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
     for index, bond in enumerate(mol.GetBonds()):
         bond_type = bond.GetBondType()
         is_aromatic = bond.GetIsAromatic()
-        if bond_type not in (Chem.BondType.SINGLE, Chem.BondType.DOUBLE) or is_aromatic:
+        if bond.HasQuery():
+            raise ValueError(
+                f"Cannot prepare South Star 2 molecule: bond {index} is a query bond"
+            )
+        if bond_type not in (
+            Chem.BondType.SINGLE,
+            Chem.BondType.DOUBLE,
+            Chem.BondType.TRIPLE,
+            Chem.BondType.AROMATIC,
+        ):
             raise ValueError(
                 f"Cannot prepare South Star 2 molecule: bond {index} has "
-                f"{bond_type = !r}, {is_aromatic = }; expected a nonaromatic SINGLE or DOUBLE bond."
+                f"{bond_type = !r}; expected a SINGLE, DOUBLE, TRIPLE, or AROMATIC bond."
+            )
+        if is_aromatic != (bond_type == Chem.BondType.AROMATIC):
+            raise ValueError(
+                f"Cannot prepare South Star 2 molecule: bond {index} has inconsistent "
+                f"{bond_type = !r} and {is_aromatic = }"
             )
         stereo = bond.GetStereo()
         bond_dir = bond.GetBondDir()
@@ -199,7 +283,16 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             source_direction_bonds.add(index)
         if bond_type == Chem.BondType.DOUBLE and stereo != Chem.BondStereo.STEREONONE and not configured:
             raise ValueError(f"Cannot prepare double bond {index} with unsupported {stereo = !r}")
-        token = "" if bond_type == Chem.BondType.SINGLE else "="
+        begin_aromatic = mol.GetAtomWithIdx(bond.GetBeginAtomIdx()).GetIsAromatic()
+        end_aromatic = mol.GetAtomWithIdx(bond.GetEndAtomIdx()).GetIsAromatic()
+        if bond_type == Chem.BondType.SINGLE:
+            token = "-" if begin_aromatic and end_aromatic else ""
+        else:
+            token = {
+                Chem.BondType.DOUBLE: "=",
+                Chem.BondType.TRIPLE: "#",
+                Chem.BondType.AROMATIC: ":",
+            }[bond_type]
         bonds.append((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx(), token))
         if bond_type == Chem.BondType.DOUBLE and stereo != Chem.BondStereo.STEREONONE:
             references = tuple(bond.GetStereoAtoms())
@@ -227,30 +320,20 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             phase = stereo in (Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOTRANS)
             directional.append(DirectionalDoubleBond(index, left, carriers[0], right, carriers[1], phase))
 
-    atom_facts: list[str | TetrahedralAtom] = []
+    atom_facts: list[AtomFacts | TetrahedralAtom] = []
+    source_atom_class_property_present: list[bool] = []
     for index, atom in enumerate(mol.GetAtoms()):
-        if atom.GetAtomicNum() not in (6, 8):
+        if atom.HasQuery():
             raise ValueError(
-                f"South Star 2 preparation does not yet spell atom {index} "
-                f"with atomic number {atom.GetAtomicNum()}"
+                f"Cannot prepare South Star 2 molecule: atom {index} is a query atom"
             )
-        if atom.GetIsAromatic():
-            raise ValueError(f"South Star 2 preparation does not yet spell aromatic atom {index}")
         formal_charge = atom.GetFormalCharge()
-        if formal_charge != 0:
-            raise ValueError(
-                f"Cannot prepare atom {index} with {formal_charge = }; expected a neutral atom"
-            )
-        isotope = atom.GetIsotope()
-        if isotope != 0:
-            raise ValueError(
-                f"Cannot prepare atom {index} with {isotope = }; isotope spelling is unsupported"
-            )
+        isotope_number = atom.GetIsotope()
+        isotope = isotope_number if isotope_number != 0 else None
         atom_map_num = atom.GetAtomMapNum()
-        if atom_map_num != 0:
-            raise ValueError(
-                f"Cannot prepare atom {index} with {atom_map_num = }; atom-map spelling is unsupported"
-            )
+        source_atom_class_property_present.append(
+            bool(atom.HasProp("molAtomMapNumber"))
+        )
         radical_electrons = atom.GetNumRadicalElectrons()
         if radical_electrons != 0:
             raise ValueError(
@@ -266,32 +349,15 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
                 f"Cannot prepare atom {index} with {chiral_tag = !r}; stereo spelling is unsupported"
             )
         tetrahedral = chiral_tag != Chem.ChiralType.CHI_UNSPECIFIED
-        if atom.GetNumExplicitHs() and not tetrahedral:
-            raise ValueError(
-                "South Star 2 preparation does not yet spell explicit hydrogen state "
-                f"on atom {index}"
-            )
-        if atom.GetNoImplicit() and not tetrahedral:
-            raise ValueError(
-                f"South Star 2 preparation does not yet spell "
-                f"no-implicit-hydrogen state on atom {index}"
-            )
-
-        valence = 4 if atom.GetAtomicNum() == 6 else 2
-        bond_valence = sum(int(bond.GetBondTypeAsDouble()) for bond in atom.GetBonds())
-        graph_implicit_hydrogens = valence - bond_valence
-        rdkit_implicit_hydrogens = atom.GetNumImplicitHs()
         non_graph_hydrogens = atom.GetTotalNumHs()
-        if (
-            graph_implicit_hydrogens < 0
-            or rdkit_implicit_hydrogens + atom.GetNumExplicitHs() != graph_implicit_hydrogens
-            or non_graph_hydrogens != graph_implicit_hydrogens
-        ):
-            raise ValueError(
-                f"Cannot prepare atom {index}: supported bond-order valence implies "
-                f"{graph_implicit_hydrogens} non-graph hydrogens, but RDKit reports "
-                f"{non_graph_hydrogens} total non-graph hydrogens"
-            )
+        facts = AtomFacts(
+            element=atom.GetSymbol(),
+            aromatic=atom.GetIsAromatic(),
+            isotope=isotope,
+            formal_charge=formal_charge,
+            non_graph_hydrogens=non_graph_hydrogens,
+            atom_class=atom_map_num,
+        )
         if tetrahedral:
             incident_bonds = tuple(bond.GetIdx() for bond in atom.GetBonds())
             if atom.GetAtomicNum() != 6 or len(incident_bonds) != 3 or non_graph_hydrogens != 1:
@@ -305,14 +371,13 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
                 *incident_bonds,
                 VirtualHydrogen.INSTANCE,
             )
-            spellings: tuple[str, str] = (
-                ("[C@H]", "[C@@H]")
-                if chiral_tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW
-                else ("[C@@H]", "[C@H]")
-            )
-            atom_facts.append(TetrahedralAtom(order, spellings))
+            atom_facts.append(TetrahedralAtom(
+                facts,
+                order,
+                chiral_tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+            ))
         else:
-            atom_facts.append("C" if atom.GetAtomicNum() == 6 else "O")
+            atom_facts.append(facts)
 
     unpaired_source_direction_bonds = sorted(
         source_direction_bonds - reference_carrier_bonds
@@ -323,4 +388,9 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
             f"{unpaired_source_direction_bonds}: each must be a configured "
             "double-bond reference carrier"
         )
-    return PreparedMolecule(atoms=tuple(atom_facts), bonds=tuple(bonds), directional=tuple(directional))
+    return PreparedMolecule(
+        atoms=tuple(atom_facts),
+        bonds=tuple(bonds),
+        directional=tuple(directional),
+        source_atom_class_property_present=tuple(source_atom_class_property_present),
+    )

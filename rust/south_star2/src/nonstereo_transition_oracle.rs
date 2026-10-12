@@ -10,6 +10,7 @@ use super::{
     BondRepresentation, NonStereoBondToken, NonStereoWriterState, ObservedNonStereoState,
     ObservedPending, PreparedNonStereo,
 };
+use crate::ids::AtomId;
 use crate::domain::Domain;
 use crate::native::NativeSolverState;
 use crate::prepared::{PreparedGraphBuilder, PreparedMolecule};
@@ -524,7 +525,7 @@ enum OraclePending {
     RingOpeningLabel {
         bond: usize,
         endpoint: usize,
-        label: usize,
+        label: Option<usize>,
     },
     RingClosureLabel {
         bond: usize,
@@ -761,7 +762,7 @@ impl<'a> OracleEngine<'a> {
                 successor.pending = Some(OraclePending::RingOpeningLabel {
                     bond: incidence.bond,
                     endpoint: active,
-                    label,
+                    label: Some(label),
                 });
                 self.publish(text.to_owned(), successor)
             }
@@ -927,8 +928,8 @@ impl<'a> OracleEngine<'a> {
                 label,
             } => {
                 assert_eq!(source.active_atom, Some(endpoint));
-                assert_eq!(source.labels_by_bond.get(&bond), Some(&label));
-                Some((OracleToken::RingLabel(label), successor))
+                assert_eq!(source.labels_by_bond.get(&bond), label.as_ref());
+                Some((OracleToken::RingLabel(label?), successor))
             }
             OraclePending::RingClosureLabel {
                 bond,
@@ -1349,7 +1350,7 @@ impl OracleEngine<'_> {
             } => {
                 let topology = self.surface.bonds[bond];
                 if state.active_atom != Some(endpoint)
-                    || state.labels_by_bond.get(&bond) != Some(&label)
+                    || state.labels_by_bond.get(&bond) != label.as_ref()
                     || state.bond_progress[bond]
                         != (OracleBondProgress::RingOpen {
                             first_endpoint: endpoint,
@@ -1496,7 +1497,7 @@ enum PendingSnapshot {
     RingOpeningLabel {
         bond: usize,
         endpoint: usize,
-        label: usize,
+        label: Option<usize>,
     },
     RingClosureLabel {
         bond: usize,
@@ -1571,7 +1572,7 @@ fn production_snapshot(observed: &ObservedNonStereoState) -> SemanticSnapshot {
             let mut labels = observed
                 .labels_by_bond
                 .iter()
-                .map(|(bond, slot)| (bond.index(), slot + 1))
+                .map(|(bond, slot)| (bond.index(), *slot))
                 .collect::<Vec<_>>();
             labels.sort_unstable();
             labels
@@ -1641,7 +1642,7 @@ fn production_pending_snapshot(pending: &ObservedPending) -> PendingSnapshot {
         } => PendingSnapshot::RingOpeningLabel {
             bond: bond.index(),
             endpoint: endpoint.index(),
-            label: label + 1,
+            label: *label,
         },
         ObservedPending::RingClosureLabel {
             bond,
@@ -1650,7 +1651,7 @@ fn production_pending_snapshot(pending: &ObservedPending) -> PendingSnapshot {
         } => PendingSnapshot::RingClosureLabel {
             bond: bond.index(),
             endpoint: endpoint.index(),
-            label: label + 1,
+            label: *label,
         },
     }
 }
@@ -1798,6 +1799,129 @@ struct PairedState {
     trace: Vec<String>,
 }
 
+fn selected_atom_spellings(surface: &PreparedNonStereo, atom: AtomId) -> Vec<String> {
+    let facts = surface.atom_facts(atom);
+    let element = if facts.aromatic {
+        facts.element.as_str().to_ascii_lowercase()
+    } else {
+        facts.element.as_str().to_owned()
+    };
+    if surface.tetrahedral_center(atom).is_some() {
+        let mut spellings = Vec::new();
+        for marker in ["@", "@@"] {
+            let mut text = format!("[{element}");
+            text.push_str(marker);
+            if facts.non_graph_hydrogens > 0 {
+                text.push('H');
+                if facts.non_graph_hydrogens > 1 {
+                    text.push_str(&facts.non_graph_hydrogens.to_string());
+                }
+            }
+            if facts.formal_charge != 0 {
+                text.push(if facts.formal_charge > 0 { '+' } else { '-' });
+                if facts.formal_charge.abs() != 1 {
+                    text.push_str(&facts.formal_charge.abs().to_string());
+                }
+            }
+            if facts.atom_class > 0 {
+                text.push(':');
+                text.push_str(&facts.atom_class.to_string());
+            }
+            text.push(']');
+            spellings.push(text);
+        }
+        return spellings;
+    }
+    let mut text = String::from("[");
+    if let Some(isotope) = facts.isotope {
+        text.push_str(&isotope.to_string());
+    }
+    text.push_str(&element);
+    if facts.non_graph_hydrogens > 0 {
+        text.push('H');
+        if facts.non_graph_hydrogens > 1 {
+            text.push_str(&facts.non_graph_hydrogens.to_string());
+        }
+    }
+    if facts.formal_charge != 0 {
+        text.push(if facts.formal_charge > 0 { '+' } else { '-' });
+        if facts.formal_charge.abs() != 1 {
+            text.push_str(&facts.formal_charge.abs().to_string());
+        }
+    }
+    if facts.atom_class > 0 {
+        text.push(':');
+        text.push_str(&facts.atom_class.to_string());
+    }
+    text.push(']');
+    vec![text]
+}
+
+fn finish_selected_atom_spelling(
+    surface: &PreparedNonStereo,
+    atom: AtomId,
+    state: ProductionState,
+    prefix: String,
+) -> Vec<ProductionState> {
+    let spellings = selected_atom_spellings(surface, atom);
+    let mut completed = Vec::new();
+    for spelling in spellings {
+        assert!(spelling.starts_with(&prefix), "selected witness must start with its emitted character");
+        let mut frontier = vec![(state.clone(), prefix.clone())];
+        while let Some((state, prefix)) = frontier.pop() {
+            if !state.is_spelling_atom() {
+                assert_eq!(prefix, spelling, "selected lexical witness must finish exactly");
+                completed.push(state);
+                continue;
+            }
+            let next = spelling
+                .chars()
+                .nth(prefix.chars().count())
+                .expect("an incomplete spelling has a selected next character");
+            let choices = state.choices().expect("selected atom spelling remains live");
+            let matched = choices
+                .into_iter()
+                .filter(|choice| choice.text() == next.to_string())
+                .collect::<Vec<_>>();
+            assert!(!matched.is_empty(), "selected spelling must have a production continuation");
+            for choice in matched {
+                let mut next_prefix = prefix.clone();
+                next_prefix.push(next);
+                frontier.push((choice.into_successor(), next_prefix));
+            }
+        }
+    }
+    completed
+}
+
+fn atom_for_spelling_choice(
+    state: &ProductionState,
+    successor: &ProductionState,
+    text: &str,
+) -> Option<AtomId> {
+    state
+        .atom_spelling
+        .as_ref()
+        .map(|progress| progress.atom)
+        .or_else(|| successor.atom_spelling.as_ref().map(|progress| progress.atom))
+        .or_else(|| {
+            let first = text.chars().next()?;
+            if !(first == '[' || first == '*' || first.is_ascii_alphabetic()) {
+                return None;
+            }
+            match state.pending {
+                Some(super::PendingEmission::ComponentRootAtom(atom)) => Some(atom),
+                Some(
+                    super::PendingEmission::InlineAtom(edge)
+                    | super::PendingEmission::BranchAtom(edge),
+                ) => Some(edge.atom()),
+                _ => successor
+                    .active_atom()
+                    .filter(|atom| Some(*atom) != state.active_atom()),
+            }
+        })
+}
+
 #[derive(Copy, Clone, Debug)]
 struct ConformanceBounds {
     state_instances: usize,
@@ -1864,10 +1988,14 @@ fn assert_fixture_conforms(
             "{name}: exceeded {} reachable state instances",
             bounds.state_instances
         );
-        metrics.maximum_queue = metrics.maximum_queue.max(queue.len() + 1);
+        // Keep every matched production witness in `queue`; the worklist bound measures
+        // distinct visible-prefix/semantic-state projections rather than counting those
+        // witnesses repeatedly. `state_instances` separately bounds the retained witnesses.
+        let queue_projections = queued_projection_count(&queue, &oracle_surface) + 1;
+        metrics.maximum_queue = metrics.maximum_queue.max(queue_projections);
         assert!(
             metrics.maximum_queue <= bounds.queue,
-            "{name}: exceeded queue bound {} after trace {:?}",
+            "{name}: exceeded distinct queued-prefix projection bound {} after trace {:?}",
             bounds.queue,
             paired.trace
         );
@@ -1891,7 +2019,7 @@ fn assert_fixture_conforms(
             "{name}: production acceptance disagrees with its raw observation"
         );
 
-        let production_choices = match paired.production.choices() {
+        let production_choices = match paired.production.choices().map(|choices| choices.into_iter().filter(|choice| super::tests::selected_ring_label_witness(&paired.production, choice)).collect::<Vec<_>>()) {
             Ok(choices) => choices,
             Err(failure) => panic!(
                 "{name}: production choice failure {failure:?} after trace {:?}\nsource={production_before:#?}",
@@ -1923,19 +2051,37 @@ fn assert_fixture_conforms(
             "{name}: terminal choice cardinality differs"
         );
 
-        let mut production_by_choice = BTreeMap::new();
+        let mut production_by_choice = BTreeMap::<ChoiceSnapshot, Vec<ProductionState>>::new();
         for choice in production_choices {
-            let snapshot = production_snapshot(&choice.successor().observe_raw());
-            let key = ChoiceSnapshot {
-                text: choice.text().to_owned(),
-                successor: snapshot,
+            let text = choice.text().to_owned();
+            let successor = choice.into_successor();
+            let atom = if paired.production.atom_spelling.is_none() {
+                atom_for_spelling_choice(&paired.production, &successor, &text)
+            } else {
+                None
             };
-            assert!(
-                production_by_choice
-                    .insert(key.clone(), choice.into_successor())
-                    .is_none(),
-                "{name}: duplicate identical production choice {key:#?}"
-            );
+            let (text, successors) = if let Some(atom) = atom {
+                let spellings = selected_atom_spellings(&production_surface, atom);
+                if spellings.iter().all(|spelling| !spelling.starts_with(&text)) {
+                    continue;
+                }
+                let successors = finish_selected_atom_spelling(
+                    &production_surface,
+                    atom,
+                    successor,
+                    text,
+                );
+                (fixture.atom_texts[atom.index()].clone(), successors)
+            } else {
+                (text, vec![successor])
+            };
+            for successor in successors {
+                let key = ChoiceSnapshot {
+                    text: text.clone(),
+                    successor: production_snapshot(&successor.observe_raw()),
+                };
+                production_by_choice.entry(key).or_default().push(successor);
+            }
         }
         let mut oracle_by_choice = BTreeMap::new();
         for choice in oracle_choices {
@@ -2070,15 +2216,17 @@ fn assert_fixture_conforms(
             .any(|pair| pair[0].text == pair[1].text && pair[0].successor != pair[1].successor);
 
         for key in production_keys {
-            let production = production_by_choice.remove(&key).unwrap();
+            let productions = production_by_choice.remove(&key).unwrap();
             let oracle = oracle_by_choice.remove(&key).unwrap();
-            let mut trace = paired.trace.clone();
-            trace.push(key.text.clone());
-            queue.push_back(PairedState {
-                production,
-                oracle,
-                trace,
-            });
+            for production in productions {
+                let mut trace = paired.trace.clone();
+                trace.push(key.text.clone());
+                queue.push_back(PairedState {
+                    production,
+                    oracle: oracle.clone(),
+                    trace,
+                });
+            }
         }
     }
 
@@ -2092,6 +2240,23 @@ fn assert_fixture_conforms(
         bounds.exact_assignments_per_projection
     );
     metrics
+}
+
+fn queued_projection_count(
+    queue: &VecDeque<PairedState>,
+    surface: &OracleSurface,
+) -> usize {
+    queue
+        .iter()
+        .map(|paired| {
+            (
+                paired.trace.clone(),
+                production_snapshot(&paired.production.observe_raw()),
+                oracle_snapshot(surface, &paired.oracle),
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 fn snapshot_is_accepted(snapshot: &SemanticSnapshot, atom_count: usize) -> bool {

@@ -673,11 +673,7 @@ impl PreparedNonStereo {
             .collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
-        let segment_topology = allow_segments
-            && directional_relations.is_empty()
-            && atoms.iter().all(|atom| match atom {
-                PreparedAtom::Facts { tetrahedral, .. } => tetrahedral.is_none(),
-            });
+        let segment_topology = allow_segments && directional_relations.is_empty();
         let molecule = if segment_topology {
             assembly.finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
         } else {
@@ -3039,14 +3035,15 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             if !context.waiting_ring_bonds.iter().copied().all(is_ring) {
                 return false;
             }
-            context.residual_attachment_bonds.iter().all(|attachment| {
-                attachment
-                    .iter()
-                    .copied()
-                    .filter(|bond| !is_ring(*bond))
-                    .count()
-                    == 1
-            })
+            self.structural.prepared_topology() == crate::model::TraversalTopologyRequirement::Forest
+                || context.residual_attachment_bonds.iter().all(|attachment| {
+                    attachment
+                        .iter()
+                        .copied()
+                        .filter(|bond| !is_ring(*bond))
+                        .count()
+                        == 1
+                })
         }))
         .unwrap();
         assert!(

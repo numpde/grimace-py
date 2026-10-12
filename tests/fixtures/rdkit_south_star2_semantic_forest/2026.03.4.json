@@ -1,0 +1,9 @@
+{
+  "rdkit_version": "2026.03.4",
+  "cases": [
+    {"id": "halogen_h_ccw", "source": "RDKit 2026.03.4 parse-back and stereochemical canonicalization of supplied Forest witnesses; compact labels use native smallest-free policy", "input_smiles": "F[C@H](Cl)Br", "witnesses": ["F1.[C@@H]1(Cl)Br", "[C@@H]123.F1.Cl2.Br3"], "compact_witnesses": ["F0.[C@@H]0(Cl)Br", "[C@@H]012.F0.Cl1.Br2"]},
+    {"id": "halogen_h_cw", "source": "RDKit 2026.03.4 parse-back and stereochemical canonicalization of supplied Forest witnesses; compact labels use native smallest-free policy", "input_smiles": "F[C@@H](Cl)Br", "witnesses": ["F1.[C@H]1(Cl)Br", "[C@H]123.F1.Cl2.Br3"], "compact_witnesses": ["F0.[C@H]0(Cl)Br", "[C@H]012.F0.Cl1.Br2"]},
+    {"id": "ring_sibling_traversals", "source": "RDKit 2026.03.4 parse-back probe of chiral ring center with two traversal children in one chemical residual component; compact label uses native smallest-free policy", "input_smiles": "F[C@H]1CCOC1", "witnesses": ["F[C@@H](CC2)CO2"], "compact_witnesses": ["F[C@@H](CC0)CO0"]},
+    {"id": "adjacent_centers", "source": "RDKit 2026.03.4 parse-back probe of adjacent chiral centers with a ring-separated first ligand; compact label uses native smallest-free policy", "input_smiles": "F[C@H](Cl)[C@H](Br)I", "witnesses": ["F1.[C@@H]1(Cl)[C@H](Br)I"], "compact_witnesses": ["F0.[C@@H]0(Cl)[C@H](Br)I"]}
+  ]
+}

@@ -24,7 +24,7 @@ def _accepted_strings(mol: Chem.Mol) -> set[str]:
     )
 
 
-def _generic_witness_prefix(text: str) -> bool:
+def _generic_witness_prefix(text: str, *, allow_dots: bool = True) -> bool:
     """Restrict lexical choices, preserving every matching native hidden state.
 
     This finite semantic witness uses bare C/O, short carbon tetrahedral
@@ -37,6 +37,8 @@ def _generic_witness_prefix(text: str) -> bool:
     index = 0
     while index < len(text):
         char = text[index]
+        if char == "." and not allow_dots:
+            return False
         if char == "[":
             end = text.find("]", index)
             if end == -1:
@@ -73,49 +75,73 @@ def _generic_witness_prefix(text: str) -> bool:
     return True
 
 
-def _accepted_generic_witness_strings(mol: Chem.Mol) -> set[str]:
+def _accepted_generic_witness_strings(
+    mol: Chem.Mol, *, allow_dots: bool = True,
+    max_nodes: int = 50_000, max_outputs: int = 10_000,
+) -> set[str]:
     return _collect_writer_strings(
         prepare_molecule(mol).build_writer(writer_regime="generic_any_order"),
         finite_generic_witness=True,
+        allow_dots=allow_dots,
+        context=Chem.MolToSmiles(mol, isomericSmiles=True),
+        max_nodes=max_nodes,
+        max_outputs=max_outputs,
     )
 
 
-def _collect_writer_strings(writer, *, finite_generic_witness: bool = False) -> set[str]:
+def _collect_writer_strings(
+    writer, *, finite_generic_witness: bool = False,
+    allow_dots: bool = True, context: str = "writer", max_nodes: int = 50_000,
+    max_outputs: int = 10_000,
+) -> set[str]:
     frontier = [(writer.initial_state(), "")]
     accepted: set[str] = set()
+    nodes = 0
     while frontier:
+        nodes += 1
+        if nodes + len(frontier) > max_nodes:
+            raise AssertionError(f"{context}: native witness exceeded {max_nodes} prefix states")
         state, text = frontier.pop()
         if state.is_accepted:
             accepted.add(text)
+            if len(accepted) > max_outputs:
+                raise AssertionError(f"{context}: native witness exceeded {max_outputs} outputs")
             continue
         choices = state.choices()
         if not choices:
             raise AssertionError(f"Native walker stopped before acceptance at {text!r}")
         frontier.extend(
             (successor, text + token) for token, successor in choices
-            if not finite_generic_witness or _generic_witness_prefix(text + token)
+            if not finite_generic_witness or _generic_witness_prefix(text + token, allow_dots=allow_dots)
         )
     return accepted
 
 
 def _prefix_strings(
-    mol: Chem.Mol, *, writer_regime: str
+    mol: Chem.Mol, *, writer_regime: str, allow_dots: bool = True,
+    max_nodes: int = 50_000, max_outputs: int = 10_000,
 ) -> tuple[list[str], list[str]]:
     """Collect writer parity, or the declared finite Generic lexical witness."""
     prefix = prepare_molecule(mol).build_writer(writer_regime=writer_regime).initial_prefix()
     pending = [(prefix, "")]
     accepted: list[str] = []
     dead: list[str] = []
+    nodes = 0
     while pending:
+        nodes += 1
+        if nodes + len(pending) > max_nodes:
+            raise AssertionError(f"{Chem.MolToSmiles(mol, isomericSmiles=True)} {writer_regime}: prefix witness exceeded {max_nodes} states")
         current, text = pending.pop()
         if current.is_accepted:
             accepted.append(text)
+            if len(accepted) > max_outputs:
+                raise AssertionError(f"{Chem.MolToSmiles(mol, isomericSmiles=True)} {writer_regime}: prefix witness exceeded {max_outputs} outputs")
         choices = current.choices()
         if not current.is_accepted and not choices:
             dead.append(text)
         pending.extend(
             (successor, text + token) for token, successor in choices
-            if writer_regime == "rdkit_random_noncanonical" or _generic_witness_prefix(text + token)
+            if writer_regime == "rdkit_random_noncanonical" or _generic_witness_prefix(text + token, allow_dots=allow_dots)
         )
     return accepted, dead
 
@@ -235,6 +261,48 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
     """Check the finite Generic lexical witness, independently from writer parity."""
 
+    def test_tetrahedral_forest_ring_segments_preserve_chirality(self) -> None:
+        cases = load_pinned_rdkit_fixture_cases(
+            fixture_root=checked_in_fixture_path("rdkit_south_star2_semantic_forest"),
+            rdkit_version=RDKIT_VERSION,
+            fixture_label="South Star 2 semantic Forest",
+        )
+        for case in cases:
+            source_text = case.raw["input_smiles"]
+            source = Chem.MolFromSmiles(source_text)
+            assert source is not None
+            opposite = Chem.MolFromSmiles(source_text.replace("@H", "@@H") if "@@H" not in source_text else source_text.replace("@@H", "@H"))
+            assert opposite is not None
+            for regime, field in (("generic_any_order", "witnesses"), ("generic_compact", "compact_witnesses")):
+                witnesses = normalized_unique_sorted_strings(
+                    case.raw[field], field_name=field,
+                    fixture_path=case.fixture_path, case_id=case.case_id,
+                )
+                writer = prepare_molecule(source).build_writer(writer_regime=regime)
+                for witness in witnesses:
+                    with self.subTest(source=source_text, regime=regime, witness=witness):
+                        prefix = writer.initial_prefix()
+                        self.assertFalse(prefix.is_accepted)
+                        for character in witness:
+                            choices = dict(prefix.choices())
+                            self.assertIn(character, choices, witness)
+                            prefix = choices[character]
+                        self.assertTrue(prefix.is_accepted, witness)
+                        parsed = Chem.MolFromSmiles(witness)
+                        self.assertIsNotNone(parsed, witness)
+                        assert parsed is not None
+                        self.assertEqual(Chem.MolToSmiles(source, isomericSmiles=True), Chem.MolToSmiles(parsed, isomericSmiles=True))
+                        self.assertNotEqual(Chem.MolToSmiles(opposite, isomericSmiles=True), Chem.MolToSmiles(parsed, isomericSmiles=True))
+                        opposite_marker = witness.replace("@@H", "@H") if "@@H" in witness else witness.replace("@H", "@@H")
+                        opposite_prefix = writer.initial_prefix()
+                        for character in opposite_marker:
+                            alternatives = dict(opposite_prefix.choices())
+                            if character not in alternatives:
+                                break
+                            opposite_prefix = alternatives[character]
+                        else:
+                            self.assertFalse(opposite_prefix.is_accepted, opposite_marker)
+
     def test_generic_forest_accepts_branched_ring_paths(self) -> None:
         for source_text, witness, regime in (
             ("C1CCCCC1", "C(CC1)CCC1", "generic_any_order"),
@@ -265,7 +333,11 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
             with self.subTest(smiles=smiles):
                 source = Chem.MolFromSmiles(smiles)
                 assert source is not None
-                outputs = _accepted_generic_witness_strings(source)
+                # This existing C/O dot witness is substantially larger than the stereo cases.
+                limits = (1_500_000, 250_000) if smiles == "CC(O)CO" else (50_000, 10_000)
+                outputs = _accepted_generic_witness_strings(
+                    source, max_nodes=limits[0], max_outputs=limits[1],
+                )
                 self.assertTrue(outputs, "the prepared source graph must have an accepted output")
 
                 for output in outputs:
@@ -315,7 +387,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
             source = Chem.MolFromSmiles(case.raw["input_smiles"])
             self.assertIsNotNone(source)
             assert source is not None
-            outputs = _accepted_generic_witness_strings(source)
+            outputs = _accepted_generic_witness_strings(source, allow_dots=False)
             self.assertTrue(outputs)
             for output in outputs:
                 with self.subTest(case=case.case_id, output=output):
@@ -345,7 +417,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
         source = Chem.MolFromSmiles(case.raw["input_smiles"])
         self.assertIsNotNone(source)
         assert source is not None
-        outputs = _accepted_generic_witness_strings(source)
+        outputs = _accepted_generic_witness_strings(source, allow_dots=False)
         self.assertTrue(outputs)
         for output in outputs:
             parsed = Chem.MolFromSmiles(output)
@@ -391,7 +463,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                     and bond.GetStereo() != Chem.BondStereo.STEREONONE
                 ]
                 self.assertEqual(len(prepared.directional), len(configured))
-                outputs, dead = _prefix_strings(source, writer_regime="generic_any_order")
+                outputs, dead = _prefix_strings(source, writer_regime="generic_any_order", allow_dots=False)
                 self.assertTrue(outputs)
                 self.assertFalse(dead)
                 for output in outputs:

@@ -15,6 +15,17 @@ fn ring(elements: &[(&str, u8, u32)]) -> PreparedNonStereo {
     PreparedNonStereo::with_atom_tokens(PreparedMolecule::new(graph.build()), atoms, vec![NonStereoBondToken::Aromatic; ids.len()]).unwrap()
 }
 
+fn segmented_ring(elements: &[(&str, u8, u32)]) -> PreparedNonStereo {
+    let mut graph = PreparedGraphBuilder::new();
+    let ids = elements.iter().map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    for index in 0..ids.len() { graph.add_bond(ids[index], ids[(index + 1) % ids.len()]).unwrap(); }
+    let atoms = elements.iter().map(|(element, h, valence)| facts(element, true, 0, *h, Some(*valence))).collect();
+    PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()), atoms,
+        vec![NonStereoBondToken::Aromatic; ids.len()], Vec::new(), false, true,
+    ).unwrap()
+}
+
 fn consume(surface: &PreparedNonStereo, text: &str) -> Vec<State> {
     let mut states = vec![State::initial(surface).unwrap().unwrap_consistent()];
     for expected in text.chars() {
@@ -39,6 +50,23 @@ fn benzene_matching_assignments_and_ring_end_placement_are_correlated() {
     assert!(consume(&surface, "C1=C=").is_empty(), "adjacent doubles must contradict the carbon demand before EOS");
     for impossible in ["C1C=CC=CC1", "C1=C=CC=CC1", "C1=CC=CC=c1", "c1=ccccc1"] {
         assert!(!supports(&surface, impossible), "accepted {impossible}");
+    }
+}
+
+#[test]
+fn aromatic_matching_survives_forest_segment_ring_obligations() {
+    for (elements, witnesses) in [
+        (vec![("C", 1, 4); 6], ["c1cc2.c2cc1", "C1=CC=2.C2C=C1"]),
+        (vec![("N", 1, 3), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4)],
+         ["[nH]1cc2.c2c1", "N1C=C2.C2=C1"]),
+    ] {
+        let surface = segmented_ring(&elements);
+        assert_eq!(surface.molecule().topology(), crate::model::TraversalTopologyRequirement::Forest);
+        for witness in witnesses { assert!(supports(&surface, witness), "missing {witness}"); }
+        if elements.len() == 5 {
+            assert!(!consume(&surface, "N1C=C2.C").is_empty());
+            assert!(!supports(&surface, "N1C=C2.C=2C1"), "two double bonds exceed one carbon demand");
+        }
     }
 }
 

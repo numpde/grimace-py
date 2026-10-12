@@ -881,3 +881,28 @@ suite (289 passed, one ignored), root Rust library tests (86 passed), and 30 sel
 process cleanup. The compiled extension used for the root public test came
 from the qualified candidate wheel with SHA256
 `b06e9e3144d170d09c36fe3a81d1663858e186934a3a3ca34aa6658e39a1eb69`.
+
+## 2026-10-12 aromatic forest qualification
+
+The next candidate extends `GENERAL` and `COMPACT` Forest serialization to
+supported stereo-free aromatic graphs. Aromatic matching remains prepared over
+each source aromatic-bond component, so a dot does not reset its source or
+whole-component Kekule mode or its bond-order demands. Native witnesses cover
+benzene and pyrrole rings split across segments, including ring closure and a
+rejected bond distribution that exceeds one carbon demand. Public semantic
+witnesses cover these paths and independent components; they check graph
+identity only for positive outputs. Mixed lowercase/uppercase spelling within
+one aromatic component and stereo Forest serialization remain open.
+
+The frozen candidate passed 290 native tests with one ignored, six isolated
+public Kekule tests, 14 compact-language tests, and six selected standard tests.
+The integrated root checkout then passed 86 root Rust library tests and 42
+selected public tests across Kekule semantics, compact language, standard
+SMILES semantics, and public prefix integration. All bounded runners reported
+verified cleanup. The root public run used the extension extracted from the
+qualified wheel (wheel SHA256
+`19caf8e874d8cebf4962c7afebfae2dae22d7f8ad4119b078f67a941b5594935`,
+extension SHA256
+`da832e22ac87c41e6f163adec9736b4185c8cee92d15338161e85dc099e63036`).
+These are finite semantic witnesses, not exhaustive support or RDKit
+writer-parity evidence.

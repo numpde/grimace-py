@@ -676,11 +676,8 @@ impl PreparedNonStereo {
         let segment_topology = allow_segments
             && directional_relations.is_empty()
             && atoms.iter().all(|atom| match atom {
-                PreparedAtom::Facts { facts, tetrahedral, .. } => {
-                    !facts.aromatic && tetrahedral.is_none()
-                }
-            })
-            && !bond_tokens.iter().any(|token| *token == NonStereoBondToken::Aromatic);
+                PreparedAtom::Facts { tetrahedral, .. } => tetrahedral.is_none(),
+            });
         let molecule = if segment_topology {
             assembly.finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
         } else {

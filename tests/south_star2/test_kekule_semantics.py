@@ -45,6 +45,18 @@ def _accepts(initial: decoding.Prefix, text: str) -> bool:
     return False
 
 
+def _has_prefix(initial: decoding.Prefix, text: str) -> bool:
+    pending = [(initial, 0)]
+    while pending:
+        prefix, offset = pending.pop()
+        if offset == len(text):
+            return True
+        for piece, successor in prefix.choices():
+            if text.startswith(piece, offset):
+                pending.append((successor, offset + len(piece)))
+    return False
+
+
 def _atom_facts(atom: Chem.Atom) -> tuple[object, ...]:
     return (
         atom.GetAtomicNum(), atom.GetFormalCharge(), atom.GetIsotope(),
@@ -99,6 +111,35 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
                 for witness in case["kekule_witnesses"]:
                     with self.subTest(witness=witness):
                         self.assertTrue(_accepts(initial, witness), witness)
+
+    def test_aromatic_forest_segments_preserve_matching(self) -> None:
+        cases = (
+            ("c1ccccc1", ("c1cc2.c2cc1", "C1=CC=2.C2C=C1")),
+            ("[nH]1cccc1", ("[nH]1cc2.c2c1", "N1C=C2.C2=C1")),
+            ("c1ccccc1.c1ccccc1", ("c1cc2.c2cc1.C1=CC=CC=C1",)),
+            ("c1ccccc1-c1ccccc1", ("c1ccccc1-c1ccccc1",)),
+        )
+        for source_text, witnesses in cases:
+            source = _parse(source_text)
+            for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+                initial = decoding.start(source, language=language)
+                for witness in witnesses:
+                    emitted = witness.translate(str.maketrans("12", "01")) if language == decoding.SmilesLanguage.COMPACT else witness
+                    with self.subTest(source=source_text, language=language, witness=witness):
+                        _assert_same_graph(self, source, _parse(emitted))
+                        self.assertTrue(_accepts(initial, emitted), emitted)
+
+        # The second ring pair would force two double bonds at one aromatic carbon.
+        # RDKit sanitizes this text, but it conflicts with the prepared atom demands.
+        pyrrole = _parse("[nH]1cccc1")
+        for language, prefix, impossible in (
+            (decoding.SmilesLanguage.GENERAL, "N1C=C2.C", "N1C=C2.C=2C1"),
+            (decoding.SmilesLanguage.COMPACT, "N0C=C1.C", "N0C=C1.C=1C0"),
+        ):
+            initial = decoding.start(pyrrole, language=language)
+            self.assertTrue(_has_prefix(initial, prefix))
+            self.assertFalse(_has_prefix(initial, impossible[:-2]))
+            self.assertFalse(_accepts(initial, impossible))
 
     def test_current_whole_component_mode_rejects_conflicting_paths(self) -> None:
         case = next(case for case in self.cases if case["id"] == "benzene")

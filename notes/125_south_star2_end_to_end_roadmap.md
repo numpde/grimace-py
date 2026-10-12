@@ -836,3 +836,14 @@ and the root Python public smoke passed 28 tests across the compact-language
 and public-prefix integration files. Both root runs used the bounded runner
 and verified no live descendants. These finite results do not establish
 universal support or prefix liveness.
+
+The next forest slice admits terminal branches on admitted nonaromatic,
+stereo-free inputs in `GENERAL` and `COMPACT`. Native witnesses reach accepted
+`C(C)`, `C(C(C))`, `C(C)(C)`, and `C(C)C`; public witnesses check the first
+three against their source graphs. Bounded compact enumeration of `C1`, `CO`,
+and `C1CO1` yielded 2, 19, and 236 prefix states, respectively, with every
+accepted output parsing back and the prior expected sets retained. The compact
+fixture adds 23 parenthesized strings for `CO` and `C1CO1`. The qualified
+candidate wheel passed the focused public compact-language file (13 tests).
+Nested branch dots, leading dots, and aromatic or stereo cases remain open;
+these checks do not establish maximal support.

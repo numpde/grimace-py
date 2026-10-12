@@ -343,7 +343,14 @@ impl<S: ConstraintSolver> WriterState<S> {
 
         match children.len() {
             0 => frontier.path_completion = self.traversal.path_completion(),
-            1 => frontier.inline_children = children,
+            1 => {
+                if self.prepared.topology()
+                    == crate::model::TraversalTopologyRequirement::Forest
+                {
+                    frontier.branch_children = children.clone();
+                }
+                frontier.inline_children = children;
+            }
             _ => frontier.branch_children = children,
         }
         frontier

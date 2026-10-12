@@ -190,6 +190,18 @@ class CompactLanguageTests(unittest.TestCase):
                 self.assertIsNotNone(_walk_language(source, candidate, language))
                 self.assertEqual(_canonical_semantics(source_text), _canonical_semantics(candidate))
 
+    def test_terminal_branches_preserve_bonded_graphs(self) -> None:
+        for source_text, candidate in (
+            ("CC", "C(C)"),
+            ("CCC", "C(C(C))"),
+            ("CCC", "C(C)(C)"),
+        ):
+            with self.subTest(source=source_text, candidate=candidate):
+                source = _parse(source_text)
+                for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+                    self.assertIsNotNone(_walk_language(source, candidate, language))
+                self.assertEqual(_canonical_semantics(source_text), _canonical_semantics(candidate))
+
     def test_top_level_dot_segments_require_completed_bonds(self) -> None:
         source = _parse("CC")
         for language, incomplete in (

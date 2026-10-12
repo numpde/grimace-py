@@ -413,6 +413,33 @@ mod tests {
     }
 
     #[test]
+    fn forest_terminal_branches_reach_complete_strings() {
+        let general = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        for (length, text) in [
+            (2, "C(C)"),
+            (3, "C(C(C))"),
+            (3, "C(C)(C)"),
+            (3, "C(C)C"),
+        ] {
+            assert!(
+                reaches_text(carbon_chain(length, general).initial().unwrap(), "", text, &mut 5000),
+                "{text} must reach an accepted state"
+            );
+        }
+        assert!(!reaches_text(
+            carbon_chain(2, general).initial().unwrap(), "", "C()C", &mut 5000,
+        ));
+        for regime in [
+            WriterRegime::Generic { component_order: ComponentOrder::InputOrder },
+            WriterRegime::RdkitRandomNoncanonical,
+        ] {
+            assert!(!reaches_text(
+                carbon_chain(2, regime).initial().unwrap(), "", "C(C)", &mut 5000,
+            ));
+        }
+    }
+
+    #[test]
     fn tree_regimes_do_not_split_a_connected_bridge() {
         for regime in [
             WriterRegime::Generic { component_order: ComponentOrder::InputOrder },

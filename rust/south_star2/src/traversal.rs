@@ -996,8 +996,8 @@ impl TraversalState {
         match placement {
             ChildPlacement::Branch => {
                 assert!(
-                    !parent.attachments.is_empty(),
-                    "a branch requires another residual attachment for the main continuation"
+                    self.segments || !parent.attachments.is_empty(),
+                    "a tree branch requires another residual attachment for the main continuation"
                 );
                 self.branch_returns = Some(Arc::new(FrameNode {
                     frame: parent,

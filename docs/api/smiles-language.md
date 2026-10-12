@@ -83,13 +83,15 @@ relax spelling only; it cannot stand in for the structural contract.
 | --- | --- | --- |
 | Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `GENERAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
-| Roots, branches, traversal | Connected traversal choices implemented | Map all standard serialization events both ways |
+| Roots, branches, traversal | Connected traversal choices and terminal branches on admitted nonaromatic, stereo-free forest inputs implemented | Map all standard serialization events both ways |
 | Dot segments | Top-level connected-dot ring references qualified for admitted nonaromatic, stereo-free graphs in `GENERAL` and `COMPACT`; chemical component separation remains supported | Extend grammar and qualification to dots in nested branches and aromatic or stereo inputs |
 | Aromaticity | Aromatic or whole-component Kekule choices for supported inputs | Valid mixed lowercase/uppercase spellings within a component |
 | Stereo | Supported tetrahedral and E/Z cases have semantic checks | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level dot segments with ring obligations
 crossing segment boundaries on admitted nonaromatic, stereo-free graphs.
+It also admits terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)`
+for those inputs in `GENERAL` and `COMPACT`.
 Public semantic witnesses include `C1.C1` for `CC` and `C1.C12.C2` for `CCC`;
 `COMPACT` also admits corresponding smallest-label spellings. This is a
 qualified subset of the target grammar: dots in nested branches and aromatic

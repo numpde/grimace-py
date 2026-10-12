@@ -34,7 +34,8 @@ pub use ids::{AtomId, BondId, FactorId, VariableId};
 pub use model::{
     AromaticMatchingEdge, AromaticMatchingFactor, BinaryRelationFactor, BondRole, ConstraintModel,
     ConstraintModelBuilder, ConstraintModelError, DirectionalRingPlacementFactor,
-    EdgeRolePartition, FactorDefinition, SpanningTreeEdge, SpanningTreeFactor, VariableDefinition,
+    EdgeRolePartition, FactorDefinition, SpanningTreeEdge, TraversalTopologyFactor,
+    TraversalTopologyRequirement, VariableDefinition,
 };
 pub use nonstereo_writer::{
     AtomSourceContext, NonStereoBondToken as BondToken, PreparedAtomToken as AtomToken,

@@ -800,3 +800,12 @@ spanning forest on admitted nonaromatic, stereo-free graphs: the current
 forms require ring obligations across forest segments independently of
 chemical connected components. This blocks a local dot-transition patch.
 No implementation or universal proof is claimed by this documentation step.
+
+Kernel checkpoint after contract commit `b01eb3f2`: a shared traversal-topology
+factor now supports Tree and Forest requirements. Both reject forced traversal
+cycles and remove optional traversal values that would close one; Tree also
+requires connectivity and forces quotient bridges. The public writer still
+builds Tree factors. An independent exhaustive role-projection test covers
+small cyclic and disconnected Forest graphs. The bounded Rust library suite
+reported 284 passed, 1 ignored, with verified process cleanup. This validates
+the factor's role projection, not joint writer liveness or connected-dot output.

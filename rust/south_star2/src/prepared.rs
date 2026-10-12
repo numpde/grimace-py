@@ -666,19 +666,22 @@ mod tests {
             );
         }
 
-        let FactorDefinition::SpanningTree(first) = model.factor(FactorId::new(0)).unwrap() else {
+        let FactorDefinition::TraversalTopology(first) = model.factor(FactorId::new(0)).unwrap()
+        else {
             panic!("expected first component spanning-tree factor");
         };
         assert_eq!(first.atoms(), &atoms[..3]);
         assert_eq!(first.variables(), &role_variables[..3]);
 
-        let FactorDefinition::SpanningTree(second) = model.factor(FactorId::new(1)).unwrap() else {
+        let FactorDefinition::TraversalTopology(second) = model.factor(FactorId::new(1)).unwrap()
+        else {
             panic!("expected second component spanning-tree factor");
         };
         assert_eq!(second.atoms(), &atoms[3..5]);
         assert_eq!(second.variables(), &role_variables[3..4]);
 
-        let FactorDefinition::SpanningTree(third) = model.factor(FactorId::new(2)).unwrap() else {
+        let FactorDefinition::TraversalTopology(third) = model.factor(FactorId::new(2)).unwrap()
+        else {
             panic!("expected isolated-atom spanning-tree factor");
         };
         assert_eq!(third.atoms(), &atoms[5..6]);

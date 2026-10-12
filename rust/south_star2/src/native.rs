@@ -1,7 +1,7 @@
 //! Native finite-domain solving for South Star 2.
 //!
 //! Factor propagation is seeded only from changed variables. Binary relation
-//! components retain exact finite-domain filtering; the spanning-tree factor has
+//! components retain exact finite-domain filtering; the traversal-topology factor has
 //! its own exact graphic-matroid projection and never enumerates spanning trees.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -15,7 +15,7 @@ use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
 use crate::model::{
     BinaryRelationFactor, ConstraintModel, DirectionalRingPlacementFactor, EdgeRolePartition,
-    FactorActivation, FactorDefinition, SpanningTreeFactor, TetrahedralLayoutFactor,
+    FactorActivation, FactorDefinition, TetrahedralLayoutFactor, TraversalTopologyFactor,
 };
 use crate::persistent::PagedStore;
 
@@ -368,7 +368,7 @@ impl NativeSolverState {
                         .flatten()
                         .collect::<Vec<_>>()
                 }
-                FactorDefinition::SpanningTree(spanning_tree) => {
+                FactorDefinition::TraversalTopology(spanning_tree) => {
                     #[cfg(test)]
                     let work = (
                         self.spanning_first_edge_visits.as_ref(),
@@ -377,7 +377,7 @@ impl NativeSolverState {
                     );
                     #[cfg(not(test))]
                     let work = ();
-                    revise_spanning_tree(spanning_tree, &mut self.domains, work)?
+                    revise_traversal_topology(spanning_tree, &mut self.domains, work)?
                 }
                 FactorDefinition::TetrahedralLayout(layout) => {
                     #[cfg(test)]
@@ -645,7 +645,7 @@ impl NativeExactPlan {
             if visited_semantic[seed_index]
                 || matches!(
                     model.factor(seed).expect("prepared factor must exist"),
-                    FactorDefinition::SpanningTree(_)
+                    FactorDefinition::TraversalTopology(_)
                         | FactorDefinition::AromaticMatching(_)
                         | FactorDefinition::DirectionalRingPlacement(_)
                 )
@@ -703,7 +703,7 @@ impl NativeExactPlan {
                     FactorDefinition::DirectionalRingPlacement(_) => {
                         unreachable!("local directional ring factors are not exact-search seeds")
                     }
-                    FactorDefinition::SpanningTree(_) => {
+                    FactorDefinition::TraversalTopology(_) => {
                         unreachable!("semantic traversal cannot queue a spanning factor")
                     }
                 };
@@ -722,7 +722,7 @@ impl NativeExactPlan {
                             }
                             FactorDefinition::AromaticMatching(_)
                             | FactorDefinition::DirectionalRingPlacement(_) => {}
-                            FactorDefinition::SpanningTree(spanning_tree) => {
+                            FactorDefinition::TraversalTopology(spanning_tree) => {
                                 if !structural_factors.insert(neighbour) {
                                     continue;
                                 }
@@ -1160,8 +1160,8 @@ fn revise_tetrahedral_layout(
     Ok(reductions)
 }
 
-fn revise_spanning_tree(
-    factor: &SpanningTreeFactor,
+fn revise_traversal_topology(
+    factor: &TraversalTopologyFactor,
     domains: &mut PagedStore<Domain>,
     #[cfg(test)] work: (&AtomicUsize, &AtomicUsize, &AtomicUsize),
     #[cfg(not(test))] _work: (),
@@ -1233,6 +1233,10 @@ fn revise_spanning_tree(
         });
     }
 
+    if factor.requirement() == crate::model::TraversalTopologyRequirement::Forest {
+        return Ok(reductions);
+    }
+
     let quotient_node_count = quotient_by_root.len();
     let bridges = quotient_bridges(quotient_node_count, &quotient_edges)?;
     for (edge, is_bridge) in quotient_edges.iter().zip(bridges) {
@@ -1256,11 +1260,11 @@ fn role_membership(domain: Domain, partition: crate::model::EdgeRolePartition) -
     )
 }
 
-fn factor_atom_index(factor: &SpanningTreeFactor, atom: crate::AtomId) -> usize {
+fn factor_atom_index(factor: &TraversalTopologyFactor, atom: crate::AtomId) -> usize {
     factor
         .atoms()
         .binary_search(&atom)
-        .expect("spanning-tree edge endpoints must belong to the factor atom set")
+        .expect("traversal-topology edge endpoints must belong to the factor atom set")
 }
 
 #[derive(Copy, Clone, Debug)]

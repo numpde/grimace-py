@@ -8,7 +8,7 @@ use crate::domain::Domain;
 use crate::ids::{AtomId, FactorId, VariableId};
 use crate::model::{
     BondRole, ConstraintModel, ConstraintModelBuilder, EdgeRolePartition, FactorDefinition,
-    SpanningTreeEdge, SpanningTreeFactor, TetrahedralLayoutBond,
+    SpanningTreeEdge, TetrahedralLayoutBond, TraversalTopologyFactor,
 };
 use crate::native::NativeSolverState;
 use crate::solver::{Consistency, ConstraintSolver};
@@ -277,8 +277,8 @@ fn assignment_satisfies(
             FactorDefinition::DirectionalRingPlacement(placement) => placement
                 .allowed_plans(assignment[placement.mark_variable().index()])
                 .contains(assignment[placement.plan_variable().index()]),
-            FactorDefinition::SpanningTree(spanning_tree) => {
-                assignment_satisfies_spanning_tree(spanning_tree, assignment)
+            FactorDefinition::TraversalTopology(spanning_tree) => {
+                assignment_satisfies_traversal_topology(spanning_tree, assignment)
             }
             FactorDefinition::TetrahedralLayout(layout) => {
                 let pattern = assignment[layout.role_pattern_variable().index()];
@@ -299,7 +299,10 @@ fn assignment_satisfies(
     })
 }
 
-fn assignment_satisfies_spanning_tree(factor: &SpanningTreeFactor, assignment: &[u8]) -> bool {
+fn assignment_satisfies_traversal_topology(
+    factor: &TraversalTopologyFactor,
+    assignment: &[u8],
+) -> bool {
     let mut traversal_edge_count = 0;
 
     for edge in factor.edges() {
@@ -310,6 +313,37 @@ fn assignment_satisfies_spanning_tree(factor: &SpanningTreeFactor, assignment: &
         } else if !partition.ring_values().contains(value) {
             return false;
         }
+    }
+
+    if factor.requirement() == crate::model::TraversalTopologyRequirement::Forest {
+        let mut components = factor
+            .atoms()
+            .iter()
+            .copied()
+            .map(|atom| (atom, atom))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for edge in factor.edges() {
+            if !edge
+                .role_partition()
+                .traversal_values()
+                .contains(assignment[edge.decision_variable().index()])
+            {
+                continue;
+            }
+            let mut a = edge.a();
+            while components[&a] != a {
+                a = components[&a];
+            }
+            let mut b = edge.b();
+            while components[&b] != b {
+                b = components[&b];
+            }
+            if a == b {
+                return false;
+            }
+            components.insert(a, b);
+        }
+        return true;
     }
 
     if traversal_edge_count != factor.atoms().len().saturating_sub(1) {
@@ -1795,4 +1829,64 @@ fn removing_all_edges_at_one_vertex_is_a_contradiction() {
             .unwrap(),
         Consistency::Contradiction
     ));
+}
+
+#[test]
+fn spanning_forest_matches_exhaustive_role_projection() {
+    let graphs: &[(usize, &[(usize, usize)])] = &[
+        (1, &[]),
+        (2, &[(0, 1)]),
+        (3, &[(0, 1), (1, 2), (2, 0)]),
+        (4, &[(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]),
+        (4, &[(0, 1), (1, 2)]),
+    ];
+    for &(atom_count, endpoints) in graphs {
+        let mut builder = ConstraintModelBuilder::new();
+        let atoms = (0..atom_count)
+            .map(|n| AtomId::new(n as u32))
+            .collect::<Vec<_>>();
+        let variables = endpoints
+            .iter()
+            .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        builder
+            .add_spanning_forest(
+                atoms.iter().copied(),
+                endpoints
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &(a, b))| SpanningTreeEdge::new(variables[i], atoms[a], atoms[b])),
+            )
+            .unwrap();
+        let model = Arc::new(builder.build());
+        let cases = 3_usize.pow(variables.len() as u32);
+        for mut code in 0..cases {
+            let restrictions = variables
+                .iter()
+                .map(|&variable| {
+                    let domain = match code % 3 {
+                        0 => BondRole::Traversal.singleton_domain(),
+                        1 => BondRole::Ring.singleton_domain(),
+                        _ => BondRole::role_domain(),
+                    };
+                    code /= 3;
+                    (variable, domain)
+                })
+                .collect::<Vec<_>>();
+            let expected = solve_role_domains::<ExhaustiveSolverState>(
+                Arc::clone(&model),
+                &variables,
+                &restrictions,
+            );
+            let actual = solve_role_domains::<NativeSolverState>(
+                Arc::clone(&model),
+                &variables,
+                &restrictions,
+            );
+            assert_eq!(
+                actual, expected,
+                "forest {atom_count} {endpoints:?} {restrictions:?}"
+            );
+        }
+    }
 }

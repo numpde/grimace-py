@@ -1751,7 +1751,7 @@ fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
     assert_eq!(model.factor_count(), 1);
     assert!(matches!(
         model.factor(crate::ids::FactorId::new(0)),
-        Some(crate::model::FactorDefinition::SpanningTree(_))
+        Some(crate::model::FactorDefinition::TraversalTopology(_))
     ));
 }
 

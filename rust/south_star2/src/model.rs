@@ -192,14 +192,25 @@ impl SpanningTreeEdge {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TraversalTopologyRequirement {
+    Tree,
+    Forest,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SpanningTreeFactor {
+pub struct TraversalTopologyFactor {
+    requirement: TraversalTopologyRequirement,
     atoms: Box<[AtomId]>,
     edges: Box<[SpanningTreeEdge]>,
     variables: Box<[VariableId]>,
 }
 
-impl SpanningTreeFactor {
+impl TraversalTopologyFactor {
+    pub fn requirement(&self) -> TraversalTopologyRequirement {
+        self.requirement
+    }
+
     pub fn atoms(&self) -> &[AtomId] {
         &self.atoms
     }
@@ -332,7 +343,7 @@ pub enum FactorDefinition {
     AromaticMatching(AromaticMatchingFactor),
     BinaryRelation(BinaryRelationFactor),
     DirectionalRingPlacement(DirectionalRingPlacementFactor),
-    SpanningTree(SpanningTreeFactor),
+    TraversalTopology(TraversalTopologyFactor),
     TetrahedralLayout(TetrahedralLayoutFactor),
 }
 
@@ -342,7 +353,7 @@ impl FactorDefinition {
             Self::AromaticMatching(factor) => factor.variables(),
             Self::BinaryRelation(factor) => factor.variables(),
             Self::DirectionalRingPlacement(factor) => factor.variables(),
-            Self::SpanningTree(factor) => factor.variables(),
+            Self::TraversalTopology(factor) => factor.variables(),
             Self::TetrahedralLayout(factor) => factor.variables(),
         }
     }
@@ -651,13 +662,30 @@ impl ConstraintModelBuilder {
         atoms: impl IntoIterator<Item = AtomId>,
         edges: impl IntoIterator<Item = SpanningTreeEdge>,
     ) -> Result<FactorId, ConstraintModelError> {
+        self.add_traversal_topology(TraversalTopologyRequirement::Tree, atoms, edges)
+    }
+
+    pub fn add_spanning_forest(
+        &mut self,
+        atoms: impl IntoIterator<Item = AtomId>,
+        edges: impl IntoIterator<Item = SpanningTreeEdge>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        self.add_traversal_topology(TraversalTopologyRequirement::Forest, atoms, edges)
+    }
+
+    fn add_traversal_topology(
+        &mut self,
+        requirement: TraversalTopologyRequirement,
+        atoms: impl IntoIterator<Item = AtomId>,
+        edges: impl IntoIterator<Item = SpanningTreeEdge>,
+    ) -> Result<FactorId, ConstraintModelError> {
         let mut atoms = atoms.into_iter().collect::<Vec<_>>();
         if atoms.is_empty() {
-            return Err(ConstraintModelError::EmptySpanningTreeAtomSet);
+            return Err(ConstraintModelError::EmptyTraversalTopologyAtomSet);
         }
         atoms.sort_unstable();
         if atoms.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(ConstraintModelError::RepeatedAtomInSpanningTree);
+            return Err(ConstraintModelError::RepeatedAtomInTraversalTopology);
         }
 
         let atom_set = atoms.iter().copied().collect::<BTreeSet<_>>();
@@ -667,11 +695,13 @@ impl ConstraintModelBuilder {
 
         for edge in &edges {
             if edge.a == edge.b {
-                return Err(ConstraintModelError::SpanningTreeSelfEdge(edge.a));
+                return Err(ConstraintModelError::TraversalTopologySelfEdge(edge.a));
             }
             for atom in [edge.a, edge.b] {
                 if !atom_set.contains(&atom) {
-                    return Err(ConstraintModelError::SpanningTreeEdgeOutsideAtomSet(atom));
+                    return Err(ConstraintModelError::TraversalTopologyEdgeOutsideAtomSet(
+                        atom,
+                    ));
                 }
             }
 
@@ -708,11 +738,11 @@ impl ConstraintModelBuilder {
                         self.factors
                             .get(factor.index())
                             .expect("prepared factor adjacency must resolve"),
-                        FactorDefinition::SpanningTree(_)
+                        FactorDefinition::TraversalTopology(_)
                     )
                 })
             {
-                return Err(ConstraintModelError::OverlappingSpanningTreeVariable(
+                return Err(ConstraintModelError::OverlappingTraversalTopologyVariable(
                     variable,
                 ));
             }
@@ -720,7 +750,8 @@ impl ConstraintModelBuilder {
         }
 
         self.push_factor(
-            FactorDefinition::SpanningTree(SpanningTreeFactor {
+            FactorDefinition::TraversalTopology(TraversalTopologyFactor {
+                requirement,
                 atoms: atoms.into_boxed_slice(),
                 edges: edges.into_boxed_slice(),
                 variables: variables.into_boxed_slice(),
@@ -912,7 +943,7 @@ impl ConstraintModelBuilder {
                 FactorDefinition::AromaticMatching(_)
                 | FactorDefinition::BinaryRelation(_)
                 | FactorDefinition::DirectionalRingPlacement(_) => None,
-                FactorDefinition::SpanningTree(spanning) => spanning
+                FactorDefinition::TraversalTopology(spanning) => spanning
                     .edges()
                     .iter()
                     .find(|edge| edge.decision_variable() == variable)
@@ -940,13 +971,13 @@ pub enum ConstraintModelError {
         variable: VariableId,
         value_index: u8,
     },
-    EmptySpanningTreeAtomSet,
-    RepeatedAtomInSpanningTree,
-    SpanningTreeSelfEdge(AtomId),
-    SpanningTreeEdgeOutsideAtomSet(AtomId),
+    EmptyTraversalTopologyAtomSet,
+    RepeatedAtomInTraversalTopology,
+    TraversalTopologySelfEdge(AtomId),
+    TraversalTopologyEdgeOutsideAtomSet(AtomId),
     InvalidEdgeRolePartition(VariableId),
     ConflictingEdgeRolePartition(VariableId),
-    OverlappingSpanningTreeVariable(VariableId),
+    OverlappingTraversalTopologyVariable(VariableId),
     InvalidTetrahedralBondCount(usize),
     InvalidTetrahedralPatternDomain {
         variable: VariableId,
@@ -1002,22 +1033,22 @@ impl fmt::Display for ConstraintModelError {
                     "relation value {value_index} is outside the initial domain of {variable:?}"
                 )
             }
-            Self::EmptySpanningTreeAtomSet => {
-                formatter.write_str("a spanning-tree factor requires at least one atom")
+            Self::EmptyTraversalTopologyAtomSet => {
+                formatter.write_str("a traversal-topology factor requires at least one atom")
             }
-            Self::RepeatedAtomInSpanningTree => {
-                formatter.write_str("a spanning-tree factor cannot repeat an atom")
+            Self::RepeatedAtomInTraversalTopology => {
+                formatter.write_str("a traversal-topology factor cannot repeat an atom")
             }
-            Self::SpanningTreeSelfEdge(atom) => {
+            Self::TraversalTopologySelfEdge(atom) => {
                 write!(
                     formatter,
-                    "a spanning-tree factor cannot contain a self-edge at {atom:?}"
+                    "a traversal-topology factor cannot contain a self-edge at {atom:?}"
                 )
             }
-            Self::SpanningTreeEdgeOutsideAtomSet(atom) => {
+            Self::TraversalTopologyEdgeOutsideAtomSet(atom) => {
                 write!(
                     formatter,
-                    "spanning-tree edge endpoint {atom:?} is outside the factor atom set"
+                    "traversal-topology edge endpoint {atom:?} is outside the factor atom set"
                 )
             }
             Self::InvalidEdgeRolePartition(variable) => {
@@ -1030,10 +1061,10 @@ impl fmt::Display for ConstraintModelError {
                 formatter,
                 "edge variable {variable:?} uses inconsistent Traversal/Ring partitions across factors"
             ),
-            Self::OverlappingSpanningTreeVariable(variable) => {
+            Self::OverlappingTraversalTopologyVariable(variable) => {
                 write!(
                     formatter,
-                    "constraint variable {variable:?} belongs to multiple spanning-tree factors"
+                    "constraint variable {variable:?} belongs to multiple traversal-topology factors"
                 )
             }
             Self::InvalidTetrahedralBondCount(count) => write!(
@@ -1245,8 +1276,8 @@ mod tests {
             )
             .unwrap();
         let model = builder.build();
-        let FactorDefinition::SpanningTree(factor) = model.factor(factor_id).unwrap() else {
-            panic!("expected spanning-tree factor");
+        let FactorDefinition::TraversalTopology(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected traversal-topology factor");
         };
 
         assert_eq!(
@@ -1271,8 +1302,8 @@ mod tests {
             .add_spanning_tree([AtomId::new(7)], std::iter::empty())
             .unwrap();
         let model = builder.build();
-        let FactorDefinition::SpanningTree(factor) = model.factor(factor_id).unwrap() else {
-            panic!("expected spanning-tree factor");
+        let FactorDefinition::TraversalTopology(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected traversal-topology factor");
         };
 
         assert_eq!(factor.atoms(), &[AtomId::new(7)]);
@@ -1293,25 +1324,27 @@ mod tests {
 
         assert_eq!(
             builder.add_spanning_tree([], std::iter::empty()),
-            Err(ConstraintModelError::EmptySpanningTreeAtomSet)
+            Err(ConstraintModelError::EmptyTraversalTopologyAtomSet)
         );
         assert_eq!(
             builder.add_spanning_tree([AtomId::new(0), AtomId::new(0)], std::iter::empty()),
-            Err(ConstraintModelError::RepeatedAtomInSpanningTree)
+            Err(ConstraintModelError::RepeatedAtomInTraversalTopology)
         );
         assert_eq!(
             builder.add_spanning_tree(
                 [AtomId::new(0)],
                 [SpanningTreeEdge::new(role, AtomId::new(0), AtomId::new(0),)],
             ),
-            Err(ConstraintModelError::SpanningTreeSelfEdge(AtomId::new(0)))
+            Err(ConstraintModelError::TraversalTopologySelfEdge(
+                AtomId::new(0)
+            ))
         );
         assert_eq!(
             builder.add_spanning_tree(
                 [AtomId::new(0), AtomId::new(1)],
                 [SpanningTreeEdge::new(role, AtomId::new(0), AtomId::new(2),)],
             ),
-            Err(ConstraintModelError::SpanningTreeEdgeOutsideAtomSet(
+            Err(ConstraintModelError::TraversalTopologyEdgeOutsideAtomSet(
                 AtomId::new(2)
             ))
         );
@@ -1375,7 +1408,9 @@ mod tests {
 
         assert_eq!(
             builder.add_spanning_tree(atoms, [SpanningTreeEdge::new(role, atoms[0], atoms[1])],),
-            Err(ConstraintModelError::OverlappingSpanningTreeVariable(role))
+            Err(ConstraintModelError::OverlappingTraversalTopologyVariable(
+                role
+            ))
         );
         assert_eq!(
             builder

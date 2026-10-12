@@ -1100,3 +1100,40 @@ includes configured E/Z cross-dot ring parse-back, compact and generic paths,
 mixed alkene/tetrahedral semantics, and unspecified-stereo controls. These are
 selected semantic and regression results, not full maximal-language support,
 all-prefix liveness, or RDKit writer parity for the new dot spellings.
+
+## 2026-10-13 mixed aromatic representation slice
+
+The general language now selects lowercase or uppercase spelling per aromatic
+atom and aromatic, explicit single, or explicit double surface spelling per
+source-aromatic edge. One exclusive matching factor checks both endpoint cases
+and a latent integer 1/2 assignment against the existing immutable atom double
+demands. A bare lowercase token fixes each incident source-aromatic edge to
+surface aromatic; bracket lowercase can participate in mixed spelling. The
+compact language compiles the old whole-component alternatives into the same
+factor: all lowercase with aromatic edges, or all uppercase with integer edges.
+
+Selected benzene, pyrrole, charged pyridinium, and naphthalene mixed bracket paths pass
+native support tests; the selected positive strings parse back to the intended
+RDKit molecules under 2026.03.4. The factor's per-value projection agrees with
+a bounded finite assignment witness. This is a supported semantic slice, not
+an exact RDKit writer-support claim or completion of the name `MAXIMAL`.
+Mixed bare atom eligibility, all legal single-bond omissions, and broader
+SMILES grammar coverage remain open.
+
+The previously checked-in wildcard-ring witness `*1ccccc1` remains in
+`GENERAL`: its sanitized RDKit parse preserves the intended aromatic graph,
+even though raw bond-token inference at the wildcard is single. `COMPACT`
+continues to spell that aromatic wildcard incidence explicitly. Wildcard has
+one atom grammar branch while its unspelled representation case remains
+unresolved; subsequent bond constraints choose the supported continuation.
+
+After integration into the root checkout at `b083925e`, bounded offline root
+Rust passed 86 tests, and the six selected public Python modules passed 79
+against RDKit 2026.03.4 and the local compiled extension with SHA-256
+`a4f55c5522efaa1ecbb7075de7f9b0d5b7eca8928a15a304b9f4dead97f2f9bf`.
+Both runners verified process-tree cleanup. Captured logs are
+`/tmp/grimace-mixed-representation-root-rust.log` and
+`/tmp/grimace-mixed-representation-root-python.log`. The isolated full South
+Star 2 native suite passed 299 tests with one ignored. These checks qualify
+selected supported paths and preserve the separate RDKit writer-parity contract;
+they do not establish complete fact-preserving SMILES support.

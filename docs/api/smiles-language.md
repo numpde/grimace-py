@@ -105,7 +105,7 @@ relax spelling only; it cannot stand in for the structural contract.
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
 | Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment witnesses also pass in both languages | Extend qualification to leading-dot stereo paths and other unqualified syntax |
-| Aromaticity | Aromatic or whole-component Kekule choices for supported inputs | Valid mixed lowercase/uppercase spellings within a component |
+| Aromaticity | Aromatic, whole-component Kekule, and selected mixed bracket spellings in `GENERAL`; `COMPACT` retains whole-component alternatives | Qualify remaining mixed bare spellings, bond omissions, and aromatic semantic cases |
 | Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level and branch-local dot segments,
@@ -118,17 +118,20 @@ support claims. Selected configured E/Z Forest paths now reach acceptance with c
 across dot/ring boundaries in both languages and parse back to the source
 stereo. Other directional Forest paths and leading-dot stereo paths remain
 unqualified.
-The aromatic source spelling and whole-component Kekule alternatives retain
-one matching constraint across segments; mixed lowercase and uppercase
-spellings within an aromatic component remain unqualified. The path also admits
+The aromatic source spelling, whole-component Kekule alternatives, and selected
+mixed bracket spellings retain one matching constraint across segments.
+`GENERAL` accepts checked benzene, pyrrole, charged pyridinium, and
+naphthalene mixed witnesses with sanitized graph and atom-fact parse-back;
+`COMPACT` retains its whole-component representation policy. Mixed bare
+spellings and the remaining bond omissions have not been qualified. The path also admits
 terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)` for those inputs in
 `GENERAL` and `COMPACT`. It also admits branched ring paths such as
 `C(CC1)CCC1` for cyclohexane. These examples establish specific supported
 paths, not completeness of the Forest grammar or liveness of every prefix.
 Public semantic witnesses include `C1.C1` for `CC` and `C1.C12.C2` for `CCC`;
 `COMPACT` also admits corresponding smallest-label spellings. This is a
-qualified subset of the target grammar: other stereo Forest paths, mixed aromatic spellings
-within a component, and other
+qualified subset of the target grammar: other stereo Forest paths, remaining
+mixed aromatic spellings within a component, and other
 unqualified syntax remain open. A fixed-budget diagnostic may report that its
 enumeration is incomplete; bounded results do not establish global exhaustive
 support or prefix liveness. The current `GENERAL` name is provisional; naming

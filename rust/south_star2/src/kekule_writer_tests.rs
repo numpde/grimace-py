@@ -85,6 +85,38 @@ fn shared_bracket_prefix_preserves_both_component_modes() {
 }
 
 #[test]
+fn general_writer_admits_mixed_bracket_cases_with_one_matching() {
+    let surface = ring(&[("C", 1, 4); 6]);
+    for witness in [
+        "[cH]1:[cH]-[CH]=[CH]-[CH]=[CH]-1",
+        "[cH]1-[CH]=[CH]-[CH]=[CH]-[CH]=1",
+    ] {
+        assert!(supports(&surface, witness), "missing {witness}");
+    }
+    for impossible in [
+        "c1-[CH]=[CH]-[CH]=[CH]-[CH]=1",
+        "[cH]1:[CH]-[CH]=[CH]-[CH]=[CH]-1",
+        "[cH]1:[cH]-[CH]=[CH]=[CH]-[CH]-1",
+    ] {
+        assert!(!supports(&surface, impossible), "accepted {impossible}");
+    }
+}
+
+#[test]
+fn mixed_brackets_preserve_heteroatom_and_charge_demands() {
+    let pyrrole = ring(&[("N", 1, 3), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4)]);
+    assert!(supports(&pyrrole, "[nH]1:[cH]=[CH]-[CH]=[cH]:1"));
+    assert!(!supports(&pyrrole, "[nH]1:[cH]=[CH]=[CH]-[cH]:1"));
+
+    let mut charged_atoms = vec![facts("N", true, 1, 1, Some(4))];
+    charged_atoms.extend((0..5).map(|_| facts("C", true, 0, 1, Some(4))));
+    let edges = (0..6).map(|i| (i, (i + 1) % 6, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    let charged = graph_surface(charged_atoms, &edges).unwrap();
+    assert!(supports(&charged, "[nH+]1:[cH]-[CH]=[CH]-[CH]=[CH]-1"));
+    assert!(!supports(&charged, "[nH+]1:[CH]-[CH]=[CH]-[CH]=[CH]-1"));
+}
+
+#[test]
 fn heteroatom_zero_and_one_double_demands_use_same_native_matching() {
     for (elements, witness) in [
         (vec![("N", 0, 3), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4), ("C", 1, 4)], "N1=CC=CC=C1"),
@@ -240,13 +272,13 @@ fn bare_boron_phosphorus_and_wildcard_keep_both_notation_languages() {
         assert!(supports(&surface, source), "missing {source}");
         assert!(supports(&surface, kekule), "missing {kekule}");
         if element == "*" {
+            assert!(supports(&surface, "*:1:c:c:c:c:c:1"));
             let states = consume(&surface, "*");
             let modes = states.iter().map(|state| {
                 let atom = state.structural.active_atom().unwrap();
                 state.structural.semantic_domain(surface.atom_aromatic_modes[atom.index()].unwrap())
             }).collect::<Vec<_>>();
-            assert!(modes.contains(&Domain::singleton(0).unwrap()));
-            assert!(modes.contains(&Domain::singleton(1).unwrap()));
+            assert!(modes.contains(&Domain::from_bits(3)));
             assert!(!consume(&surface, "*1c").is_empty());
             assert!(!consume(&surface, "*1C").is_empty());
         }

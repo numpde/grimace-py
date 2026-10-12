@@ -312,20 +312,25 @@ impl AromaticMatchingEdge {
     }
 }
 
-/// Exact local support for aromatic (mode 0) or Kekule (mode 1) chemistry.
-/// Edge values are aromatic 0, Kekule single 1, and Kekule double 2.
+/// Exact local support for aromatic surface spelling and integer bond orders.
+/// Atom values are lowercase 0 or uppercase 1; edge values are aromatic 0,
+/// explicit single 1, or explicit double 2.
 /// Every scope variable is exclusive to this projector.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AromaticMatchingFactor {
-    mode_variable: VariableId,
+    atom_variables: Box<[VariableId]>,
+    uniform_case: bool,
     double_demands: Box<[u8]>,
     edges: Box<[AromaticMatchingEdge]>,
     variables: Box<[VariableId]>,
 }
 
 impl AromaticMatchingFactor {
-    pub const fn mode_variable(&self) -> VariableId {
-        self.mode_variable
+    pub fn atom_variables(&self) -> &[VariableId] {
+        &self.atom_variables
+    }
+    pub const fn uniform_case(&self) -> bool {
+        self.uniform_case
     }
     pub fn double_demands(&self) -> &[u8] {
         &self.double_demands
@@ -466,15 +471,22 @@ impl ConstraintModelBuilder {
 
     pub fn add_aromatic_matching(
         &mut self,
-        mode_variable: VariableId,
+        atom_variables: impl IntoIterator<Item = VariableId>,
+        uniform_case: bool,
         double_demands: impl IntoIterator<Item = u8>,
         edges: impl IntoIterator<Item = AromaticMatchingEdge>,
     ) -> Result<FactorId, ConstraintModelError> {
+        let atom_variables = atom_variables.into_iter().collect::<Vec<_>>();
         let double_demands = double_demands.into_iter().collect::<Vec<_>>();
         let edges = edges.into_iter().collect::<Vec<_>>();
         if double_demands.is_empty() {
             return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
                 "a component requires at least one atom",
+            ));
+        }
+        if atom_variables.len() != double_demands.len() {
+            return Err(ConstraintModelError::InvalidAromaticMatchingGraph(
+                "one atom representation variable is required per demand",
             ));
         }
         if double_demands.iter().any(|&demand| demand > 1) {
@@ -500,7 +512,7 @@ impl ConstraintModelBuilder {
                 ));
             }
         }
-        let variables = std::iter::once(mode_variable)
+        let variables = atom_variables.iter().copied()
             .chain(edges.iter().map(|edge| edge.variable))
             .collect::<Vec<_>>();
         let mut seen = BTreeSet::new();
@@ -517,7 +529,7 @@ impl ConstraintModelBuilder {
             {
                 return Err(ConstraintModelError::LocalProjectorLeafReuse(variable));
             }
-            let allowed = Domain::from_bits(if index == 0 { 0b11 } else { 0b111 });
+            let allowed = Domain::from_bits(if index < atom_variables.len() { 0b11 } else { 0b111 });
             if !definition.initial_domain.is_subset_of(allowed) {
                 return Err(ConstraintModelError::InvalidAromaticMatchingDomain(
                     variable,
@@ -526,7 +538,8 @@ impl ConstraintModelBuilder {
         }
         let factor = self.push_factor(
             FactorDefinition::AromaticMatching(AromaticMatchingFactor {
-                mode_variable,
+                atom_variables: atom_variables.into_boxed_slice(),
+                uniform_case,
                 double_demands: double_demands.into_boxed_slice(),
                 edges: edges.into_boxed_slice(),
                 variables: variables.clone().into_boxed_slice(),

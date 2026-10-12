@@ -27,11 +27,15 @@ def _parse(smiles: str, preserve_graph_hydrogens: bool = False) -> Chem.Mol:
     return mol
 
 
-def _accepts(initial: decoding.Prefix, text: str) -> bool:
+def _accepts(initial: decoding.Prefix, text: str, *, max_nodes: int | None = None) -> bool:
     # A lexical prefix can have several token segmentations. Retain every
     # matching successor rather than choosing a first traversal or piece.
     pending = [(initial, 0)]
+    visited = 0
     while pending:
+        visited += 1
+        if max_nodes is not None and visited > max_nodes:
+            raise AssertionError(f"Selected path exceeded {max_nodes} prefix states: {text!r}")
         prefix, offset = pending.pop()
         if offset == len(text):
             if prefix.is_accepted:
@@ -111,6 +115,25 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
                 for witness in case["kekule_witnesses"]:
                     with self.subTest(witness=witness):
                         self.assertTrue(_accepts(initial, witness), witness)
+
+    def test_selected_mixed_bracket_paths_preserve_sanitized_facts(self) -> None:
+        cases = (
+            ("c1ccccc1", "[cH]1:[cH]-[CH]=[CH]-[CH]=[CH]-1"),
+            ("[nH]1cccc1", "[nH]1:[cH]=[CH]-[CH]=[cH]:1"),
+            ("[nH+]1ccccc1", "[nH+]1:[cH]-[CH]=[CH]-[CH]=[CH]-1"),
+            ("c1ccc2ccccc2c1", "[cH]1:[cH]C=C2C=CC=CC2=C1"),
+        )
+        for source_text, witness in cases:
+            with self.subTest(source=source_text):
+                source = _parse(source_text)
+                _assert_same_graph(self, source, _parse(witness))
+                general = decoding.start(source, language=decoding.SmilesLanguage.GENERAL)
+                self.assertTrue(_accepts(general, witness, max_nodes=20_000))
+                self.assertFalse(_accepts(general, witness.replace("[cH]", "[cH2]", 1), max_nodes=20_000))
+                compact = decoding.start(source, language=decoding.SmilesLanguage.COMPACT)
+                self.assertFalse(_accepts(compact, witness.translate(str.maketrans("12", "01")), max_nodes=20_000))
+        benzene = decoding.start(_parse("c1ccccc1"), language=decoding.SmilesLanguage.GENERAL)
+        self.assertFalse(_accepts(benzene, "[cH]1:[CH]-[CH]=[CH]-[CH]=[CH]-1", max_nodes=20_000))
 
     def test_aromatic_forest_segments_preserve_matching(self) -> None:
         cases = (

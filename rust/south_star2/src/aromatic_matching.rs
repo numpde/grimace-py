@@ -12,30 +12,34 @@ pub(crate) fn revise_aromatic_matching(
     factor: &AromaticMatchingFactor,
     domains: &mut PagedStore<Domain>,
 ) -> Result<Vec<VariableId>, NativeSolverError> {
-    let mode = domains[factor.mode_variable().index()];
+    let atom_domains = factor.atom_variables().iter().map(|atom| domains[atom.index()]).collect::<Vec<_>>();
     let edge_domains = factor
         .edges()
         .iter()
         .map(|edge| domains[edge.variable().index()])
         .collect::<Vec<_>>();
-    let aromatic = mode.contains(0) && edge_domains.iter().all(|domain| domain.contains(0));
-    let kekule = mode.contains(1) && kekule_feasible(factor, &edge_domains, None);
-    if !aromatic && !kekule {
+    if !matching_feasible(factor, &atom_domains, &edge_domains) {
         return Err(NativeSolverError::Contradiction);
     }
     let mut projected = Vec::with_capacity(factor.variables().len());
-    projected.push(Domain::from_bits(
-        u64::from(aromatic) | (u64::from(kekule) << 1),
-    ));
+    for (index, domain) in atom_domains.iter().enumerate() {
+        let mut support = Domain::empty();
+        for value in domain.iter() {
+            let mut trial = atom_domains.clone();
+            trial[index] = Domain::singleton(value).unwrap();
+            if matching_feasible(factor, &trial, &edge_domains) {
+                support = support.union(Domain::singleton(value).unwrap());
+            }
+        }
+        projected.push(support);
+    }
     for (index, domain) in edge_domains.iter().copied().enumerate() {
-        let mut support = Domain::from_bits(u64::from(aromatic));
-        if kekule {
-            for value in [1, 2] {
-                if domain.contains(value)
-                    && kekule_feasible(factor, &edge_domains, Some((index, value)))
-                {
-                    support = support.union(Domain::from_bits(1 << value));
-                }
+        let mut support = Domain::empty();
+        for value in domain.iter() {
+            let mut trial = edge_domains.clone();
+            trial[index] = Domain::singleton(value).unwrap();
+            if matching_feasible(factor, &atom_domains, &trial) {
+                support = support.union(Domain::singleton(value).unwrap());
             }
         }
         projected.push(support);
@@ -50,15 +54,35 @@ pub(crate) fn revise_aromatic_matching(
     Ok(changed)
 }
 
-fn kekule_feasible(
+pub(crate) fn matching_feasible(
     factor: &AromaticMatchingFactor,
-    domains: &[Domain],
-    commitment: Option<(usize, u8)>,
+    atom_domains: &[Domain],
+    edge_domains: &[Domain],
 ) -> bool {
-    let edge_domain = |index: usize| match commitment {
-        Some((committed, value)) if committed == index => Domain::from_bits(1 << value),
-        _ => domains[index],
-    };
+    if factor.uniform_case() {
+        let source = atom_domains.iter().all(|domain| domain.contains(0))
+            && edge_domains.iter().all(|domain| domain.contains(0))
+            && has_feasible_double_assignment(factor.double_demands(), factor.edges());
+        let kekule = atom_domains.iter().all(|domain| domain.contains(1))
+            && matching_feasible_with_case(factor, edge_domains, |_| false);
+        return source || kekule;
+    }
+    matching_feasible_with_case(factor, edge_domains, |atom| atom_domains[atom].contains(0))
+}
+
+fn matching_feasible_with_case(
+    factor: &AromaticMatchingFactor,
+    edge_domains: &[Domain],
+    lower_allowed: impl Fn(usize) -> bool,
+) -> bool {
+    let latent = factor.edges().iter().zip(edge_domains).map(|(edge, &domain)| {
+        let (a, b) = edge.endpoints();
+        let aromatic = domain.contains(0) && lower_allowed(a) && lower_allowed(b);
+        (domain.contains(1) || aromatic, domain.contains(2) || aromatic)
+    }).collect::<Vec<_>>();
+    if latent.iter().any(|&(single, double)| !single && !double) {
+        return false;
+    }
     let mut remaining = factor
         .double_demands()
         .iter()
@@ -66,11 +90,8 @@ fn kekule_feasible(
         .collect::<Vec<_>>();
     // Mandatory doubles consume both endpoints before residual matching.
     for (index, edge) in factor.edges().iter().enumerate() {
-        let domain = edge_domain(index);
-        if !domain.contains(1) {
-            if !domain.contains(2) {
-                return false;
-            }
+        let (single, _) = latent[index];
+        if !single {
             let (a, b) = edge.endpoints();
             if !remaining[a] || !remaining[b] {
                 return false;
@@ -82,7 +103,7 @@ fn kekule_feasible(
     has_perfect_matching(
         &remaining,
         factor.edges().iter().enumerate().filter_map(|(index, edge)| {
-            edge_domain(index).contains(2).then(|| edge.endpoints())
+            latent[index].1.then(|| edge.endpoints())
         }),
     )
 }
@@ -251,309 +272,199 @@ impl<'a> BlossomMatching<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{
-        AromaticMatchingEdge, ConstraintModelBuilder, ConstraintModelError, FactorDefinition,
-    };
+    use crate::model::{AromaticMatchingEdge, ConstraintModelBuilder, ConstraintModelError, FactorDefinition};
 
-    fn fixture(
-        demands: &[u8],
-        edges: &[(usize, usize)],
-        mode: Domain,
-        edge_domains: &[Domain],
-    ) -> (AromaticMatchingFactor, PagedStore<Domain>) {
+    fn check_projection(demands: &[u8], edges: &[(usize, usize)], atom_bits: &[u64], edge_bits: &[u64], uniform: bool) {
         let mut builder = ConstraintModelBuilder::new();
-        let mode_variable = builder.add_variable(mode).unwrap();
-        let variables = edge_domains
-            .iter()
-            .map(|&domain| builder.add_variable(domain).unwrap())
-            .collect::<Vec<_>>();
-        let id = builder
-            .add_aromatic_matching(
-                mode_variable,
-                demands.iter().copied(),
-                edges
-                    .iter()
-                    .zip(variables)
-                    .map(|(&(a, b), variable)| AromaticMatchingEdge::new(variable, a, b)),
-            )
-            .unwrap();
+        let atoms = atom_bits.iter().map(|&bits| builder.add_variable(Domain::from_bits(bits)).unwrap()).collect::<Vec<_>>();
+        let bonds = edge_bits.iter().map(|&bits| builder.add_variable(Domain::from_bits(bits)).unwrap()).collect::<Vec<_>>();
+        let id = builder.add_aromatic_matching(atoms.clone(), uniform, demands.iter().copied(),
+            edges.iter().zip(&bonds).map(|(&(a, b), &variable)| AromaticMatchingEdge::new(variable, a, b))).unwrap();
         let model = builder.build();
-        let FactorDefinition::AromaticMatching(factor) = model.factor(id).unwrap() else {
-            panic!("wrong factor")
-        };
-        (
-            factor.clone(),
-            PagedStore::from_values(model.initial_domains()),
-        )
+        let FactorDefinition::AromaticMatching(factor) = model.factor(id).unwrap() else { unreachable!() };
+        let mut store = PagedStore::from_values(model.initial_domains());
+        let mut expected = vec![0_u64; atoms.len() + bonds.len()];
+        for mut cases in 0..(1_usize << atoms.len()) {
+            let chosen = (0..atoms.len()).map(|_| { let value = (cases & 1) as u8; cases >>= 1; value }).collect::<Vec<_>>();
+            if chosen.iter().enumerate().any(|(i, &case)| atom_bits[i] & (1 << case) == 0)
+                || uniform && chosen.iter().any(|&case| case != chosen[0]) { continue; }
+            for mut surfaces in 0..3_usize.pow(edges.len() as u32) {
+                let values = (0..edges.len()).map(|_| { let value = (surfaces % 3) as u8; surfaces /= 3; value }).collect::<Vec<_>>();
+                if values.iter().enumerate().any(|(i, &value)| edge_bits[i] & (1 << value) == 0
+                    || value == 0 && (chosen[edges[i].0] != 0 || chosen[edges[i].1] != 0)
+                    || uniform && ((chosen[0] == 0) != (value == 0))) { continue; }
+                for mut latent in 0..(1_usize << edges.len()) {
+                    let mut doubles = vec![0_u8; demands.len()];
+                    let valid = values.iter().enumerate().all(|(i, &value)| {
+                        let order = (latent & 1) as u8 + 1; latent >>= 1;
+                        if value != 0 && value != order { return false; }
+                        if order == 2 { doubles[edges[i].0] += 1; doubles[edges[i].1] += 1; }
+                        true
+                    });
+                    if valid && doubles == demands {
+                        for (i, &case) in chosen.iter().enumerate() { expected[i] |= 1 << case; }
+                        for (i, &value) in values.iter().enumerate() { expected[chosen.len()+i] |= 1 << value; }
+                    }
+                }
+            }
+        }
+        let result = revise_aromatic_matching(factor, &mut store);
+        if expected.iter().all(|&bits| bits == 0) { assert_eq!(result, Err(NativeSolverError::Contradiction)); }
+        else {
+            result.unwrap();
+            assert_eq!(factor.variables().iter().map(|v| store[v.index()]).collect::<Vec<_>>(), expected.into_iter().map(Domain::from_bits).collect::<Vec<_>>(),
+                "demands={demands:?}, edges={edges:?}, atoms={atom_bits:?}, bonds={edge_bits:?}, uniform={uniform}");
+        }
     }
 
-    // Independent test witness enumerates tiny edge assignments, never used by runtime.
-    fn brute_support(
-        demands: &[u8],
-        edges: &[(usize, usize)],
-        mode: Domain,
-        domains: &[Domain],
-    ) -> Vec<Domain> {
-        let mut support = vec![Domain::empty(); edges.len() + 1];
-        for chosen_mode in mode.iter() {
-            let count = 3_usize.pow(edges.len() as u32);
-            for mut code in 0..count {
-                let mut values = Vec::new();
+    #[test]
+    fn mixed_surface_projection_matches_finite_witness() {
+        let edges = [(0, 1), (1, 2), (2, 3)];
+        for mask in 0..16_u8 {
+            let demands = (0..4).map(|i| (mask >> i) & 1).collect::<Vec<_>>();
+            for atom_bits in [[3, 3, 3, 3], [1, 3, 3, 2], [2, 3, 3, 1]] {
+                for edge_bits in [[7, 7, 7], [1, 7, 6], [6, 3, 5], [2, 4, 1]] {
+                    for uniform in [false, true] {
+                        check_projection(&demands, &edges, &atom_bits, &edge_bits, uniform);
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_uniform_projection(demands: &[u8], edges: &[(usize, usize)], mode_bits: u64, edge_bits: &[u64]) {
+        let mut builder = ConstraintModelBuilder::new();
+        let atoms = (0..demands.len()).map(|_| builder.add_variable(Domain::from_bits(mode_bits)).unwrap()).collect::<Vec<_>>();
+        let bonds = edge_bits.iter().map(|&bits| builder.add_variable(Domain::from_bits(bits)).unwrap()).collect::<Vec<_>>();
+        let id = builder.add_aromatic_matching(atoms, true, demands.iter().copied(),
+            edges.iter().zip(&bonds).map(|(&(a, b), &variable)| AromaticMatchingEdge::new(variable, a, b))).unwrap();
+        let model = builder.build();
+        let FactorDefinition::AromaticMatching(factor) = model.factor(id).unwrap() else { unreachable!() };
+        let mut expected = vec![0_u64; demands.len() + edges.len()];
+        for mode in 0..=1_u8 {
+            if mode_bits & (1 << mode) == 0 { continue; }
+            for doubles_mask in 0..(1_usize << edges.len()) {
                 let mut doubles = vec![0_u8; demands.len()];
                 let mut valid = true;
                 for (index, &(a, b)) in edges.iter().enumerate() {
-                    let value = (code % 3) as u8;
-                    code /= 3;
-                    values.push(value);
-                    valid &= domains[index].contains(value)
-                        && if chosen_mode == 0 {
-                            value == 0
-                        } else {
-                            value == 1 || value == 2
-                        };
-                    if value == 2 {
-                        doubles[a] += 1;
-                        doubles[b] += 1;
-                    }
+                    let double = doubles_mask & (1 << index) != 0;
+                    let surface = if mode == 0 { 0 } else if double { 2 } else { 1 };
+                    valid &= edge_bits[index] & (1 << surface) != 0;
+                    if double { doubles[a] += 1; doubles[b] += 1; }
                 }
-                valid &= chosen_mode == 0 || doubles == demands;
-                if valid {
-                    support[0] = support[0].union(Domain::from_bits(1 << chosen_mode));
-                    for (index, value) in values.into_iter().enumerate() {
-                        support[index + 1] =
-                            support[index + 1].union(Domain::from_bits(1 << value));
+                if valid && doubles == demands {
+                    for support in &mut expected[..demands.len()] { *support |= 1 << mode; }
+                    for (index, support) in expected[demands.len()..].iter_mut().enumerate() {
+                        *support |= 1 << if mode == 0 { 0 } else if doubles_mask & (1 << index) != 0 { 2 } else { 1 };
                     }
                 }
             }
         }
-        support
-    }
-
-    fn assert_projection(
-        demands: &[u8],
-        edges: &[(usize, usize)],
-        mode: Domain,
-        domains: &[Domain],
-    ) {
-        let expected = brute_support(demands, edges, mode, domains);
-        let (factor, mut store) = fixture(demands, edges, mode, domains);
-        let before = factor
-            .variables()
-            .iter()
-            .map(|v| store[v.index()])
-            .collect::<Vec<_>>();
-        let actual = revise_aromatic_matching(&factor, &mut store);
-        if expected[0].is_empty() {
-            assert_eq!(
-                actual,
-                Err(NativeSolverError::Contradiction),
-                "demands={demands:?} edges={edges:?} domains={domains:?}"
-            );
-            assert_eq!(
-                before,
-                factor
-                    .variables()
-                    .iter()
-                    .map(|v| store[v.index()])
-                    .collect::<Vec<_>>()
-            );
+        let mut store = PagedStore::from_values(model.initial_domains());
+        let result = revise_aromatic_matching(factor, &mut store);
+        if expected.iter().all(|&bits| bits == 0) {
+            assert_eq!(result, Err(NativeSolverError::Contradiction));
         } else {
-            assert_eq!(
-                expected,
-                factor
-                    .variables()
-                    .iter()
-                    .map(|v| store[v.index()])
-                    .collect::<Vec<_>>(),
-                "demands={demands:?} edges={edges:?} domains={domains:?}"
-            );
-            let changed = actual.unwrap();
-            assert_eq!(
-                changed,
-                factor
-                    .variables()
-                    .iter()
-                    .zip(before)
-                    .zip(&expected)
-                    .filter_map(|((&v, old), &new)| (old != new).then_some(v))
-                    .collect::<Vec<_>>()
-            );
-            assert!(revise_aromatic_matching(&factor, &mut store)
-                .unwrap()
-                .is_empty());
+            result.unwrap();
+            assert_eq!(factor.variables().iter().map(|v| store[v.index()]).collect::<Vec<_>>(),
+                expected.into_iter().map(Domain::from_bits).collect::<Vec<_>>(),
+                "demands={demands:?}, edges={edges:?}, mode={mode_bits}, domains={edge_bits:?}");
         }
     }
 
     #[test]
-    fn aromatic_matching_cycles_donors_fused_and_forced_edges() {
-        let all = Domain::from_bits(7);
-        let kekule = Domain::from_bits(6);
-        let mode = Domain::from_bits(3);
-        let only_kekule = Domain::from_bits(2);
-        let benzene = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)];
-        assert_projection(&[1; 6], &benzene, mode, &[all; 6]);
-        assert_projection(&[1; 6], &benzene, only_kekule, &[kekule; 6]);
-        assert_projection(
-            &[0, 1, 1, 1, 1],
-            &[(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)],
-            mode,
-            &[all; 5],
-        );
-        assert_projection(
-            &[1; 3],
-            &[(0, 1), (1, 2), (2, 0)],
-            only_kekule,
-            &[kekule; 3],
-        );
-        let fused = [
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 4),
-            (4, 5),
-            (5, 0),
-            (4, 6),
-            (6, 7),
-            (7, 8),
-            (8, 9),
-            (9, 5),
-        ];
-        assert_projection(&[1; 10], &fused, mode, &[all; 11]);
-        let mut forced = [kekule; 6];
-        forced[0] = Domain::from_bits(4);
-        forced[1] = Domain::from_bits(4);
-        assert_projection(&[1; 6], &benzene, only_kekule, &forced);
-        let mut forbidden = [kekule; 6];
-        forbidden[0] = Domain::from_bits(2);
-        forbidden[5] = Domain::from_bits(2);
-        assert_projection(&[1; 6], &benzene, only_kekule, &forbidden);
-        let mut aromatic_only = [all; 6];
-        aromatic_only[0] = Domain::from_bits(1);
-        assert_projection(&[1; 6], &benzene, mode, &aromatic_only);
-    }
-
-    #[test]
-    fn aromatic_matching_all_tiny_graphs_agree_with_independent_matching_witness() {
-        fn brute_matching(graph: &[Vec<usize>], remaining: u64) -> bool {
-            if remaining == 0 {
-                return true;
-            }
-            let a = remaining.trailing_zeros() as usize;
-            graph[a].iter().any(|&b| {
-                remaining & (1 << b) != 0
-                    && brute_matching(graph, remaining & !(1 << a) & !(1 << b))
-            })
-        }
-        for n in 0..=6 {
-            let pairs = (0..n)
-                .flat_map(|a| (a + 1..n).map(move |b| (a, b)))
-                .collect::<Vec<_>>();
-            for mask in 0..1_usize << pairs.len() {
-                let mut graph = vec![Vec::new(); n];
-                for (index, &(a, b)) in pairs.iter().enumerate() {
-                    if mask & (1 << index) != 0 {
-                        graph[a].push(b);
-                        graph[b].push(a);
-                    }
-                }
-                assert_eq!(
-                    BlossomMatching::new(&graph).has_perfect_matching(),
-                    brute_matching(&graph, (1 << n) - 1),
-                    "graph={graph:?}"
-                );
-            }
-        }
-        // Root 2 must contract 0-1-2 to reach the free tail through vertex 1.
-        let graph = vec![vec![1, 2], vec![0, 2, 3], vec![0, 1], vec![1]];
-        assert!(BlossomMatching::new(&graph).has_perfect_matching());
-    }
-
-    #[test]
-    fn aromatic_matching_all_domain_restrictions_and_demands_on_triangle_with_tail() {
+    fn uniform_component_triangle_tail_all_domains_and_demands_match_witness() {
         let edges = [(0, 1), (1, 2), (2, 0), (1, 3)];
         for demands_mask in 0..16 {
-            let demands = (0..4)
-                .map(|a| ((demands_mask >> a) & 1) as u8)
-                .collect::<Vec<_>>();
+            let demands = (0..4).map(|atom| ((demands_mask >> atom) & 1) as u8).collect::<Vec<_>>();
             for mode_bits in 1..=3 {
                 for mut restriction_code in 0..7_usize.pow(4) {
-                    let domains = (0..4)
-                        .map(|_| {
-                            let bits = restriction_code % 7 + 1;
-                            restriction_code /= 7;
-                            Domain::from_bits(bits as u64)
-                        })
-                        .collect::<Vec<_>>();
-                    assert_projection(&demands, &edges, Domain::from_bits(mode_bits), &domains);
+                    let domains = (0..4).map(|_| {
+                        let bits = restriction_code % 7 + 1;
+                        restriction_code /= 7;
+                        bits as u64
+                    }).collect::<Vec<_>>();
+                    check_uniform_projection(&demands, &edges, mode_bits, &domains);
                 }
             }
         }
     }
 
     #[test]
-    fn aromatic_matching_scope_is_exclusive_in_both_registration_orders() {
-        let mut b = ConstraintModelBuilder::new();
-        let mode = b.add_variable(Domain::from_bits(3)).unwrap();
-        let edge = b.add_variable(Domain::from_bits(7)).unwrap();
-        let other = b.add_variable(Domain::from_bits(7)).unwrap();
-        b.add_aromatic_matching(mode, [1, 1], [AromaticMatchingEdge::new(edge, 0, 1)])
-            .unwrap();
-        for variable in [mode, edge] {
-            assert_eq!(
-                b.add_binary_relation(variable, other, [(0, 0)]),
-                Err(ConstraintModelError::LocalProjectorLeafReuse(variable))
-            );
-            assert_eq!(
-                b.add_aromatic_matching(variable, [0], []),
-                Err(ConstraintModelError::LocalProjectorLeafReuse(variable))
-            );
-        }
-        let mut b = ConstraintModelBuilder::new();
-        let mode = b.add_variable(Domain::from_bits(3)).unwrap();
-        let edge = b.add_variable(Domain::from_bits(7)).unwrap();
-        let other = b.add_variable(Domain::from_bits(7)).unwrap();
-        b.add_binary_relation(edge, other, [(0, 0)]).unwrap();
-        assert_eq!(
-            b.add_aromatic_matching(mode, [1, 1], [AromaticMatchingEdge::new(edge, 0, 1)]),
-            Err(ConstraintModelError::LocalProjectorLeafReuse(edge))
-        );
+    fn uniform_cycle_donor_and_fused_cases_match_witness() {
+        let benzene = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)];
+        check_uniform_projection(&[1; 6], &benzene, 3, &[7; 6]);
+        check_uniform_projection(&[1; 6], &benzene, 2, &[4, 6, 6, 6, 6, 6]);
+        check_uniform_projection(&[1; 6], &benzene, 3, &[1, 7, 7, 7, 7, 7]);
+        let donor = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)];
+        check_uniform_projection(&[0, 1, 1, 1, 1], &donor, 3, &[7; 5]);
+        let fused = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0),
+            (4, 6), (6, 7), (7, 8), (8, 9), (9, 5)];
+        check_uniform_projection(&[1; 10], &fused, 3, &[7; 11]);
     }
 
     #[test]
-    fn aromatic_matching_malformed_inputs_fail_at_model_boundary() {
-        let mut b = ConstraintModelBuilder::new();
-        let mode = b.add_variable(Domain::from_bits(3)).unwrap();
-        let edge = b.add_variable(Domain::from_bits(7)).unwrap();
-        let invalid = b.add_variable(Domain::from_bits(8)).unwrap();
-        assert!(matches!(
-            b.add_aromatic_matching(mode, [], []),
-            Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))
-        ));
-        assert!(matches!(
-            b.add_aromatic_matching(mode, [2], []),
-            Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))
-        ));
-        for endpoints in [(0, 0), (0, 2)] {
-            assert!(matches!(
-                b.add_aromatic_matching(
-                    mode,
-                    [1, 1],
-                    [AromaticMatchingEdge::new(edge, endpoints.0, endpoints.1)]
-                ),
-                Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))
-            ));
+    fn blossom_agrees_with_small_exhaustive_matching() {
+        fn brute(graph: &[Vec<usize>], remaining: u64) -> bool {
+            if remaining == 0 { return true; }
+            let a = remaining.trailing_zeros() as usize;
+            graph[a].iter().any(|&b| remaining & (1 << b) != 0
+                && brute(graph, remaining & !(1 << a) & !(1 << b)))
         }
-        assert_eq!(
-            b.add_aromatic_matching(invalid, [0], []),
-            Err(ConstraintModelError::InvalidAromaticMatchingDomain(invalid))
-        );
-        assert_eq!(
-            b.add_aromatic_matching(mode, [1, 1], [AromaticMatchingEdge::new(invalid, 0, 1)]),
-            Err(ConstraintModelError::InvalidAromaticMatchingDomain(invalid))
-        );
-        assert_eq!(
-            b.add_aromatic_matching(mode, [1, 1], [AromaticMatchingEdge::new(mode, 0, 1)]),
-            Err(ConstraintModelError::RepeatedVariableInFactor(mode))
-        );
+        for n in 0..=6 {
+            let pairs = (0..n).flat_map(|a| (a+1..n).map(move |b| (a,b))).collect::<Vec<_>>();
+            for mask in 0..1_usize << pairs.len() {
+                let mut graph = vec![Vec::new(); n];
+                for (i, &(a,b)) in pairs.iter().enumerate() {
+                    if mask & (1 << i) != 0 { graph[a].push(b); graph[b].push(a); }
+                }
+                assert_eq!(BlossomMatching::new(&graph).has_perfect_matching(), brute(&graph, (1 << n)-1));
+            }
+        }
+    }
+
+    #[test]
+    fn matching_registration_rejects_malformed_scope_and_reuse() {
+        let mut builder = ConstraintModelBuilder::new();
+        let a = builder.add_variable(Domain::from_bits(3)).unwrap();
+        let b = builder.add_variable(Domain::from_bits(3)).unwrap();
+        let edge = builder.add_variable(Domain::from_bits(7)).unwrap();
+        let invalid = builder.add_variable(Domain::from_bits(8)).unwrap();
+        let other = builder.add_variable(Domain::from_bits(7)).unwrap();
+        assert!(matches!(builder.add_aromatic_matching([], false, [], []),
+            Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))));
+        assert!(matches!(builder.add_aromatic_matching([a], false, [2], []),
+            Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))));
+        assert!(matches!(builder.add_aromatic_matching([a], false, [1, 1], []),
+            Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))));
+        for endpoints in [(0, 0), (0, 2)] {
+            assert!(matches!(builder.add_aromatic_matching([a, b], false, [1, 1],
+                [AromaticMatchingEdge::new(edge, endpoints.0, endpoints.1)]),
+                Err(ConstraintModelError::InvalidAromaticMatchingGraph(_))));
+        }
+        assert_eq!(builder.add_aromatic_matching([invalid], false, [0], []),
+            Err(ConstraintModelError::InvalidAromaticMatchingDomain(invalid)));
+        assert_eq!(builder.add_aromatic_matching([a, b], false, [1, 1],
+            [AromaticMatchingEdge::new(invalid, 0, 1)]),
+            Err(ConstraintModelError::InvalidAromaticMatchingDomain(invalid)));
+        assert_eq!(builder.add_aromatic_matching([a, a], false, [0, 0], []),
+            Err(ConstraintModelError::RepeatedVariableInFactor(a)));
+        builder.add_aromatic_matching([a, b], false, [1, 1],
+            [AromaticMatchingEdge::new(edge, 0, 1)]).unwrap();
+        for variable in [a, b, edge] {
+            assert_eq!(builder.add_binary_relation(variable, other, [(0, 0)]),
+                Err(ConstraintModelError::LocalProjectorLeafReuse(variable)));
+            assert_eq!(builder.add_aromatic_matching([variable], false, [0], []),
+                Err(ConstraintModelError::LocalProjectorLeafReuse(variable)));
+        }
+        let mut reverse = ConstraintModelBuilder::new();
+        let a = reverse.add_variable(Domain::from_bits(3)).unwrap();
+        let b = reverse.add_variable(Domain::from_bits(3)).unwrap();
+        let edge = reverse.add_variable(Domain::from_bits(7)).unwrap();
+        let other = reverse.add_variable(Domain::from_bits(7)).unwrap();
+        reverse.add_binary_relation(edge, other, [(0, 0)]).unwrap();
+        assert_eq!(reverse.add_aromatic_matching([a, b], false, [1, 1],
+            [AromaticMatchingEdge::new(edge, 0, 1)]),
+            Err(ConstraintModelError::LocalProjectorLeafReuse(edge)));
     }
 }

@@ -249,27 +249,9 @@ fn assignment_satisfies(
         );
         match model.factor(factor_id).expect("prepared factor must exist") {
             FactorDefinition::AromaticMatching(factor) => {
-                let mode = assignment[factor.mode_variable().index()];
-                let mut doubles = vec![0_usize; factor.double_demands().len()];
-                let valid_edges = factor.edges().iter().all(|edge| {
-                    let value = assignment[edge.variable().index()];
-                    if mode == 0 {
-                        return value == 0;
-                    }
-                    if value == 2 {
-                        let (a, b) = edge.endpoints();
-                        doubles[a] += 1;
-                        doubles[b] += 1;
-                    }
-                    value == 1 || value == 2
-                });
-                valid_edges
-                    && (mode == 0
-                        || (mode == 1
-                            && doubles
-                                .iter()
-                                .zip(factor.double_demands())
-                                .all(|(&actual, &demand)| actual == demand as usize)))
+                let atoms = factor.atom_variables().iter().map(|v| Domain::singleton(assignment[v.index()]).unwrap()).collect::<Vec<_>>();
+                let edges = factor.edges().iter().map(|e| Domain::singleton(assignment[e.variable().index()]).unwrap()).collect::<Vec<_>>();
+                crate::aromatic_matching::matching_feasible(factor, &atoms, &edges)
             }
             FactorDefinition::BinaryRelation(relation) => relation
                 .allowed_right(assignment[relation.left().index()])

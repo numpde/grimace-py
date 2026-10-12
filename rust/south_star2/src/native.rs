@@ -2364,13 +2364,14 @@ mod aromatic_matching_plan_tests {
     #[test]
     fn aromatic_matching_initial_and_transition_never_enter_exact_search_plan() {
         let mut builder = ConstraintModelBuilder::new();
-        let mode = builder.add_variable(Domain::from_bits(3)).unwrap();
+        let modes = (0..6).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap()).collect::<Vec<_>>();
         let edges = (0..6)
             .map(|_| builder.add_variable(Domain::from_bits(7)).unwrap())
             .collect::<Vec<_>>();
         builder
             .add_aromatic_matching(
-                mode,
+                modes.clone(),
+                true,
                 [1; 6],
                 edges.iter().enumerate().map(|(index, &variable)| {
                     AromaticMatchingEdge::new(variable, index, (index + 1) % 6)
@@ -2387,11 +2388,11 @@ mod aromatic_matching_plan_tests {
         let next = initial
             .with_restrictions([(edges[0], Domain::from_bits(4))])
             .unwrap();
-        assert_eq!(next.domain(mode), Some(Domain::from_bits(2)));
+        assert_eq!(next.domain(modes[0]), Some(Domain::from_bits(2)));
         assert_eq!(next.domain(edges[1]), Some(Domain::from_bits(2)));
         assert_eq!(next.binary_exact_runs.load(Ordering::Relaxed), 0);
         assert_eq!(next.mixed_exact_runs.load(Ordering::Relaxed), 0);
         assert_eq!(next.mixed_search_branches.load(Ordering::Relaxed), 0);
-        assert_eq!(initial.domain(mode), Some(Domain::from_bits(3)));
+        assert_eq!(initial.domain(modes[0]), Some(Domain::from_bits(3)));
     }
 }

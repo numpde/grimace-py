@@ -233,12 +233,13 @@ impl PreparedConstraintAssembly {
 
     pub(crate) fn add_aromatic_matching(
         &mut self,
-        mode_variable: VariableId,
+        atom_variables: impl IntoIterator<Item = VariableId>,
+        uniform_case: bool,
         double_demands: impl IntoIterator<Item = u8>,
         edges: impl IntoIterator<Item = crate::model::AromaticMatchingEdge>,
     ) -> FactorId {
         self.builder
-            .add_aromatic_matching(mode_variable, double_demands, edges)
+            .add_aromatic_matching(atom_variables, uniform_case, double_demands, edges)
             .expect("prepared aromatic component must define a valid matching factor")
     }
 

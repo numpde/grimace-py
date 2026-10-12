@@ -362,6 +362,8 @@ fn bounded_support_growth() {
                                 expected.insert(format!("{root}{opening}{middle}({last}{closing})"));
                                 expected.insert(format!("{root}{opening}({middle}{last}{closing})"));
                                 expected.insert(format!("{root}{opening}({middle}({last}{closing}))"));
+                                expected.insert(format!("{root}({middle}{opening}){last}{closing}"));
+                                expected.insert(format!("{root}({middle}{opening})({last}{closing})"));
                             }
                         }
                     }

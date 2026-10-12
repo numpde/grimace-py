@@ -569,10 +569,8 @@ impl WriterFrame {
 
     fn commit_child(&mut self, incident: AdjacentBond) {
         assert!(
-            self.attachments.iter().any(|attachment| {
-                attachment.incidences.len() == 1 && attachment.incidences[0] == incident
-            }),
-            "a committed child must be the sole incidence of one active attachment"
+            self.attachments.iter().any(|attachment| attachment.incidences.contains(&incident)),
+            "a committed child must be an active attachment incidence"
         );
         assert!(
             self.entry_bond != Some(incident.bond())
@@ -620,14 +618,13 @@ impl WriterFrame {
     }
 
     fn consume_child_attachment(&mut self, incident: AdjacentBond) {
-        let offset = self
+        let attachment = self
             .attachments
-            .iter()
-            .position(|attachment| {
-                attachment.incidences.len() == 1 && attachment.incidences[0] == incident
-            })
-            .expect("a child must be the sole remaining incidence of its attachment");
-        self.attachments.remove(offset);
+            .iter_mut()
+            .find(|attachment| attachment.incidences.contains(&incident))
+            .expect("a child must be an active attachment incidence");
+        attachment.incidences.retain(|candidate| *candidate != incident);
+        self.attachments.retain(|attachment| !attachment.incidences.is_empty());
     }
 }
 
@@ -969,7 +966,7 @@ impl TraversalState {
         self.progress.ring_first_endpoint(incident.bond())
     }
 
-    pub(crate) fn complete_path(&mut self, _graph: &PreparedGraph) -> Option<AtomId> {
+    pub(crate) fn complete_path(&mut self, graph: &PreparedGraph) -> Option<AtomId> {
         let active = self.active.take().expect("no active path to complete");
         assert!(
             active.attachments.is_empty(),
@@ -977,7 +974,13 @@ impl TraversalState {
         );
         let restored = self.branch_returns.take().map(|node| {
             self.branch_returns = node.parent.clone();
-            Arc::clone(&node.frame)
+            let mut frame = Arc::clone(&node.frame);
+            let atom = frame.atom;
+            let attachments = self.residual.attachments(graph, &self.progress, atom);
+            if frame.attachments != attachments {
+                Arc::make_mut(&mut frame).attachments = attachments;
+            }
+            frame
         });
         if restored.is_none() {
             assert!(
@@ -991,12 +994,12 @@ impl TraversalState {
             assert_eq!(
                 active.attachments,
                 self.residual
-                    .attachments(_graph, &self.progress, active.atom),
+                    .attachments(graph, &self.progress, active.atom),
                 "a restored parent frame must match the live residual partition"
             );
             assert_eq!(
                 active.attachments,
-                residual_attachments_full(_graph, &self.progress, active.atom),
+                residual_attachments_full(graph, &self.progress, active.atom),
                 "a restored parent frame must match full residual recomputation"
             );
         }

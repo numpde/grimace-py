@@ -32,6 +32,10 @@
       "id": "three_member_ether_ring",
       "source_smiles": "C1CO1",
       "expected_outputs": [
+        "C(C0)(O0)",
+        "C(C0)O0",
+        "C(O0)(C0)",
+        "C(O0)C0",
         "C0(.C00)(O0)",
         "C0(.C00)O0",
         "C0(.C10)(O1)",
@@ -184,6 +188,8 @@
         "C0O1.C01",
         "C0O1.C10",
         "C0OC0",
+        "O(C0)(C0)",
+        "O(C0)C0",
         "O0(.C00)(C0)",
         "O0(.C00)C0",
         "O0(.C10)(C1)",
@@ -265,6 +271,6 @@
   ],
   "support_provenance": {
     "kind": "bounded_candidate_runtime_observation",
-    "qualification": "For CO and C1CO1, all accepted compact outputs were enumerated with at most 10000 prefix states and 1000 outputs per molecule. Every output was interpreted by a temporary independent C/O graph witness and compared with the source graph; old expected outputs remained included. This records bounded candidate-runtime regression support, not an independent exhaustive language oracle. RDKit 2026.03.4 rejects standard-valid leading-dot branches such as C(.C), so parser acceptance is not used as an authority for them."
+    "qualification": "For CO and C1CO1, all accepted compact outputs were enumerated with at most 10000 prefix states and 1000 outputs per molecule. Every output was interpreted by a temporary independent C/O graph witness and compared with the source graph; old expected outputs remained included. This records bounded candidate-runtime regression support, not an independent exhaustive language oracle. RDKit 2026.03.4 rejects standard-valid leading-dot branches such as C(.C), so parser acceptance is not used as an authority for them. This Forest sibling-traversal revision observed six additional C1CO1 outputs in 992 prefix nodes (234 total outputs), under the same 10000/1000 caps; all six passed the independent small-graph witness, and the previous set remained included."
   }
 }

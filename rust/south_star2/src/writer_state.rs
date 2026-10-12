@@ -1,8 +1,9 @@
 //! Concrete composition of residual writer frames and constraint state.
 //!
 //! The graphic-matroid factor guards global Traversal/Ring feasibility. Writer
-//! policy is stricter: each residual attachment receives exactly one traversal
-//! entry, while its other active incidences become ring endpoints.
+//! Tree policy gives each residual attachment one traversal entry. Forest
+//! traversal may return to a parent after visiting one incidence of a chemical
+//! residual component, then enter another incidence of that same component.
 
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
@@ -262,6 +263,12 @@ impl<S: ConstraintSolver> WriterState<S> {
         let mut ring_phase = false;
         let mut children = Vec::new();
         let can_emit_ring = self.traversal.active_can_emit_ring();
+        let segments = self.prepared.topology()
+            == crate::model::TraversalTopologyRequirement::Forest;
+        let unresolved_incidence_count = self.traversal.active_attachments()
+            .iter()
+            .map(|attachment| attachment.incidences().len())
+            .sum::<usize>();
 
         for incident in graph
             .neighbors(active)
@@ -309,9 +316,26 @@ impl<S: ConstraintSolver> WriterState<S> {
                 })
                 .count();
 
-            let segments = self.prepared.topology()
-                == crate::model::TraversalTopologyRequirement::Forest;
-            if traversal_capable_count == 0 && !segments {
+            if segments {
+                let ring_opening_count = frontier.ring_openings.len();
+                for (incident, domain) in role_domains {
+                    if domain.contains(BondRole::Traversal.value_index())
+                        && self.traversal.can_enter_atom(graph, incident.atom(), Some(incident.bond()))
+                    {
+                        children.push(incident);
+                    }
+                    if can_emit_ring && domain.contains(BondRole::Ring.value_index()) {
+                        frontier.ring_openings.push(incident);
+                    }
+                }
+                if traversal_capable_count == 0
+                    && frontier.ring_openings.len() == ring_opening_count
+                {
+                    frontier.contradiction = true;
+                }
+                continue;
+            }
+            if traversal_capable_count == 0 {
                 frontier.contradiction = true;
                 continue;
             }
@@ -319,18 +343,6 @@ impl<S: ConstraintSolver> WriterState<S> {
             if incidences.len() == 1 {
                 if traversal_capable_count == 1 {
                     children.push(incidences[0]);
-                }
-                let ring_opening_count = frontier.ring_openings.len();
-                if segments
-                    && can_emit_ring
-                    && role_domains[0].1.contains(BondRole::Ring.value_index())
-                {
-                    frontier.ring_openings.push(incidences[0]);
-                }
-                if traversal_capable_count == 0
-                    && frontier.ring_openings.len() == ring_opening_count
-                {
-                    frontier.contradiction = true;
                 }
                 continue;
             }
@@ -343,7 +355,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 }
                 let candidate_can_traverse = domain.contains(BondRole::Traversal.value_index())
                     && self.traversal.can_enter_atom(graph, candidate.atom(), Some(candidate.bond()));
-                if segments || traversal_capable_count > usize::from(candidate_can_traverse) {
+                if traversal_capable_count > usize::from(candidate_can_traverse) {
                     frontier.ring_openings.push(candidate);
                 }
             }
@@ -367,7 +379,9 @@ impl<S: ConstraintSolver> WriterState<S> {
             let roots = self.traversal.unvisited_atoms(graph)
                 .filter(|atom| self.traversal.can_enter_atom(graph, *atom, None))
                 .collect::<Vec<_>>();
-            frontier.dot_branch_roots = roots.clone();
+            if self.can_close_parent_ring_phase(None) {
+                frontier.dot_branch_roots = roots.clone();
+            }
             if self.traversal.can_finish_active_segment() {
                 frontier.dot_segment_roots = roots;
             }
@@ -378,15 +392,20 @@ impl<S: ConstraintSolver> WriterState<S> {
                 frontier.path_completion = self.traversal.path_completion();
             }
             0 => {}
-            1 => {
-                if self.prepared.topology()
-                    == crate::model::TraversalTopologyRequirement::Forest
-                {
-                    frontier.branch_children = children.clone();
-                }
-                frontier.inline_children = children;
+            1 if !segments => frontier.inline_children = children,
+            _ if !children.is_empty() => {
+                frontier.branch_children = if segments {
+                    children.into_iter()
+                        .filter(|incident| self.can_close_parent_ring_phase(Some(incident.bond())))
+                        .collect()
+                } else {
+                    children
+                };
             }
-            _ => frontier.branch_children = children,
+            _ => {}
+        }
+        if segments && unresolved_incidence_count == 1 {
+            frontier.inline_children = frontier.branch_children.clone();
         }
         frontier
     }
@@ -531,6 +550,18 @@ impl<S: ConstraintSolver> WriterState<S> {
         semantic_restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
+        match candidate {
+            StructuralCandidate::BranchChild { incident }
+                if self.prepared.topology() == crate::model::TraversalTopologyRequirement::Forest
+                    && !self.can_close_parent_ring_phase(Some(incident.bond())) => {
+                return Ok(Consistency::Contradiction);
+            }
+            StructuralCandidate::DotBranchRoot { .. }
+                if !self.can_close_parent_ring_phase(None) => {
+                return Ok(Consistency::Contradiction);
+            }
+            _ => {}
+        }
         let bond = match candidate {
             StructuralCandidate::RingOpen { incident }
             | StructuralCandidate::RingClose { incident, .. }
@@ -563,11 +594,24 @@ impl<S: ConstraintSolver> WriterState<S> {
         let bond_domain = allowed_representations
             .or_else(|| role.map(|role| self.role_domain(bond.unwrap(), role)));
         let restriction_bond = bond_domain.map(|_| bond.unwrap());
+        let mut restrictions = semantic_restrictions.to_vec();
+        if matches!(candidate, StructuralCandidate::BranchChild { .. } | StructuralCandidate::DotBranchRoot { .. }) {
+            for attachment in self.traversal.active_attachments() {
+                for incident in attachment.incidences() {
+                    if Some(incident.bond()) != bond {
+                        restrictions.push((
+                            decision_variable(&self.prepared, incident.bond()),
+                            self.role_domain(incident.bond(), BondRole::Traversal),
+                        ));
+                    }
+                }
+            }
+        }
         let attempted = self
             .restricted_constraints(
                 restriction_bond,
                 bond_domain,
-                semantic_restrictions,
+                &restrictions,
                 activate,
             )?
             .map(|constraints| {
@@ -648,6 +692,29 @@ impl<S: ConstraintSolver> WriterState<S> {
             BondRole::Traversal => partition.traversal_values(),
             BondRole::Ring => partition.ring_values(),
         }
+    }
+
+    fn can_close_parent_ring_phase(&self, selected_bond: Option<BondId>) -> bool {
+        let graph = self.prepared.graph();
+        for attachment in self.traversal.active_attachments() {
+            for incident in attachment.incidences() {
+                if Some(incident.bond()) == selected_bond {
+                    continue;
+                }
+                if !self.bond_role_domain(incident.bond()).contains(BondRole::Traversal.value_index()) {
+                    return false;
+                }
+                if graph.neighbors(incident.atom()).unwrap().iter().any(|other| {
+                    other.bond() != incident.bond()
+                        && self.traversal.atom_is_visited(other.atom())
+                        && self.bond_role_domain(other.bond())
+                            .is_subset_of(BondRole::Traversal.singleton_domain())
+                }) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn restricted_constraints(
@@ -997,6 +1064,93 @@ mod tests {
             .candidates()
             .contains(&StructuralCandidate::Root { atom }));
         attempt(&initial, StructuralCandidate::Root { atom })
+    }
+
+    fn forest(graph: crate::prepared::PreparedGraph) -> PreparedMolecule {
+        let source = PreparedMolecule::new(graph);
+        let domains = vec![BondRole::role_domain(); source.graph().bond_count()];
+        let partitions = vec![EdgeRolePartition::bond_role(); source.graph().bond_count()];
+        PreparedMolecule::constraint_assembly(&source, &domains, &partitions)
+            .finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
+    }
+
+    #[test]
+    fn forest_parent_retains_a_sibling_after_branching_into_one_chemical_attachment() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 6] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let bonds = [
+            graph.add_bond(atoms[0], atoms[1]).unwrap(),
+            graph.add_bond(atoms[1], atoms[2]).unwrap(),
+            graph.add_bond(atoms[2], atoms[5]).unwrap(),
+            graph.add_bond(atoms[5], atoms[4]).unwrap(),
+            graph.add_bond(atoms[4], atoms[3]).unwrap(),
+            graph.add_bond(atoms[3], atoms[0]).unwrap(),
+        ];
+        let prepared = forest(graph.build());
+        let rooted = rooted(&prepared, atoms[0]);
+        let branch = incident(&prepared, atoms[0], bonds[0]);
+        let sibling = incident(&prepared, atoms[0], bonds[5]);
+        let frontier = rooted.structural_frontier();
+        assert_eq!(frontier.branch_children(), &[branch, sibling]);
+        assert!(frontier.inline_children().is_empty());
+        assert_eq!(frontier.ring_openings(), &[branch, sibling]);
+
+        let committed = attempt(&rooted, StructuralCandidate::BranchChild { incident: branch });
+        assert_eq!(committed.bond_role_domain(bonds[5]), BondRole::Traversal.singleton_domain());
+        let entered = committed.enter_committed_branch_child(branch);
+        let next = incident(&prepared, atoms[1], bonds[1]);
+        let committed = attempt(&entered, StructuralCandidate::InlineChild { incident: next });
+        let entered = committed.enter_committed_inline_child(next);
+        let opened = attempt(&entered, StructuralCandidate::RingOpen {
+            incident: incident(&prepared, atoms[2], bonds[2]),
+        });
+        let restored = attempt(&opened, StructuralCandidate::CloseBranch);
+        assert_eq!(restored.active_atom(), Some(atoms[0]));
+        assert_eq!(restored.structural_frontier().inline_children(), &[sibling]);
+        assert_eq!(restored.traversal.active_attachments().len(), 1);
+        assert_eq!(restored.traversal.active_attachments()[0].incidences(), &[sibling]);
+    }
+
+    #[test]
+    fn forest_branch_start_rejects_a_remaining_parent_ring_role() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let right = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let rooted = rooted(&prepared, atoms[0]);
+        let constraints = rooted.constraints
+            .restricted(&[role_restriction(&prepared, right, BondRole::Ring)])
+            .unwrap().unwrap_consistent();
+        let committed_ring = WriterState { constraints, ..rooted };
+        assert!(matches!(
+            committed_ring.attempt_candidate(StructuralCandidate::BranchChild {
+                incident: incident(&prepared, atoms[0], left),
+            }).unwrap(),
+            Consistency::Contradiction
+        ));
+    }
+
+    #[test]
+    fn forest_nested_dot_branch_cannot_reserve_a_second_entry_to_one_atom() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let root_edge = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let leaf_edge = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        graph.add_bond(atoms[1], atoms[3]).unwrap();
+        let prepared = forest(graph.build());
+        let rooted = rooted(&prepared, atoms[0]);
+        let first = attempt(&rooted, StructuralCandidate::DotBranchRoot { atom: atoms[2] });
+        assert_eq!(first.bond_role_domain(root_edge), BondRole::Traversal.singleton_domain());
+        assert!(first.structural_frontier().ring_openings().contains(
+            &incident(&prepared, atoms[2], leaf_edge)
+        ));
+        assert!(!first.structural_frontier().dot_branch_roots().contains(&atoms[3]));
+        assert!(matches!(
+            first.attempt_candidate(StructuralCandidate::DotBranchRoot { atom: atoms[3] }).unwrap(),
+            Consistency::Contradiction
+        ));
     }
 
     #[test]

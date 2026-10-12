@@ -1,5 +1,13 @@
 # South Star 2 end-to-end roadmap
 
+## Generic Forest sibling traversal slice
+
+The generic Forest writer currently rejects `C(CC1)CCC1` for the same cyclohexane graph that accepts `C1CCCCC1`: one chemical residual component has several parent incidences, but the frontier treats that grouping as a one-entry traversal limit. Keep the residual partition as the chemical grouping owner. In Forest, offer each enterable incidence as a branch and allow ring openings alongside it; inline is available only after the chosen incidence consumes the parent's last unresolved incidence. A branch start fixes all remaining parent incidences to Traversal in the same solver transition, because parent ring spelling has ended. Restoring a parent recomputes its attachments from the live residual partition after the child may have split that component. Tree and stereo admission stay as they are. The separate tetrahedral Forest draft remains unintegrated; it must be reconsidered after this generic frontier behavior is verified.
+
+Branch admission also checks a local entry conflict: another suspended parent may already have a Traversal-only bond into the same unvisited atom. A nested dot branch that would reserve a second entry is immediately rejected; the source prefix can still open a ring before branching. This is a necessary immediate constraint, not a suffix search or a general completeness proof.
+
+Root checkout qualification for this slice: the candidate wheel `grimace_py-0.1.10-cp312-cp312-manylinux_2_34_x86_64.whl` has SHA-256 `b40264c54557fd12490e66ed0513a33f24d4e9757a3f8029fae77611af24bcad`; its sole `grimace/_core` extension was extracted into the ignored local Python package path and has SHA-256 `411cc429eb9461c52d4ffd55ec7d21f5e5e131d44035098d05a069f566ac6c2a`. Bounded offline root `cargo test --lib --offline` passed 86 tests. Bounded root preparation, compact, Kekulé, standard SMILES, and public-prefix Python suites passed 52 tests against that extension and RDKit 2026.03.4. Both runners verified process-tree cleanup. These checks establish the represented paths and fixtures, not universal Forest grammar completeness. The tetrahedral Forest draft was not integrated, and mixed aromatic spelling remains deferred until its atom facts and hydrogen/valence semantics are defined.
+
 Date: 2026-10-11
 
 Historical baseline: `fa9b0cf7` (`south-star-2`), Qualify directional ring endpoint

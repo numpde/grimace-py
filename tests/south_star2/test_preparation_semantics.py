@@ -10,6 +10,7 @@ from grimace._south_star2.preparation import prepare_molecule
 from tests.helpers.fixture_paths import checked_in_fixture_path
 from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.pinned_rdkit_fixtures import normalized_unique_sorted_strings
+from tests.helpers.small_compact_graph import small_compact_graph
 
 
 RDKIT_VERSION = rdBase.rdkitVersion
@@ -233,6 +234,32 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
 
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
     """Check the finite Generic lexical witness, independently from writer parity."""
+
+    def test_generic_forest_accepts_branched_ring_paths(self) -> None:
+        for source_text, witness, regime in (
+            ("C1CCCCC1", "C(CC1)CCC1", "generic_any_order"),
+            ("C1CCCCC1", "C(CC0)CCC0", "generic_compact"),
+            ("C1C2CC12", "C(C12)(C1)C2", "generic_any_order"),
+            ("C1C2CC12", "C(C01)(C0)C1", "generic_compact"),
+        ):
+            with self.subTest(source=source_text, witness=witness, regime=regime):
+                source = Chem.MolFromSmiles(source_text)
+                self.assertIsNotNone(source)
+                assert source is not None
+                prefix = prepare_molecule(source).build_writer(writer_regime=regime).initial_prefix()
+                for offset, character in enumerate(witness):
+                    choices = dict(prefix.choices())
+                    self.assertIn(character, choices, (witness, offset))
+                    prefix = choices[character]
+                self.assertTrue(prefix.is_accepted, witness)
+                parsed = Chem.MolFromSmiles(witness)
+                self.assertIsNotNone(parsed)
+                assert parsed is not None
+                self.assertEqual(
+                    Chem.MolToSmiles(source, isomericSmiles=True),
+                    Chem.MolToSmiles(parsed, isomericSmiles=True),
+                )
+
     def test_native_outputs_parse_to_each_source_graph(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "CC(O)CO"):
             with self.subTest(smiles=smiles):
@@ -242,6 +269,15 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
                 self.assertTrue(outputs, "the prepared source graph must have an accepted output")
 
                 for output in outputs:
+                    if "(." in output:
+                        # RDKit rejects this supported branch form; the narrow
+                        # C/O graph witness interprets it independently.
+                        self.assertEqual(
+                            Chem.MolToSmiles(source, canonical=True, isomericSmiles=True),
+                            small_compact_graph(output),
+                            output,
+                        )
+                        continue
                     parsed = Chem.MolFromSmiles(output)
                     self.assertIsNotNone(parsed, f"native output did not parse: {output!r}")
                     assert parsed is not None

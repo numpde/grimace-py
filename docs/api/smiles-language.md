@@ -81,7 +81,7 @@ result does not remove the spelling from the target language, and neither
 parser acceptance nor graph equivalence establishes RDKit writer support.
 
 The compact C/O fixture is checked by a temporary test-only interpreter in
-[`tests/south_star2/test_compact_language.py`](../../tests/south_star2/test_compact_language.py).
+[`tests/helpers/small_compact_graph.py`](../../tests/helpers/small_compact_graph.py).
 It handles only C and O atoms, implicit single bonds, single-digit ring labels,
 branches, and dots, including a leading dot inside a branch. It rejects other
 tokens and malformed syntax. It reconstructs and sanitizes an RDKit graph
@@ -103,7 +103,7 @@ relax spelling only; it cannot stand in for the structural contract.
 | --- | --- | --- |
 | Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `GENERAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
-| Roots, branches, traversal | Connected traversal choices and terminal branches on admitted stereo-free forest inputs, including supported aromatic graphs | Map all standard serialization events both ways |
+| Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted stereo-free forest inputs, including supported aromatic graphs | Map all standard serialization events both ways |
 | Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; chemical component separation remains supported | Extend qualification to stereo inputs and other unqualified syntax |
 | Aromaticity | Aromatic or whole-component Kekule choices for supported inputs | Valid mixed lowercase/uppercase spellings within a component |
 | Stereo | Supported tetrahedral and E/Z cases have semantic checks | Define and cover every admitted configuration and preserve unspecified stereo |
@@ -115,7 +115,9 @@ The aromatic source spelling and whole-component Kekule alternatives retain
 one matching constraint across segments; mixed lowercase and uppercase
 spellings within an aromatic component remain unqualified. The path also admits
 terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)` for those inputs in
-`GENERAL` and `COMPACT`.
+`GENERAL` and `COMPACT`. It also admits branched ring paths such as
+`C(CC1)CCC1` for cyclohexane. These examples establish specific supported
+paths, not completeness of the Forest grammar or liveness of every prefix.
 Public semantic witnesses include `C1.C1` for `CC` and `C1.C12.C2` for `CCC`;
 `COMPACT` also admits corresponding smallest-label spellings. This is a
 qualified subset of the target grammar: stereo inputs, mixed aromatic spellings

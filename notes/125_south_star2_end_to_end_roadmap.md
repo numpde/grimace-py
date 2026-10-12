@@ -629,3 +629,89 @@ Decision: the next narrow investigation is aromatic/Kekule alternatives;
 published 0.1.10 benzene `kekuleSmiles=True` was confirmed locally. No measured
 bottleneck justifies new compact policy. Do not start that investigation or a
 refactor as part of this diagnostic.
+
+## 2026-10-12 planned aromatic/Kekule contract
+
+Generic semantics come before style qualification. For qualified, currently
+admitted aromatic facts, support should include all feasible integer bond-order
+assignments preserving source valence, H, charge, connectivity, isotope, class,
+and stereo, while retaining source-aromatic witnesses. Each aromatic component
+chooses Aromatic or Kekule representation as a whole; this is not a claim of
+all mixed aromatic/uppercase SMILES coverage. Implementation and qualification
+remain planned.
+
+Python transports cached `GetTotalValence()` as an optional aromatic-atom fact
+appended to the strict ten-field tuple; nonaromatic atoms carry `None`. Source
+chemical aromatic flags remain immutable. Rust derives
+`double_demand = source_integer_total_valence - nongraph_H - fixed_nonaromatic_graph_order_sum - aromatic_degree`;
+graph H belongs in the fixed sum. Supported roles are demands zero or one;
+other demands fail descriptively, without invented roles or silent defaults.
+
+The existing `ConstraintModel` owns an exclusive aromatic matching primitive,
+component modes, and separate chemical edge-order domains
+`{Aromatic, Single, Double}`. Factor-variable exclusivity is checked. General
+nonbipartite matching feasibility and edge projection bypass generic exact
+assignment search for this factor. Evolving domains live only in the existing
+`PagedStore`, with no second writer or constraint store. Atom notation context
+is separate from source aromatic facts; both ring ends constrain the same
+chemical edge variable. Existing placement, direction, and stereo variables
+retain their responsibilities.
+
+Reject runtime RDKit Kekulization/writer fallback, precomputed assignment
+catalogs or multiple RDKit-prepared graphs, mutable aromatic flags, duplicate
+element/valence role tables, bipartite-only matching, and local valence checks
+without global feasibility.
+
+Qualification must cover both benzene matchings; fused naphthalene and
+nonbipartite azulene; pyridine, pyrrole, N-substituted pyrrole, furan, thiophene;
+charged N/C and exocyclic C=O; source-aromatic wildcard/P/As/Se/B cases;
+isotope/class/H preservation; ring double-bond placements; independent
+component modes; infeasible partial commitments; and mode/order correlations.
+Semantic parse-back checks stay separate from exact style support. The RDKit
+style currently rejects aromatic input; preserve that narrow admission until
+pinned style fixtures qualify published Kekule parity.
+
+
+## 2026-10-12 aromatic/Kekule implementation progress
+
+The planned component contract is now implemented in the native runtime:
+source aromatic facts remain immutable, while a general matching factor
+projects Aromatic/Single/Double edge domains through the existing domain store.
+Default `style=None` offers source-valence-preserving Kekule assignments and
+aromatic spelling per connected aromatic-bond component, including independent
+component choices. Atom notation uses separate representation context; joint
+order/placement commitments and both ring ends share the same edge order,
+with global residual feasibility. There is no runtime assignment catalog,
+RDKit writer/Kekulize call, or new public `kekuleSmiles` option. This component
+contract does not cover all mixed lowercase/uppercase valid SMILES.
+
+Preparation transports cached source total valence and normalizes flagged
+aromatic single/double bonds after caller Kekulization with flags retained;
+contradictory flags, endpoints, or marks fail. Qualification resolved source
+carbonyl valence, normative bare B/P/wildcard spelling, and directional-carrier
+ownership; source H1 N/P stays bracketed, and shared `*` retains both modes.
+Existing unsupported input/stereo limits remain, including explicit rejection
+of chemical directional marks on aromatic bonds. The optional RDKit style
+still rejects aromatic inputs; semantic checks do not qualify Kekule writer
+parity or prove general prefix full-suffix liveness.
+
+Native verification passed 279 tests with one ignored. A fresh wheel passed
+39 selected methods on each of RDKit 2026.03.1 and 2026.03.4 (13 public,
+21 preparation, five Kekule methods). All semantic parse-back checks passed
+for 22 fixture cases and 26 integer/mixed-component witnesses, including source
+H, isotope/class/charge, adjacent tetrahedral/E/Z stereo, and exograph H.
+Direct wheel bytes and import provenance were verified; bounded cleanup was
+verified. Evidence is under
+`/tmp/grimace-kekule-artifacts-24dfbfdb/direct-v2-source-manifest.json`.
+Fresh sdist qualification is complete: a wheel rebuilt from the extracted
+sdist with a fresh target produced the same core bytes as the direct wheel.
+Ordinary site-packages installs matched source provenance and current RDKit
+versions. The rebuilt artifact passed the full installed suite on RDKit
+2026.03.1 (147 tests, one skipped, 121.132 seconds) and 55 selected methods on
+2026.03.4 (all passed, 0.365 seconds); the latter is selected coverage, not a
+full-suite or Kekule writer-parity claim. Install/test budgets were 300 seconds
+for the full suite and 120 for selected coverage, with verified cleanup.
+Artifact hashes and provenance are recorded in
+`/tmp/grimace-kekule-artifacts-24dfbfdb/sdist-wheel-provenance-v1.json`;
+`rebuilt-31-final.log` and `rebuilt-34-final.log` in that directory hold results.
+The next scoped investigation remains connected-dot/ring topology.

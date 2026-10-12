@@ -620,7 +620,7 @@ impl PreparedNonStereo {
         let mut assembly =
             PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
         let (atom_aromatic_modes, bond_chemical_orders) =
-            prepare_aromatic_matching(&mut assembly, graph, &atoms, &bond_tokens, compact)?;
+            prepare_aromatic_matching(&mut assembly, graph, &atoms, &bond_tokens, false)?;
         for relation in &directional_relations {
             for carrier in relation.left_carriers.iter().chain(relation.right_carriers.iter()) {
                 if bond_chemical_orders.get(carrier.bond.index()).is_some_and(Option::is_some) {
@@ -3082,12 +3082,46 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             let graph = self.surface.molecule().graph();
             let other = graph.bond(bond).unwrap().other(from).unwrap();
             if let Some(variable) = self.surface.bond_chemical_orders[bond.index()] {
-                return self.structural.semantic_domain(variable).iter().map(|order| {
-                    let implicit = order == 1 || (order == 0 && self.compact_emitted_aromatic(from, None) && self.compact_emitted_aromatic(other, None));
-                    let text = match order { 0 if !implicit => ":", 0 | 1 if implicit => "", 1 => "-", 2 => "=", _ => unreachable!() };
-                    (order, text, vec![(variable, Domain::singleton(order).unwrap())],
-                        if implicit { BondRepresentation::elided_domain() } else { compact_explicit_domain() })
-                }).collect();
+                let from_mode = self.surface.atom_aromatic_modes[from.index()];
+                let other_mode = self.surface.atom_aromatic_modes[other.index()];
+                let modes = |mode: Option<VariableId>| mode.map(|v| self.structural.semantic_domain(v).iter().collect::<Vec<_>>()).unwrap_or_else(|| vec![1]);
+                let mut specs = Vec::new();
+                for order in self.structural.semantic_domain(variable).iter() {
+                    let order_restriction = vec![(variable, Domain::singleton(order).unwrap())];
+                    match order {
+                        0 => {
+                            let implicit = self.surface.atom_facts(from).element.as_str() != "*"
+                                && self.surface.atom_facts(other).element.as_str() != "*";
+                            specs.push((order, if implicit { "" } else { ":" }, order_restriction,
+                                if implicit { BondRepresentation::elided_domain() } else { compact_explicit_domain() }));
+                        }
+                        1 => {
+                            if self.surface.atom_facts(from).element.as_str() == "*"
+                                || self.surface.atom_facts(other).element.as_str() == "*" {
+                                specs.push((order, "", order_restriction, BondRepresentation::elided_domain()));
+                            } else {
+                                for from_case in modes(from_mode) {
+                                    let mut from_restrictions = order_restriction.clone();
+                                    if let Some(v) = from_mode { from_restrictions.push((v, Domain::singleton(from_case).unwrap())); }
+                                    if from_case == 1 {
+                                        specs.push((order, "", from_restrictions, BondRepresentation::elided_domain()));
+                                        continue;
+                                    }
+                                    for other_case in modes(other_mode) {
+                                        let mut restrictions = from_restrictions.clone();
+                                        if let Some(v) = other_mode { restrictions.push((v, Domain::singleton(other_case).unwrap())); }
+                                        let both_lower = other_case == 0;
+                                        specs.push((order, if both_lower { "-" } else { "" }, restrictions,
+                                            if both_lower { compact_explicit_domain() } else { BondRepresentation::elided_domain() }));
+                                    }
+                                }
+                            }
+                        }
+                        2 => specs.push((order, "=", order_restriction, compact_explicit_domain())),
+                        _ => unreachable!(),
+                    }
+                }
+                return specs;
             }
             let token = self.surface.bond_tokens[bond.index()];
             if matches!(token, NonStereoBondToken::Elided | NonStereoBondToken::Single) {
@@ -4087,18 +4121,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     )
             })
             .map(|choice| {
-                let bare_lower = choice.field == AtomSpellingField::BareElement
-                    && self.surface.atom_aromatic_modes[atom.index()].is_some()
-                    && choice.text.is_ascii_lowercase();
-                let restrictions = if bare_lower {
-                    self.surface.molecule().graph().neighbors(atom).unwrap().iter()
-                        .filter_map(|edge| self.surface.bond_chemical_orders[edge.bond().index()])
-                        .map(|variable| (variable, Domain::singleton(0).unwrap()))
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                let structural = match self.restrict_semantics(&restrictions, &[]) {
+                let structural = match self.restrict_semantics(&[], &[]) {
                     Ok(Consistency::Consistent(structural)) => structural,
                     Ok(Consistency::Contradiction) => return CandidateAttempt::Rejected { reason: CandidateRejection::Contradiction },
                     Err(failure) => return CandidateAttempt::Failed(failure),

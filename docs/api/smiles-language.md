@@ -63,6 +63,15 @@ standard does not expressly require that unbounded interpretation. Prefix
 generation must reason incrementally about these forms; a bounded walk is
 evidence about that walk, not a finite definition of the language.
 
+For neutral bare aromatic carbon, this project interprets implicit hydrogen
+as `3 - graph degree` at degree two or three, subject to a feasible integer
+single/double assignment and normal total valence four. This is an explicit
+choice where OpenSMILES leaves aromatic implicit hydrogen underspecified.
+For example, this interpretation gives each carbon one H in `c1=cc=cc=c1`;
+RDKit 2026.03.4 parses that string with different hydrogen facts. Tests of
+this case use a bounded structural witness rather than RDKit parse-back as
+the hydrogen authority.
+
 Soundness requires every accepting path to be grammatical and fact-preserving.
 Coverage requires a path for every qualifying string. The constructive proof
 obligation is a mapping in both directions between standard serialization
@@ -105,7 +114,7 @@ relax spelling only; it cannot stand in for the structural contract.
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
 | Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment witnesses also pass in both languages | Extend qualification to leading-dot stereo paths and other unqualified syntax |
-| Aromaticity | Aromatic, whole-component Kekule, and selected mixed bracket spellings in `GENERAL`; `COMPACT` retains whole-component alternatives | Qualify remaining mixed bare spellings, bond omissions, and aromatic semantic cases |
+| Aromaticity | Aromatic, Kekule, and selected mixed bare or bracket spellings in `GENERAL` and `COMPACT` | Qualify remaining mixed spellings, bond omissions, and aromatic semantic cases |
 | Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level and branch-local dot segments,
@@ -118,12 +127,13 @@ support claims. Selected configured E/Z Forest paths now reach acceptance with c
 across dot/ring boundaries in both languages and parse back to the source
 stereo. Other directional Forest paths and leading-dot stereo paths remain
 unqualified.
-The aromatic source spelling, whole-component Kekule alternatives, and selected
-mixed bracket spellings retain one matching constraint across segments.
+The aromatic source spelling, Kekule alternatives, and selected
+mixed spellings retain one matching constraint across segments.
 `GENERAL` accepts checked benzene, pyrrole, charged pyridinium, and
-naphthalene mixed witnesses with sanitized graph and atom-fact parse-back;
-`COMPACT` retains its whole-component representation policy. Mixed bare
-spellings and the remaining bond omissions have not been qualified. The path also admits
+naphthalene mixed bracket witnesses with sanitized graph and atom-fact parse-back.
+Both `GENERAL` and `COMPACT` accept selected mixed bare-carbon benzene paths
+under the explicit hydrogen interpretation above. The remaining mixed
+spellings and bond omissions have not been qualified. The path also admits
 terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)` for those inputs in
 `GENERAL` and `COMPACT`. It also admits branched ring paths such as
 `C(CC1)CCC1` for cyclohexane. These examples establish specific supported

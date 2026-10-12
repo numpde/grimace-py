@@ -6,6 +6,7 @@ prove complete Kekule assignment support or exact RDKit string support.
 from __future__ import annotations
 
 import json
+from itertools import product
 import unittest
 from unittest.mock import patch
 
@@ -58,6 +59,34 @@ def _has_prefix(initial: decoding.Prefix, text: str) -> bool:
         for piece, successor in prefix.choices():
             if text.startswith(piece, offset):
                 pending.append((successor, offset + len(piece)))
+    return False
+
+
+def _temporary_witness_mixed_bare_benzene(text: str) -> bool:
+    """Interpret selected six-carbon ring spellings without RDKit implicit H perception."""
+    parsed = Chem.MolFromSmiles(text, sanitize=False)
+    if parsed is None or parsed.GetNumAtoms() != 6 or parsed.GetNumBonds() != 6:
+        return False
+    if len(Chem.GetMolFrags(parsed)) != 1:
+        return False
+    atoms = tuple(parsed.GetAtoms())
+    if any(atom.GetSymbol() != "C" or not atom.GetIsAromatic() or atom.GetDegree() != 2 or atom.GetFormalCharge()
+           or atom.GetIsotope() or atom.GetAtomMapNum() or atom.GetNumExplicitHs() for atom in atoms):
+        return False
+    bonds = tuple(parsed.GetBonds())
+    allowed = {Chem.BondType.SINGLE, Chem.BondType.DOUBLE, Chem.BondType.AROMATIC}
+    if any(bond.GetBondType() not in allowed for bond in bonds):
+        return False
+    aromatic = tuple(bond for bond in bonds if bond.GetBondType() == Chem.BondType.AROMATIC)
+    if len(aromatic) > 6:
+        raise AssertionError("temporary witness exceeded its six-edge assignment cap")
+    fixed_orders = {Chem.BondType.SINGLE: 1, Chem.BondType.DOUBLE: 2}
+    for assignment in product((1, 2), repeat=len(aromatic)):
+        orders = {bond.GetIdx(): order for bond, order in zip(aromatic, assignment)}
+        if all(sum(orders.get(bond.GetIdx(), fixed_orders.get(bond.GetBondType(), 0))
+                   for bond in atom.GetBonds()) + (3 - atom.GetDegree()) == 4
+               for atom in atoms):
+            return True
     return False
 
 
@@ -135,6 +164,35 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
         benzene = decoding.start(_parse("c1ccccc1"), language=decoding.SmilesLanguage.GENERAL)
         self.assertFalse(_accepts(benzene, "[cH]1:[CH]-[CH]=[CH]-[CH]=[CH]-1", max_nodes=20_000))
 
+    def test_mixed_bare_carbon_paths_follow_explicit_h_interpretation(self) -> None:
+        source = _parse("c1ccccc1")
+        for spelling in ("c1=cc=cc=c1", "c1=c-c=c-c=c-1"):
+            with self.subTest(spelling=spelling):
+                self.assertTrue(_temporary_witness_mixed_bare_benzene(spelling))
+                for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+                    rendered = spelling.replace("1", "0") if language == decoding.SmilesLanguage.COMPACT else spelling
+                    self.assertTrue(_accepts(decoding.start(source, language=language), rendered, max_nodes=20_000))
+        self.assertFalse(_temporary_witness_mixed_bare_benzene("c1=cc=cc-c1"))
+        for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+            rendered = "c0=cc=cc-c0" if language == decoding.SmilesLanguage.COMPACT else "c1=cc=cc-c1"
+            self.assertFalse(_accepts(decoding.start(source, language=language), rendered, max_nodes=20_000))
+
+    def test_explicit_graph_hydrogen_can_neighbor_mixed_bare_carbon(self) -> None:
+        params = Chem.SmilesParserParams()
+        params.removeHs = False
+        source = Chem.MolFromSmiles("[H]c1ccccc1", params)
+        self.assertIsNotNone(source)
+        assert source is not None
+        self.assertEqual("H", source.GetAtomWithIdx(0).GetSymbol())
+        self.assertEqual(3, source.GetAtomWithIdx(1).GetDegree())
+        self.assertEqual(0, source.GetAtomWithIdx(1).GetNumImplicitHs())
+        for language, witness in (
+            (decoding.SmilesLanguage.GENERAL, "[H]c1=cc=cc=c1"),
+            (decoding.SmilesLanguage.COMPACT, "[H]c0=cc=cc=c0"),
+        ):
+            with self.subTest(language=language):
+                self.assertTrue(_accepts(decoding.start(source, language=language), witness, max_nodes=20_000))
+
     def test_aromatic_forest_segments_preserve_matching(self) -> None:
         cases = (
             ("c1ccccc1", ("c1cc2.c2cc1", "C1=CC=2.C2C=C1")),
@@ -164,7 +222,7 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
             self.assertFalse(_has_prefix(initial, impossible[:-2]))
             self.assertFalse(_accepts(initial, impossible))
 
-    def test_current_whole_component_mode_rejects_conflicting_paths(self) -> None:
+    def test_infeasible_mixed_integer_valence_paths_are_rejected(self) -> None:
         case = next(case for case in self.cases if case["id"] == "benzene")
         initial = decoding.start(_parse(case["source_smiles"]))
         for witness in self.data["current_component_mode_conflict_witnesses"]:

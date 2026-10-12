@@ -48,7 +48,8 @@ fn benzene_matching_assignments_and_ring_end_placement_are_correlated() {
     }
     assert!(!consume(&surface, "C1=C").is_empty());
     assert!(consume(&surface, "C1=C=").is_empty(), "adjacent doubles must contradict the carbon demand before EOS");
-    for impossible in ["C1C=CC=CC1", "C1=C=CC=CC1", "C1=CC=CC=c1", "c1=ccccc1"] {
+    for mixed in ["C1=CC=CC=c1", "c1=ccccc1"] { assert!(supports(&surface, mixed)); }
+    for impossible in ["C1C=CC=CC1", "C1=C=CC=CC1"] {
         assert!(!supports(&surface, impossible), "accepted {impossible}");
     }
 }
@@ -90,16 +91,46 @@ fn general_writer_admits_mixed_bracket_cases_with_one_matching() {
     for witness in [
         "[cH]1:[cH]-[CH]=[CH]-[CH]=[CH]-1",
         "[cH]1-[CH]=[CH]-[CH]=[CH]-[CH]=1",
+        "c1=cc=cc=c1",
+        "c1=c-c=c-c=c-1",
     ] {
         assert!(supports(&surface, witness), "missing {witness}");
     }
     for impossible in [
-        "c1-[CH]=[CH]-[CH]=[CH]-[CH]=1",
         "[cH]1:[CH]-[CH]=[CH]-[CH]=[CH]-1",
         "[cH]1:[cH]-[CH]=[CH]=[CH]-[CH]-1",
+        "c1=cc=cc-c1",
     ] {
         assert!(!supports(&surface, impossible), "accepted {impossible}");
     }
+}
+
+#[test]
+fn bare_aromatic_carbon_accounts_for_graph_hydrogen_and_exocyclic_double() {
+    let mut graph_h_atoms = vec![facts("H", false, 0, 0, None), facts("C", true, 0, 0, Some(4))];
+    graph_h_atoms.extend((0..5).map(|_| facts("C", true, 0, 1, Some(4))));
+    let mut graph_h_edges = vec![(0, 1, NonStereoBondToken::Single)];
+    graph_h_edges.extend((0..6).map(|i| (1 + i, 1 + (i + 1) % 6, NonStereoBondToken::Aromatic)));
+    let graph_h = graph_surface(graph_h_atoms, &graph_h_edges).unwrap();
+    let carbon = graph_h.molecule().graph().atom_ids().nth(1).unwrap();
+    let context = graph_h.atom_spelling_context(carbon, None);
+    assert_eq!(context.bonds.single_bonds, 1);
+    assert_eq!(context.bonds.aromatic_bonds, 2);
+    assert!(AtomSpellingState::initial(*graph_h.atom_facts(carbon), context).choices().iter()
+        .any(|choice| choice.field == AtomSpellingField::BareElement && choice.text == 'c'));
+    let wrong_h = AtomFacts::new(ElementSymbol::new("C").unwrap(), true, None, 0, 1, 0, Some(4)).unwrap();
+    assert!(!AtomSpellingState::initial(wrong_h, context).choices().iter()
+        .any(|choice| choice.field == AtomSpellingField::BareElement && choice.text == 'c'));
+
+    let mut carbonyl_atoms = vec![facts("C", true, 0, 0, Some(4))];
+    carbonyl_atoms.extend((0..4).map(|_| facts("C", true, 0, 1, Some(4))));
+    carbonyl_atoms.push(facts("N", true, 0, 1, Some(3)));
+    carbonyl_atoms.push(facts("O", false, 0, 0, None));
+    let mut carbonyl_edges = (0..6).map(|i| (i, (i + 1) % 6, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    carbonyl_edges.push((0, 6, NonStereoBondToken::Double));
+    let carbonyl = graph_surface(carbonyl_atoms, &carbonyl_edges).unwrap();
+    assert!(supports(&carbonyl, "O=c1cccc[nH]1"));
+    assert!(!supports(&carbonyl, "O=[cH]1cccc[nH]1"));
 }
 
 #[test]
@@ -167,7 +198,7 @@ fn disconnected_aromatic_components_choose_modes_independently() {
             assert!(supports(&surface, &format!("{first}.{second}")), "missing component modes {first}.{second}");
         }
     }
-    assert!(!supports(&surface, "c1ccccc1.C1=CC=CC=c1"));
+    assert!(supports(&surface, "c1ccccc1.C1=CC=CC=c1"));
 }
 
 #[test]

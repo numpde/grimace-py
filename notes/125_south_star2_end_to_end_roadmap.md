@@ -1158,3 +1158,30 @@ successors at one prefix. Combined with deferred prefixes, that candidate
 completed the path in 22.52 s with 126.72 MiB. These bounded measurements
 include runner overhead and sampled RSS; the mixed candidate has a larger
 language, so its time is not a measure of the deferral cost alone.
+
+## 2026-10-13 mixed bare aromatic carbon candidate
+
+The isolated candidate removes the bare-lowercase incident-edge restriction
+and the compact whole-component case restriction. Its bare neutral aromatic
+carbon interpretation is explicit: with normal total valence four and two or
+three graph neighbors, implicit H is `3 - graph degree`; an independent latent
+single/double assignment must still satisfy every prepared atom's integer
+valence. This admits selected mixed bare benzene paths such as `c1=cc=cc=c1`.
+The rule is a project interpretation of underspecified aromatic hydrogen
+semantics, not a claim that OpenSMILES uniquely prescribes it. RDKit 2026.03.4
+parses that selected spelling differently and is not its H authority. A
+temporary test witness reads only raw six-carbon ring structure from RDKit,
+enumerates at most 64 latent edge assignments, and applies the stated H and
+valence rule independently. Its narrow scope should fold into a shared atom
+fact, bond event, constraint, and rendering interpretation; it is no general
+SMILES parser or exact-support proof. The `MAXIMAL` language contract remains
+incomplete, including legal bond omissions and other aromatic semantic cases.
+The native test includes a prepared carbon with one explicit graph-H neighbor
+and checks that its non-graph H count must be zero before bare `c` is eligible.
+RDKit input preparation was separately checked with `removeHs=False` to
+confirm the explicit graph-H neighbor; both `[H]c1ccccc1` and
+`c1([H])ccccc1` were accepted by the unchanged 9a7b9c0b public decoder.
+The candidate public test accepts `[H]c1=cc=cc=c1` in `GENERAL` and its
+smallest-label counterpart in `COMPACT`. The synthetic native graph fixture
+tests atom eligibility only; it does not reproduce every Python preparation
+detail needed for those full paths.

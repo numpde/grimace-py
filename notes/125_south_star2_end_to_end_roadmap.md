@@ -1137,3 +1137,24 @@ Both runners verified process-tree cleanup. Captured logs are
 Star 2 native suite passed 299 tests with one ignored. These checks qualify
 selected supported paths and preserve the separate RDKit writer-parity contract;
 they do not establish complete fact-preserving SMILES support.
+
+## 2026-10-13 deferred prefix successor preparation
+
+Prefix choice discovery now records each distinct token text, its labeled
+successor count, and acceptance while discarding unselected successors. Each
+offered choice shares a materialized parent frontier and constructs only the
+selected successor frontier when traversed. This preserves every labeled
+native state and every ring-label alternative; choice discovery still checks
+all native choices and propagates their failures. Direct `select_text` also
+scans all source states before reporting an invalid token. An independent
+small eager reference checks token order, multiplicity, acceptance, and
+continuations for sibling selections.
+
+On the same selected two-benzene GENERAL path, the f78c7bbc release extension
+took 3.88 s with 478.77 MiB peak process-tree RSS; the baseline plus deferred
+prefix extension took 5.63 s with 122.55 MiB. A separate isolated mixed-bare
+candidate exceeded 2 GiB while eagerly retaining more than two million
+successors at one prefix. Combined with deferred prefixes, that candidate
+completed the path in 22.52 s with 126.72 MiB. These bounded measurements
+include runner overhead and sampled RSS; the mixed candidate has a larger
+language, so its time is not a measure of the deferral cost alone.

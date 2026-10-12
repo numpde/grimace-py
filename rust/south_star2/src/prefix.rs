@@ -2,13 +2,27 @@
 
 use std::error::Error;
 use std::fmt;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 
 use crate::{PreparedWriter, Walker, WalkerFailure};
 
 /// All native writer states that emit the same selected token sequence.
 #[derive(Clone, Debug)]
 pub struct TextPrefix {
-    states: Vec<Walker>,
+    frontier: PrefixFrontier,
+}
+
+#[derive(Clone, Debug)]
+enum PrefixFrontier {
+    Materialized(Arc<Vec<Walker>>),
+    Deferred {
+        parent: Arc<Vec<Walker>>,
+        text: String,
+        count: usize,
+        accepted: bool,
+        cached: Arc<OnceLock<Arc<Vec<Walker>>>>,
+    },
 }
 
 /// One available token text and the complete frontier after selecting it.
@@ -21,54 +35,98 @@ pub struct TextPrefixChoice {
 impl TextPrefix {
     pub fn initial(prepared: &PreparedWriter) -> Result<Self, WalkerFailure> {
         Ok(Self {
-            states: vec![prepared.initial()?],
+            frontier: PrefixFrontier::Materialized(Arc::new(vec![prepared.initial()?])),
         })
     }
 
     /// Whether at least one represented state accepts the selected text.
     pub fn is_accepted(&self) -> bool {
-        self.states.iter().any(Walker::is_accepted)
+        match &self.frontier {
+            PrefixFrontier::Materialized(states) => states.iter().any(Walker::is_accepted),
+            PrefixFrontier::Deferred { accepted, .. } => *accepted,
+        }
     }
 
     /// Number of retained native states, including distinct states with equal output histories.
     pub fn frontier_size(&self) -> usize {
-        self.states.len()
+        match &self.frontier {
+            PrefixFrontier::Materialized(states) => states.len(),
+            PrefixFrontier::Deferred { count, .. } => *count,
+        }
     }
 
-    /// Group equal token texts while carrying every corresponding native successor.
+    /// Discover every token text while deferring unselected native successors.
     pub fn choices(&self) -> Result<Vec<TextPrefixChoice>, WalkerFailure> {
-        Ok(grouped_successors(&self.states)?
+        let parent = self.materialized_states()?;
+        Ok(choice_summaries(&parent)?
             .into_iter()
-            .map(|(text, states)| TextPrefixChoice {
+            .map(|(text, count, accepted)| TextPrefixChoice {
+                successor: Self { frontier: PrefixFrontier::Deferred {
+                    parent: Arc::clone(&parent),
+                    text: text.clone(),
+                    count,
+                    accepted,
+                    cached: Arc::new(OnceLock::new()),
+                } },
                 text,
-                successor: Self { states },
             })
             .collect())
     }
 
     /// Select one complete token text, retaining all matching successors.
     pub fn select_text(&self, text: &str) -> Result<Self, PrefixSelectionError> {
-        grouped_successors(&self.states)
-            .map_err(PrefixSelectionError::Walker)?
-            .into_iter()
-            .find_map(|(candidate, states)| (candidate == text).then_some(Self { states }))
-            .ok_or_else(|| PrefixSelectionError::InvalidText(text.to_owned()))
+        let parent = self.materialized_states().map_err(PrefixSelectionError::Walker)?;
+        let states = selected_successors(&parent, text).map_err(PrefixSelectionError::Walker)?;
+        if states.is_empty() {
+            return Err(PrefixSelectionError::InvalidText(text.to_owned()));
+        }
+        Ok(Self { frontier: PrefixFrontier::Materialized(Arc::new(states)) })
+    }
+
+    fn materialized_states(&self) -> Result<Arc<Vec<Walker>>, WalkerFailure> {
+        match &self.frontier {
+            PrefixFrontier::Materialized(states) => Ok(Arc::clone(states)),
+            PrefixFrontier::Deferred { parent, text, count, cached, .. } => {
+                if let Some(states) = cached.get() {
+                    return Ok(Arc::clone(states));
+                }
+                let states = selected_successors(parent, text)?;
+                assert_eq!(states.len(), *count, "selected token discovery and materialization must agree");
+                let states = Arc::new(states);
+                let _ = cached.set(Arc::clone(&states));
+                Ok(states)
+            }
+        }
     }
 }
 
-fn grouped_successors(states: &[Walker]) -> Result<Vec<(String, Vec<Walker>)>, WalkerFailure> {
-    let mut groups: Vec<(String, Vec<Walker>)> = Vec::new();
+fn choice_summaries(states: &[Walker]) -> Result<Vec<(String, usize, bool)>, WalkerFailure> {
+    let mut groups: Vec<(String, usize, bool)> = Vec::new();
+    let mut positions = HashMap::<String, usize>::new();
     for state in states {
         for choice in state.choices()? {
-            if let Some((_, successors)) = groups.iter_mut().find(|(text, _)| text == &choice.text)
-            {
-                successors.push(choice.successor);
+            if let Some(&position) = positions.get(&choice.text) {
+                groups[position].1 += 1;
+                groups[position].2 |= choice.successor.is_accepted();
             } else {
-                groups.push((choice.text, vec![choice.successor]));
+                positions.insert(choice.text.clone(), groups.len());
+                groups.push((choice.text, 1, choice.successor.is_accepted()));
             }
         }
     }
     Ok(groups)
+}
+
+fn selected_successors(states: &[Walker], text: &str) -> Result<Vec<Walker>, WalkerFailure> {
+    let mut selected = Vec::new();
+    for state in states {
+        for choice in state.choices()? {
+            if choice.text == text {
+                selected.push(choice.successor);
+            }
+        }
+    }
+    Ok(selected)
 }
 
 #[derive(Debug)]
@@ -102,6 +160,20 @@ mod tests {
     use super::*;
     use crate::{AtomToken, BondToken, PreparedGraphBuilder};
     use std::collections::{BTreeMap, BTreeSet};
+
+    fn eager_reference(states: &[Walker]) -> Vec<(String, Vec<Walker>)> {
+        let mut groups: Vec<(String, Vec<Walker>)> = Vec::new();
+        for state in states {
+            for choice in state.choices().unwrap() {
+                if let Some((_, successors)) = groups.iter_mut().find(|(text, _)| *text == choice.text) {
+                    successors.push(choice.successor);
+                } else {
+                    groups.push((choice.text, vec![choice.successor]));
+                }
+            }
+        }
+        groups
+    }
 
     fn prepared(tokens: &[&str], edges: &[(usize, usize)]) -> PreparedWriter {
         let mut graph = PreparedGraphBuilder::new();
@@ -150,7 +222,7 @@ mod tests {
             .map(|choice| choice.text.as_str())
             .collect::<BTreeSet<_>>();
         let per_state = selected
-            .states
+            .materialized_states().unwrap()
             .iter()
             .map(|state| {
                 let mut counts = BTreeMap::new();
@@ -184,13 +256,50 @@ mod tests {
     }
 
     #[test]
+    fn deferred_siblings_match_direct_selection_after_either_is_explored() {
+        let prefix = TextPrefix::initial(&prepared(&["C", "C", "O"], &[(0, 1), (1, 2)])).unwrap();
+        let choices = prefix.choices().unwrap();
+        let eager = eager_reference(&prefix.materialized_states().unwrap());
+        assert_eq!(
+            choices.iter().map(|choice| (choice.text.as_str(), choice.successor.frontier_size(), choice.successor.is_accepted())).collect::<Vec<_>>(),
+            eager.iter().map(|(text, states)| (text.as_str(), states.len(), states.iter().any(Walker::is_accepted))).collect::<Vec<_>>(),
+        );
+        let carbon = choices.iter().find(|choice| choice.text == "C").unwrap();
+        let oxygen = choices.iter().find(|choice| choice.text == "O").unwrap();
+        assert_eq!(carbon.successor.frontier_size(), 2);
+        assert_eq!(oxygen.successor.frontier_size(), 1);
+
+        let signature = |prefix: &TextPrefix| {
+            prefix.choices().unwrap().into_iter()
+                .map(|choice| (choice.text, choice.successor.frontier_size(), choice.successor.is_accepted()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(signature(&carbon.successor), signature(&prefix.select_text("C").unwrap()));
+        assert_eq!(signature(&oxygen.successor), signature(&prefix.select_text("O").unwrap()));
+        for sibling in [carbon, oxygen] {
+            let eager_states = &eager.iter().find(|(text, _)| text == &sibling.text).unwrap().1;
+            let eager_next = eager_reference(eager_states);
+            assert_eq!(
+                signature(&sibling.successor),
+                eager_next.iter().map(|(text, states)| (text.clone(), states.len(), states.iter().any(Walker::is_accepted))).collect::<Vec<_>>(),
+            );
+        }
+        assert_eq!(signature(&carbon.successor), signature(&carbon.successor));
+
+        let terminal = TextPrefix::initial(&prepared(&["C"], &[])).unwrap();
+        let deferred = terminal.choices().unwrap().into_iter().find(|choice| choice.text == "C").unwrap();
+        assert!(deferred.successor.is_accepted());
+        assert_eq!(deferred.successor.frontier_size(), terminal.select_text("C").unwrap().frontier_size());
+    }
+
+    #[test]
     fn acceptance_and_live_choices_coexist_in_a_seeded_mixed_frontier() {
         let accepted = prepared(&[], &[]).initial().unwrap();
         let live = prepared(&["C"], &[]).initial().unwrap();
         // The deliberately mixed frontier tests only the prefix client's EOS/token-union law;
         // these states come from different prepared graphs and are not a reachable molecule prefix.
         let prefix = TextPrefix {
-            states: vec![accepted, live],
+            frontier: PrefixFrontier::Materialized(Arc::new(vec![accepted, live])),
         };
         assert!(prefix.is_accepted());
         let choices = prefix.choices().unwrap();

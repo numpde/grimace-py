@@ -96,7 +96,7 @@ fn walk(prepared: &PreparedWriter, family: &Family, brackets: &[String]) -> Walk
     while let Some((text, prefix, depth)) = pending.pop() {
         // A capped diagnostic is incomplete; it supplies no support-equality claim.
         if counts.token_prefixes >= 100_000
-            || counts.frontier_states + prefix.states.len() > 2_000_000
+            || counts.frontier_states + prefix.frontier_size() > 2_000_000
             || depth > 128
         {
             return WalkOutcome::Capped {
@@ -106,23 +106,24 @@ fn walk(prepared: &PreparedWriter, family: &Family, brackets: &[String]) -> Walk
             };
         }
         counts.token_prefixes += 1;
-        counts.frontier_states += prefix.states.len();
+        counts.frontier_states += prefix.frontier_size();
         counts.rendered_prefixes.insert(text.clone());
-        counts.max_frontier = counts.max_frontier.max(prefix.states.len());
-        let accepting = prefix.states.iter().filter(|s| s.is_accepted()).count();
+        counts.max_frontier = counts.max_frontier.max(prefix.frontier_size());
+        let states = prefix.materialized_states().unwrap();
+        let accepting = states.iter().filter(|s| s.is_accepted()).count();
         if accepting > 0 {
             *counts.accepted.entry(text.clone()).or_default() += accepting;
         }
         let mut raw = BTreeMap::new();
-        for state in &prefix.states {
+        for state in states.iter() {
             for choice in state.choices().unwrap() {
                 *raw.entry(choice.text).or_insert(0usize) += 1;
             }
         }
-        let groups = grouped_successors(&prefix.states).unwrap();
+        let groups = prefix.choices().unwrap();
         let grouped_counts = groups
             .iter()
-            .map(|(s, states)| (s.clone(), states.len()))
+            .map(|choice| (choice.text.clone(), choice.successor.frontier_size()))
             .collect::<BTreeMap<_, _>>();
         assert_eq!(
             raw, grouped_counts,
@@ -130,13 +131,15 @@ fn walk(prepared: &PreparedWriter, family: &Family, brackets: &[String]) -> Walk
         );
         counts.emitted_choices += raw.values().sum::<usize>();
         counts.all_visible_groups += groups.len();
-        for (token, states) in groups {
+        for choice in groups {
+            let token = choice.text;
+            let successor = choice.successor;
             let next = format!("{text}{token}");
             if family.permits(&next, brackets) {
-                counts.admitted_choices += states.len();
+                counts.admitted_choices += successor.frontier_size();
                 counts.admitted_visible_groups += 1;
-                *counts.group_multiplicities.entry(states.len()).or_default() += 1;
-                pending.push((next, TextPrefix { states }, depth + 1));
+                *counts.group_multiplicities.entry(successor.frontier_size()).or_default() += 1;
+                pending.push((next, successor, depth + 1));
             }
         }
     }
@@ -296,9 +299,9 @@ fn bounded_support_growth() {
                     .unwrap()
                     .select_text("C")
                     .unwrap();
-                assert_eq!(carbon.states.len(), 2);
+                assert_eq!(carbon.frontier_size(), 2);
                 let futures = carbon
-                    .states
+                    .materialized_states().unwrap()
                     .iter()
                     .map(|state| {
                         state

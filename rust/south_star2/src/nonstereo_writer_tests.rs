@@ -3027,6 +3027,135 @@ fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
 }
 
 #[test]
+fn selected_tetrahedral_ring_order_controls_open_and_close_choices() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+    ];
+    let reference = [
+        TetrahedralLigand::Bond(bonds[1]),
+        TetrahedralLigand::Bond(bonds[2]),
+        TetrahedralLigand::Bond(bonds[3]),
+        TetrahedralLigand::VirtualHydrogen,
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Fixed("A".to_owned()),
+            PreparedAtomToken::Fixed("B".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: reference,
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("D".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()],
+        Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder },
+        true,
+    ).unwrap();
+    let molecule = surface.molecule();
+    let roles = [false, false, true, true];
+    let restrictions = bonds.iter().copied().zip(roles).map(|(bond, ring)| {
+        let partition = molecule.bond_role_partition(bond).unwrap();
+        (molecule.bond_decision_variable(bond).unwrap(),
+            if ring { partition.ring_values() } else { partition.traversal_values() })
+    }).collect::<Vec<_>>();
+    let mut initial = initial(&surface);
+    initial.structural = initial.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let (_, rooted) = only_root_atom(&initial, atoms[0]);
+    let openings = ring_witness_choices(&rooted).into_iter().filter(|choice| {
+        choice.text() == "1" && matches!(choice.successor().observe_raw().structural.traversal.bond_progress[bonds[2].index()],
+            ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[0])
+    }).collect::<Vec<_>>();
+    assert_eq!(openings.len(), 2, "both omitted-opening representations retain their writer histories");
+    let center = surface.tetrahedral_center(atoms[2]).unwrap();
+    let mut saw_first = BTreeSet::new();
+    let mut completed_local_orders = 0;
+    for opening in openings {
+        let opened = opening.into_successor();
+        let (_, at_b) = only_choice(&opened, "B");
+        let entered = completed_atom_witnesses(&at_b, atoms[2]);
+        assert_eq!(entered.len(), 2);
+        for (marker, state) in entered {
+        assert_eq!(state.structural.active_local_bond_order().entry_bond, Some(bonds[1]));
+        assert_eq!(state.structural.active_local_bond_order().emitted_bonds, Vec::<BondId>::new());
+        let context = state.structural.active_local_layout_context();
+        assert_eq!(context.waiting_ring_bonds, vec![bonds[2]]);
+        let close_first = [
+            TetrahedralLigand::Bond(bonds[1]),
+            TetrahedralLigand::VirtualHydrogen,
+            TetrahedralLigand::Bond(bonds[2]),
+            TetrahedralLigand::Bond(bonds[3]),
+        ];
+        let open_first = [close_first[0], close_first[1], close_first[3], close_first[2]];
+        let order = if independent_tetrahedral_order_is_even(&reference,
+            (0..24).find(|value| independent_tetrahedral_order(&reference, *value) == close_first).unwrap())
+            == (marker == "[C@H]") { close_first } else { open_first };
+        let expected = Domain::from_indices((0..24).filter(|value| {
+            independent_tetrahedral_order(&reference, *value) == order
+                && independent_tetrahedral_order_is_even(&reference, *value) == (marker == "[C@H]")
+        })).unwrap();
+        assert!(!expected.is_empty(), "each marker must select one ring order");
+        assert_eq!(state.structural.semantic_domain(center.order_variable), expected);
+        let first_bond = match order[2] { TetrahedralLigand::Bond(bond) => bond, _ => unreachable!() };
+        let second_bond = match order[3] { TetrahedralLigand::Bond(bond) => bond, _ => unreachable!() };
+        saw_first.insert(first_bond);
+        let first_choices = ring_witness_choices(&state);
+        assert!(!first_choices.is_empty(), "the selected first ring event remains available");
+        for first_choice in first_choices {
+            let mut first = first_choice.into_successor();
+            assert_eq!(first.structural.active_local_bond_order().emitted_bonds, vec![first_bond]);
+            assert_eq!(first.structural.semantic_domain(center.order_variable), expected);
+            if first.pending.is_some() {
+                let labels = ring_witness_choices(&first);
+                assert_eq!(labels.len(), 1);
+                first = labels.into_iter().next().unwrap().into_successor();
+            }
+            let second_choices = ring_witness_choices(&first);
+            assert!(!second_choices.is_empty(), "the other ring event remains available");
+            for choice in second_choices {
+            let mut second = choice.into_successor();
+            assert_eq!(second.structural.active_local_bond_order().emitted_bonds, vec![first_bond, second_bond]);
+            assert_eq!(second.structural.semantic_domain(center.order_variable), expected);
+            if second.pending.is_some() {
+                let labels = ring_witness_choices(&second);
+                assert_eq!(labels.len(), 1);
+                second = labels.into_iter().next().unwrap().into_successor();
+            }
+            assert_eq!(second.structural.active_local_bond_order().emitted_bonds, vec![first_bond, second_bond]);
+            assert_eq!(second.structural.semantic_domain(center.order_variable), expected);
+            assert_eq!(second.pending, None);
+            assert_eq!(second.structural.active_local_bond_order().ring_occurrence_count, 2);
+            let pattern = (1_u8 << center.pattern_bit(bonds[2])) | (1_u8 << center.pattern_bit(bonds[3]));
+            assert_eq!(second.structural.semantic_domain(center.role_pattern_variable),
+                Domain::singleton(pattern).unwrap());
+            assert!(second.structural.factor_is_active(center.layout_factor(Some(bonds[1]))));
+            for (bond, ring) in bonds.iter().copied().zip(roles) {
+                if bond == bonds[0] { continue; }
+                let partition = molecule.bond_role_partition(bond).unwrap();
+                let expected_role = if ring { partition.ring_values() } else { partition.traversal_values() };
+                assert!(second.structural.semantic_domain(molecule.bond_decision_variable(bond).unwrap())
+                    .is_subset_of(expected_role));
+            }
+            let departures = ring_witness_choices(&second);
+            assert!(!departures.is_empty(), "completed center can advance through its actual choice path");
+            assert!(departures.iter().all(|choice| choice.successor().active_atom() != Some(atoms[2])));
+            completed_local_orders += 1;
+            }
+        }
+        }
+    }
+    assert_eq!(saw_first, BTreeSet::from([bonds[2], bonds[3]]));
+    assert!(completed_local_orders >= 2);
+}
+
+#[test]
 fn every_ring_endpoint_path_commits_one_local_occurrence() {
     let (surface, atoms, bonds) = ring_coupled_tetrahedral_fixture(NonStereoBondToken::Double);
     let mut pending = vec![(initial(&surface), 0_usize)];

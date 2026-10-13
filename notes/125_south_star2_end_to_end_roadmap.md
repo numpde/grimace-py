@@ -1707,3 +1707,51 @@ check implementations of those conditions. It does not establish that every
 raw proposed candidate succeeds, that every public token prefix is productive,
 or that finite ring labels, chemistry, spellings, stereo, representation
 factors, profile restrictions, and RDKit scheduling preserve this result.
+
+## 2026-10-13 tetrahedral mixed ring event order
+
+The mixed ring-order witness fixes A-B/B-C as traversal and A-C/C-D as ring,
+opens A-C at A, and enters the hydrogen-bearing center C from B. At C the
+already opened A-C can close while C-D can open. The two marker choices select
+opposite independently calculated orders, and actual writer choices emit only
+the selected first event, then the other event. After each committed local
+path, the observed order and role-pattern domains are exact singletons, the
+selected layout factor is active, incident roles remain fixed, and an actual
+choice can leave the completed frame. This is a bounded event-order check,
+not a full suffix-support result.
+
+For a compatible satisfying assignment in the tetrahedral-only Generic
+AnyOrder Forest lane, first complete the root assignment for each chosen
+traversal-forest component: preserve emitted roots and any already selected
+future root; otherwise select one root in a component without an emitted
+root, and set its other root variables to zero. The ordinary root-provenance
+constraints allow this choice and do not couple root variables to tetrahedral
+order. Then freeze the shared traversal/ring roles, bond representation
+plans, roots, and complete orders for **all** activated centers, including
+suspended and completed ones. Assume the ordinary bond-production owners can
+realize those chosen representation plans and an unlimited abstract supply of
+ring labels.
+
+Extend only fresh center-local variables, without changing existing selected
+values, and select each new marker from its assigned order. Entry and virtual
+H occupy their established ligand positions; ring occurrences follow in
+assigned order, whether the next event closes an already opened bond or
+opens a new one. Traversal children follow in the remaining assigned order,
+branching until the final inline child. The writer's ring candidates and
+parent-prefix restrictions preserve this shared witness. At completed atom
+entry, ring-endpoint, and frame-retirement boundaries, the lexicographic
+measure (unvisited atoms, remaining ring-endpoint emissions, live frames
+including the active frame) decreases. Entry can add a frame while the first
+coordinate decreases. Thus the prescribed structural construction is finite.
+
+At local completion, every incident bond has been represented exactly once.
+The four distinct ligands make the final prefix domain a singleton equal to
+the assigned order. The surviving assignment makes that domain nonempty; the
+active tetrahedral layout factor can then leave only its observed role
+pattern, since every incident decision has its assigned traversal or ring
+role. These are the exact checks in `validate_active_tetrahedral_completion`.
+This is a conditional tetrahedral-only continuation from a compatible joint
+witness at stable event boundaries. It does not establish that every public
+transition supplies such a witness, nor cover aromatic and directional
+composition, other writer profiles, finite-label exhaustion, or unfinished
+atom and bond spellings.

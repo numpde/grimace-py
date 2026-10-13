@@ -1425,3 +1425,46 @@ the support-growth test and exited under its inherited CPU limit after about
 211 seconds; its runner verified no live descendants. That interrupted run is
 not a full-suite pass. The model law does not establish global prefix
 completion, ring-label resource sufficiency, or latent future-factor activation.
+
+## Selected structural extension witnesses
+
+For an admitted prepared graph, a complete structural serialization visits each
+atom exactly once. Each bond is represented exactly once, either on entry to a
+child or by two ring occurrences at that bond's named endpoints. An initial atom
+or a dot continuation starts a segment; entering an ordinary branch child does
+not. Every branch starts with a nonempty chain and returns to its suspended
+parent, while an inline child advances the active chain. At each atom, all ring
+occurrences precede branches and inline continuation. Every opened ring is
+paired at its other endpoint, every branch scope is closed, and every physical
+Traversal component has exactly one segment root. Chemical components may
+contain several such Traversal components joined by ring edges. These
+conditions describe structural events only: atom and bond spelling, chemical
+validity, stereo, RDKit writer policy, and finite ring-label allocation require
+separate arguments.
+
+The prefix counterpart records which atoms have been visited and, for each
+bond, whether it is unrepresented, traversed, opened at a named endpoint, or
+closed at both named endpoints. It also records the active frame, suspended
+parents, and permanently finished segments. A branch start seals its parent's
+ring phase: every still-unrepresented incidence at that parent must be a later
+Traversal entry. A ring may nevertheless close after return at a later
+entered atom. A segment boundary may likewise leave a named ring opening for
+a later segment. These are structural obligations, not a claim that a local
+frontier choice always has a globally completing suffix.
+
+The native selected schedules now check candidate publication before each
+transition, then inspect raw progress and complete the prescribed suffix. The
+six-atom residual cycle checks two parent attachments in one chemical residual
+component and a ring opened in a branch, followed by return, remaining child
+entry, and closure. A three-atom dot branch checks that its ring closes at a
+later entered atom after parent restoration, with no closure offered at the
+sealed parent. Another three-atom schedule crosses a completed segment boundary
+with an open ring and closes it in the next segment. Existing triangle and star
+tests cover ring-before-entry and ordinary branch return. These finite
+witnesses establish those specific extension paths and state observations.
+They do not establish arbitrary valid event availability, the general
+residual-partition sufficiency step, or universal prefix liveness. A full
+correspondence proof still needs to show that every valid structural schedule
+projects to an offered candidate at each prefix and that every offered
+structural state retains some completing schedule under the prepared factor
+domains.

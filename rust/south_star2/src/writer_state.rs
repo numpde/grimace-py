@@ -964,6 +964,7 @@ mod tests {
     use crate::model::EdgeRolePartition;
     use crate::native::NativeSolverState;
     use crate::prepared::PreparedGraphBuilder;
+    use crate::traversal::ObservedBondProgress;
 
     #[derive(Clone)]
     struct MissingDomainSolver;
@@ -1087,6 +1088,17 @@ mod tests {
             .unwrap_consistent()
     }
 
+    fn offered_step(
+        state: &WriterState<NativeSolverState>,
+        candidate: StructuralCandidate,
+    ) -> WriterState<NativeSolverState> {
+        assert!(
+            state.derive_candidates().candidates().contains(&candidate),
+            "a prescribed structural event must be offered before it is attempted: {candidate:?}"
+        );
+        attempt(state, candidate)
+    }
+
     fn rooted(prepared: &PreparedMolecule, atom: AtomId) -> WriterState<NativeSolverState> {
         let initial = WriterState::<NativeSolverState>::initial(prepared)
             .unwrap()
@@ -1127,20 +1139,152 @@ mod tests {
         assert!(frontier.inline_children().is_empty());
         assert_eq!(frontier.ring_openings(), &[branch, sibling]);
 
-        let committed = attempt(&rooted, StructuralCandidate::BranchChild { incident: branch });
+        let committed = offered_step(&rooted, StructuralCandidate::BranchChild { incident: branch });
         assert_eq!(committed.bond_role_domain(bonds[5]), BondRole::Traversal.singleton_domain());
         let entered = committed.enter_committed_branch_child(branch);
         let next = incident(&prepared, atoms[1], bonds[1]);
-        let committed = attempt(&entered, StructuralCandidate::InlineChild { incident: next });
+        let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
         let entered = committed.enter_committed_inline_child(next);
-        let opened = attempt(&entered, StructuralCandidate::RingOpen {
+        let opened = offered_step(&entered, StructuralCandidate::RingOpen {
             incident: incident(&prepared, atoms[2], bonds[2]),
         });
-        let restored = attempt(&opened, StructuralCandidate::CloseBranch);
+        let observed = opened.observe_raw().traversal;
+        assert_eq!(observed.visited_atoms, atoms[..3]);
+        assert_eq!(observed.bond_progress[bonds[2].index()], ObservedBondProgress::RingOpen {
+            first_endpoint: atoms[2],
+        });
+        assert_eq!(observed.branch_returns.len(), 1);
+        let restored = offered_step(&opened, StructuralCandidate::CloseBranch);
         assert_eq!(restored.active_atom(), Some(atoms[0]));
         assert_eq!(restored.structural_frontier().inline_children(), &[sibling]);
         assert_eq!(restored.traversal.active_attachments().len(), 1);
         assert_eq!(restored.traversal.active_attachments()[0].incidences(), &[sibling]);
+        let observed = restored.observe_raw().traversal;
+        assert!(observed.branch_returns.is_empty());
+        assert_eq!(observed.active_frame.unwrap().atom, atoms[0]);
+        assert_eq!(observed.bond_progress[bonds[2].index()], ObservedBondProgress::RingOpen {
+            first_endpoint: atoms[2],
+        });
+        let committed = offered_step(&restored, StructuralCandidate::InlineChild { incident: sibling });
+        let entered = committed.enter_committed_inline_child(sibling);
+        let next = incident(&prepared, atoms[3], bonds[4]);
+        let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
+        let entered = committed.enter_committed_inline_child(next);
+        let next = incident(&prepared, atoms[4], bonds[3]);
+        let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
+        let entered = committed.enter_committed_inline_child(next);
+        let closing = incident(&prepared, atoms[5], bonds[2]);
+        let closed = offered_step(&entered, StructuralCandidate::RingClose {
+            incident: closing,
+            first_endpoint: atoms[2],
+        });
+        let observed = closed.observe_raw().traversal;
+        assert_eq!(observed.visited_atoms, atoms);
+        for (bond, from, to) in [
+            (bonds[0], atoms[0], atoms[1]),
+            (bonds[1], atoms[1], atoms[2]),
+            (bonds[3], atoms[4], atoms[5]),
+            (bonds[4], atoms[3], atoms[4]),
+            (bonds[5], atoms[0], atoms[3]),
+        ] {
+            assert_eq!(observed.bond_progress[bond.index()], ObservedBondProgress::Traversed {
+                from,
+                to,
+            });
+        }
+        assert_eq!(observed.bond_progress[bonds[2].index()], ObservedBondProgress::RingClosed {
+            first_endpoint: atoms[2],
+            second_endpoint: atoms[5],
+        });
+        assert!(offered_step(&closed, StructuralCandidate::FinishSegment).scope_is_complete());
+    }
+
+    #[test]
+    fn dot_branch_ring_closes_after_return_at_a_later_atom() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let parent = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let cross = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let state = rooted(&prepared, atoms[0]);
+        let state = offered_step(&state, StructuralCandidate::DotBranchRoot { atom: atoms[2] });
+        let opening = incident(&prepared, atoms[2], cross);
+        let state = offered_step(&state, StructuralCandidate::RingOpen { incident: opening });
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.visited_atoms, vec![atoms[0], atoms[2]]);
+        assert_eq!(raw.branch_returns.len(), 1);
+        assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingOpen {
+            first_endpoint: atoms[2],
+        });
+        let state = offered_step(&state, StructuralCandidate::CloseBranch);
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.active_frame.unwrap().atom, atoms[0]);
+        assert!(raw.branch_returns.is_empty());
+        assert!(!state.derive_candidates().candidates().iter().any(|candidate| matches!(
+            candidate, StructuralCandidate::RingOpen { .. } | StructuralCandidate::RingClose { .. }
+        )));
+        let entry = incident(&prepared, atoms[0], parent);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
+            .enter_committed_inline_child(entry);
+        let closing = incident(&prepared, atoms[1], cross);
+        let state = offered_step(&state, StructuralCandidate::RingClose {
+            incident: closing,
+            first_endpoint: atoms[2],
+        });
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.visited_atoms, atoms);
+        assert_eq!(raw.bond_progress[parent.index()], ObservedBondProgress::Traversed {
+            from: atoms[0],
+            to: atoms[1],
+        });
+        assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingClosed {
+            first_endpoint: atoms[2],
+            second_endpoint: atoms[1],
+        });
+        assert!(offered_step(&state, StructuralCandidate::FinishSegment).scope_is_complete());
+    }
+
+    #[test]
+    fn completed_segment_starts_a_new_root_with_a_cross_segment_ring() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let cross = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let child = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let state = rooted(&prepared, atoms[0]);
+        let opening = incident(&prepared, atoms[0], cross);
+        let state = offered_step(&state, StructuralCandidate::RingOpen { incident: opening });
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.visited_atoms, vec![atoms[0]]);
+        assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingOpen {
+            first_endpoint: atoms[0],
+        });
+        let state = offered_step(&state, StructuralCandidate::DotSegmentRoot { atom: atoms[2] });
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.visited_atoms, vec![atoms[0], atoms[2]]);
+        let frame = raw.active_frame.unwrap();
+        assert_eq!(frame.atom, atoms[2]);
+        assert_eq!(frame.entry_bond, None);
+        assert!(raw.branch_returns.is_empty());
+        let entry = incident(&prepared, atoms[2], child);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
+            .enter_committed_inline_child(entry);
+        let closing = incident(&prepared, atoms[1], cross);
+        let state = offered_step(&state, StructuralCandidate::RingClose {
+            incident: closing,
+            first_endpoint: atoms[0],
+        });
+        let raw = state.observe_raw().traversal;
+        assert_eq!(raw.visited_atoms, atoms);
+        assert_eq!(raw.bond_progress[child.index()], ObservedBondProgress::Traversed {
+            from: atoms[2],
+            to: atoms[1],
+        });
+        assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingClosed {
+            first_endpoint: atoms[0],
+            second_endpoint: atoms[1],
+        });
+        assert!(offered_step(&state, StructuralCandidate::FinishSegment).scope_is_complete());
     }
 
     #[test]

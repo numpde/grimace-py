@@ -300,6 +300,9 @@ fn assignment_satisfies(
                     },
                 )
             }
+            FactorDefinition::FixedSchedule(schedule) => {
+                schedule.permits(|variable| assignment[variable.index()])
+            }
         }
     })
 }
@@ -401,6 +404,72 @@ fn assignment_satisfies_traversal_topology(
     }
 
     visited.len() == factor.atoms().len()
+}
+
+#[cfg(test)]
+mod fixed_schedule_tests {
+    use super::*;
+    use crate::ids::BondId;
+    use crate::model::{FixedScheduleCenter, FixedScheduleEdge};
+    use crate::tetrahedral::{full_order_domain, TetrahedralLigand};
+
+    #[test]
+    fn fixed_diamond_schedule_native_projection_matches_exhaustive() {
+        let mut builder = ConstraintModelBuilder::new();
+        let bonds: [BondId; 5] = std::array::from_fn(|index| BondId::new(index as u32));
+        let ends = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)];
+        let edges: Arc<[FixedScheduleEdge]> = ends.into_iter().enumerate().map(|(index, (a, b))| {
+            let role = if index < 3 { BondRole::Traversal } else { BondRole::Ring };
+            FixedScheduleEdge {
+                bond: bonds[index], a: AtomId::new(a), b: AtomId::new(b),
+                decision_variable: builder.add_variable(role.singleton_domain()).unwrap(),
+                role_partition: EdgeRolePartition::bond_role(),
+            }
+        }).collect::<Vec<_>>().into();
+        let parent = builder.add_variable(full_order_domain()).unwrap();
+        let child = builder.add_variable(full_order_domain()).unwrap();
+        let centers: Arc<[FixedScheduleCenter]> = vec![
+            FixedScheduleCenter { atom: AtomId::new(0), order_variable: parent,
+                reference_order: [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[2]), TetrahedralLigand::VirtualHydrogen] },
+            FixedScheduleCenter { atom: AtomId::new(1), order_variable: child,
+                reference_order: [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::Bond(bonds[3]),
+                    TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::VirtualHydrogen] },
+        ].into();
+        let capacity: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(1).unwrap()).unwrap()].into();
+        let root_bits: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(0).unwrap()).unwrap(),
+            builder.add_variable(Domain::singleton(0).unwrap()).unwrap()].into();
+        let factor_id = builder.add_latent_fixed_schedule(root_bits, edges, centers, capacity).unwrap();
+        let model = Arc::new(builder.build());
+        let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model)).unwrap().unwrap_consistent()
+            .transitioned(&[], &[factor_id]).unwrap().unwrap_consistent();
+        let exhaustive = ExhaustiveSolverState::initial(model).unwrap().unwrap_consistent()
+            .transitioned(&[], &[factor_id]).unwrap().unwrap_consistent();
+        for variable in [parent, child] {
+            assert_eq!(native.domain(variable), exhaustive.domain(variable));
+        }
+        let mut supported = Vec::new();
+        let mut rejected = None;
+        for a in 0..24 {
+            for b in 0..24 {
+                let restrictions = [(parent, Domain::singleton(a).unwrap()),
+                    (child, Domain::singleton(b).unwrap())];
+                if matches!(native.transitioned(&restrictions, &[]).unwrap(), Consistency::Consistent(_)) {
+                    supported.push((a, b));
+                } else if rejected.is_none() {
+                    rejected = Some((a, b));
+                }
+            }
+        }
+        assert!(!supported.is_empty());
+        assert!(supported.len() < 24 * 24);
+        for ((a, b), expected) in [(supported[0], true), (rejected.unwrap(), false)] {
+            let restrictions = [(parent, Domain::singleton(a).unwrap()),
+                (child, Domain::singleton(b).unwrap())];
+            assert_eq!(matches!(exhaustive.transitioned(&restrictions, &[]).unwrap(),
+                Consistency::Consistent(_)), expected);
+        }
+    }
 }
 
 fn relation_rows(mask: u16) -> Vec<(u8, u8)> {

@@ -8831,9 +8831,7 @@ fn finite_two_center_diamond_schedule_requires_close_before_next_open() {
     }
 }
 
-#[test]
-#[ignore = "known future two-center ring schedule overpublishes a branch; run focused after owner fix"]
-fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
+fn tetrahedral_diamond_surface() -> (PreparedNonStereo, [AtomId; 4], [BondId; 5]) {
     let mut graph = PreparedGraphBuilder::new();
     let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
     let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
@@ -8859,6 +8857,64 @@ fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
         WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
     ).unwrap();
+    (surface, atoms, bonds)
+}
+
+#[test]
+fn fixed_schedule_factor_matches_independent_diamond_event_reference() {
+    let (surface, atoms, bonds) = tetrahedral_diamond_surface();
+    let factor_id = surface.fixed_schedule_factor.unwrap();
+    let FactorDefinition::FixedSchedule(schedule) = surface.molecule().constraint_model()
+        .factor(factor_id).unwrap() else { panic!("prepared fixed schedule factor expected") };
+    let parent = surface.tetrahedral_center(atoms[0]).unwrap();
+    let child = surface.tetrahedral_center(atoms[1]).unwrap();
+    let model = surface.molecule().constraint_model();
+    let FactorDefinition::TetrahedralLayout(parent_layout) = model.factor(parent.layout_factor(None)).unwrap()
+        else { panic!("parent layout expected") };
+    let FactorDefinition::TetrahedralLayout(child_layout) = model.factor(child.layout_factor(Some(bonds[0]))).unwrap()
+        else { panic!("child layout expected") };
+    let child_pattern = (1_u8 << child.pattern_bit(bonds[3])) | (1_u8 << child.pattern_bit(bonds[4]));
+    let mut surviving = Vec::new();
+    for parent_value in 0..24 {
+        for child_value in 0..24 {
+            let reference = [bonds[1], bonds[2]].into_iter().any(|first|
+                diamond_schedule_fits(&bonds, &parent.reference_order, &child.reference_order,
+                    parent_value, child_value, first));
+            let relation = parent_layout.allowed_orders(0).contains(parent_value)
+                && child_layout.allowed_orders(child_pattern).contains(child_value)
+                && schedule.permits(|variable| {
+                if variable == parent.order_variable { parent_value }
+                else if variable == child.order_variable { child_value }
+                else if let Some(bit) = schedule.capacity_bits().iter().position(|candidate| *candidate == variable) {
+                    u8::from(bit == 0)
+                } else if schedule.root_bits().contains(&variable) {
+                    0
+                } else {
+                    let edge = schedule.edges().iter().find(|edge| edge.decision_variable == variable)
+                        .expect("schedule variable must belong to a prepared edge");
+                    u8::from(edge.bond.index() >= 3)
+                }
+                });
+            assert_eq!(relation, reference,
+                "fixed schedule disagrees with independent event cuts at orders {parent_value}, {child_value}");
+            if relation { surviving.push((parent_value, child_value)); }
+        }
+    }
+    assert_eq!(surviving.len(), 2);
+}
+
+#[test]
+fn fixed_schedule_preparation_uses_writer_label_namespace() {
+    assert!(cycle_count_exceeds_schedule_capacity(100, WriterRegime::RdkitRandomNoncanonical));
+    assert!(!cycle_count_exceeds_schedule_capacity(100,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }));
+    assert!(cycle_count_exceeds_schedule_capacity(101,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }));
+}
+
+#[test]
+fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
+    let (surface, atoms, bonds) = tetrahedral_diamond_surface();
     let mut state = initial(&surface);
     state.labels.maximum_spelling_label = Some(0);
     let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
@@ -8888,6 +8944,39 @@ fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
 }
 
 #[test]
+fn unseeded_diamond_branch_seal_checks_future_ring_schedule() {
+    let (surface, atoms, bonds) = tetrahedral_diamond_surface();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let roots = completed_atom_witnesses(&state, atoms[0]);
+    assert_eq!(roots.len(), 2);
+    let parent_reference = surface.tetrahedral_center(atoms[0]).unwrap().reference_order;
+    let child_reference = surface.tetrahedral_center(atoms[1]).unwrap().reference_order;
+    for (text, root) in roots {
+        let factor = surface.fixed_schedule_factor.unwrap();
+        assert!(!root.structural.factor_is_active(factor));
+        let parity_even = text == "[C@H]";
+        for first in [bonds[1], bonds[2]] {
+            let viable = (0..24).any(|parent_value|
+                independent_tetrahedral_order_is_even(&parent_reference, parent_value) == parity_even
+                    && (0..24).any(|child_value| diamond_schedule_fits(&bonds, &parent_reference, &child_reference, parent_value, child_value, first)));
+            let offered = root.choices().unwrap().iter().any(|choice|
+                choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+                    incident(&surface, atoms[0], first))));
+            assert_eq!(offered, viable, "unseeded root marker {text}, first bond {first:?}");
+            if offered {
+                let branch = root.choices().unwrap().into_iter().find(|choice|
+                    choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+                        incident(&surface, atoms[0], first)))).unwrap();
+                assert!(branch.successor().structural.factor_is_active(factor));
+                assert_eq!(branch.successor().structural.fixed_bond_role(bonds[3]), Some(BondRole::Ring));
+                assert_eq!(branch.successor().structural.fixed_bond_role(bonds[4]), Some(BondRole::Ring));
+            }
+        }
+    }
+}
+
+#[test]
 fn releasing_a_real_held_label_restores_diamond_branch() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms = (0..6).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
@@ -8900,6 +8989,8 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
         WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
     ).unwrap();
+    assert!(surface.fixed_schedule_factor.is_none(),
+        "a disconnected dot-branch schedule is outside the fixed-tree relation");
     let mut state = initial(&surface);
     state.labels.maximum_spelling_label = Some(1);
     let (_, ethane) = only_root_atom(&state, atoms[0]);

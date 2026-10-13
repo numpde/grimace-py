@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::Arc;
 
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
@@ -295,6 +296,106 @@ pub struct OrderedRingPhaseFactor {
     variables: Box<[VariableId]>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FixedScheduleEdge {
+    pub bond: BondId,
+    pub a: AtomId,
+    pub b: AtomId,
+    pub decision_variable: VariableId,
+    pub role_partition: EdgeRolePartition,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FixedScheduleCenter {
+    pub atom: AtomId,
+    pub order_variable: VariableId,
+    pub reference_order: [TetrahedralLigand; 4],
+}
+
+/// One selected-root relation over the existing role and tetrahedral-order facts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixedScheduleFactor {
+    root_bits: Arc<[VariableId]>,
+    edges: Arc<[FixedScheduleEdge]>,
+    centers: Arc<[FixedScheduleCenter]>,
+    capacity_bits: Arc<[VariableId]>,
+    variables: Box<[VariableId]>,
+}
+
+impl FixedScheduleFactor {
+    pub fn root_bits(&self) -> &[VariableId] { &self.root_bits }
+    pub fn edges(&self) -> &[FixedScheduleEdge] { &self.edges }
+    pub fn centers(&self) -> &[FixedScheduleCenter] { &self.centers }
+    pub fn capacity_bits(&self) -> &[VariableId] { &self.capacity_bits }
+    pub fn variables(&self) -> &[VariableId] { &self.variables }
+
+    pub fn permits(&self, mut value: impl FnMut(VariableId) -> u8) -> bool {
+        let root_index = self.root_bits.iter().enumerate().fold(0_usize, |index, (bit, variable)| {
+            index | (usize::from(value(*variable)) << bit)
+        });
+        let atom_count = self.edges.iter().fold(0_usize, |count, edge| {
+            count.max(edge.a.index() + 1).max(edge.b.index() + 1)
+        });
+        if root_index >= atom_count { return false; }
+        let root = AtomId::new(u32::try_from(root_index).expect("prepared atom index must fit identifier"));
+        let mut neighbours = vec![Vec::<(AtomId, BondId, bool)>::new(); atom_count];
+        for edge in self.edges.iter() {
+            let ring = edge.role_partition.ring_values().contains(value(edge.decision_variable));
+            neighbours[edge.a.index()].push((edge.b, edge.bond, ring));
+            neighbours[edge.b.index()].push((edge.a, edge.bond, ring));
+        }
+        let mut parent = vec![None::<AtomId>; atom_count];
+        let mut visited = vec![false; atom_count];
+        visited[root.index()] = true;
+        let mut pending = vec![root];
+        while let Some(atom) = pending.pop() {
+            for &(other, _, ring) in &neighbours[atom.index()] {
+                if ring || visited[other.index()] { continue; }
+                visited[other.index()] = true;
+                parent[other.index()] = Some(atom);
+                pending.push(other);
+            }
+        }
+        if visited.iter().any(|visited| !visited) { return false; }
+        let capacity = self.capacity_bits.iter().enumerate().fold(0_usize, |count, (bit, variable)| {
+            count | (usize::from(value(*variable)) << bit)
+        });
+        let mut open = std::collections::BTreeSet::<BondId>::new();
+        let mut stack = vec![root];
+        while let Some(atom) = stack.pop() {
+            let entry = parent[atom.index()];
+            let mut rings = neighbours[atom.index()].iter().filter(|(_, _, ring)| *ring)
+                .map(|(_, bond, _)| *bond).collect::<Vec<_>>();
+            let mut children = neighbours[atom.index()].iter().filter(|(other, _, ring)| {
+                !*ring && parent[other.index()] == Some(atom)
+            }).map(|(other, bond, _)| (*other, *bond)).collect::<Vec<_>>();
+            if let Some(center) = self.centers.iter().find(|center| center.atom == atom) {
+                let Some(order) = order_for_value(&center.reference_order, value(center.order_variable)) else {
+                    return false;
+                };
+                let position = |bond: BondId| order.iter().position(|ligand| {
+                    *ligand == TetrahedralLigand::Bond(bond)
+                }).expect("prepared center order must name every incident bond");
+                rings.sort_by_key(|bond| position(*bond));
+                children.sort_by_key(|(_, bond)| position(*bond));
+            } else if rings.len() > 1 || children.len() > 1 {
+                return false;
+            }
+            if let Some(parent) = entry {
+                debug_assert!(neighbours[atom.index()].iter().any(|(other, _, ring)| *other == parent && !ring));
+            }
+            for bond in rings {
+                if !open.remove(&bond) {
+                    open.insert(bond);
+                    if open.len() > capacity { return false; }
+                }
+            }
+            stack.extend(children.into_iter().rev().map(|(child, _)| child));
+        }
+        open.is_empty()
+    }
+}
+
 impl OrderedRingPhaseFactor {
     pub fn bonds(&self) -> &[(BondId, SpanningTreeEdge)] { &self.bonds }
     pub fn order_variable(&self) -> VariableId { self.order_variable }
@@ -409,6 +510,7 @@ pub enum FactorDefinition {
     TetrahedralLayout(TetrahedralLayoutFactor),
     RingCountAtMost(RingCountAtMostFactor),
     OrderedRingPhase(OrderedRingPhaseFactor),
+    FixedSchedule(FixedScheduleFactor),
 }
 
 impl FactorDefinition {
@@ -421,6 +523,7 @@ impl FactorDefinition {
             Self::TetrahedralLayout(factor) => factor.variables(),
             Self::RingCountAtMost(factor) => factor.variables(),
             Self::OrderedRingPhase(factor) => factor.variables(),
+            Self::FixedSchedule(factor) => factor.variables(),
         }
     }
 }
@@ -1054,6 +1157,28 @@ impl ConstraintModelBuilder {
         )
     }
 
+    pub fn add_latent_fixed_schedule(
+        &mut self,
+        root_bits: Arc<[VariableId]>,
+        edges: Arc<[FixedScheduleEdge]>,
+        centers: Arc<[FixedScheduleCenter]>,
+        capacity_bits: Arc<[VariableId]>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let variables = edges.iter().map(|edge| edge.decision_variable)
+            .chain(centers.iter().map(|center| center.order_variable))
+            .chain(capacity_bits.iter().copied())
+            .chain(root_bits.iter().copied())
+            .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+        for variable in &variables {
+            if self.variables.get(variable.index()).is_none() {
+                return Err(ConstraintModelError::UnknownVariable(*variable));
+            }
+        }
+        self.push_factor(FactorDefinition::FixedSchedule(FixedScheduleFactor {
+            root_bits, edges, centers, capacity_bits, variables: variables.into_boxed_slice(),
+        }), FactorActivation::Latent)
+    }
+
     pub fn build(self) -> ConstraintModel {
         let initial_factor_ids = self
             .factor_activation
@@ -1132,6 +1257,9 @@ impl ConstraintModelBuilder {
                 | FactorDefinition::DirectionalRingPlacement(_)
                 | FactorDefinition::RingCountAtMost(_) => None,
                 FactorDefinition::OrderedRingPhase(_) => None,
+                FactorDefinition::FixedSchedule(schedule) => schedule.edges().iter()
+                    .find(|edge| edge.decision_variable == variable)
+                    .map(|edge| edge.role_partition),
                 FactorDefinition::TraversalTopology(spanning) => spanning
                     .edges()
                     .iter()

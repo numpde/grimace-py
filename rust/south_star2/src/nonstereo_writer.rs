@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::domain::Domain;
 use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingPolicy, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
-use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefinition, SpanningTreeEdge, TetrahedralLayoutBond};
+use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefinition, FixedScheduleCenter, FixedScheduleEdge, SpanningTreeEdge, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
@@ -382,6 +382,9 @@ pub(crate) struct PreparedNonStereo {
     directional_sides: Arc<[PreparedDirectionalSide]>,
     ring_count_factors: Arc<[Option<(FactorId, Box<[VariableId]>)>]>,
     ordered_ring_factors: Arc<[Option<(FactorId, VariableId, Box<[VariableId]>)>]>,
+    fixed_schedule_factor: Option<FactorId>,
+    fixed_schedule_root_bits: Arc<[VariableId]>,
+    fixed_schedule_capacity_bits: Arc<[VariableId]>,
     #[cfg(test)]
     test_atom_labels: Arc<[String]>,
     #[cfg(test)]
@@ -389,6 +392,15 @@ pub(crate) struct PreparedNonStereo {
 }
 
 const MAX_RING_LABEL_INDEX: usize = 99;
+
+fn schedule_namespace_capacity(regime: WriterRegime, maximum: usize) -> usize {
+    let first = usize::from(matches!(regime, WriterRegime::RdkitRandomNoncanonical));
+    maximum.saturating_add(1).saturating_sub(first)
+}
+
+fn cycle_count_exceeds_schedule_capacity(cycle_count: usize, regime: WriterRegime) -> bool {
+    cycle_count > schedule_namespace_capacity(regime, MAX_RING_LABEL_INDEX)
+}
 
 #[cfg(test)]
 #[derive(Debug, Default)]
@@ -735,6 +747,38 @@ impl PreparedNonStereo {
         }).collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
+        let cycle_count = graph.bond_count().saturating_add(1).saturating_sub(graph.atom_count());
+        let prepare_schedule = graph.components().len() == 1 && cycle_count > 0
+            && (cfg!(test) || cycle_count_exceeds_schedule_capacity(cycle_count, regime))
+            && atoms.iter().any(|atom| matches!(atom, PreparedAtom::Facts { tetrahedral: Some(_), .. }));
+        let (fixed_schedule_factor, fixed_schedule_root_bits, fixed_schedule_capacity_bits) = if prepare_schedule {
+            let edges: Arc<[FixedScheduleEdge]> = graph.bond_ids().map(|bond| {
+                let edge = graph.bond(bond).expect("prepared schedule bond must exist");
+                FixedScheduleEdge { bond, a: edge.a(), b: edge.b(),
+                    decision_variable: assembly.bond_decision_variable(bond),
+                    role_partition: assembly.bond_role_partition(bond) }
+            }).collect::<Vec<_>>().into();
+            let centers: Arc<[FixedScheduleCenter]> = graph.atom_ids().filter_map(|atom| {
+                match &atoms[atom.index()] {
+                    PreparedAtom::Facts { tetrahedral: Some(center), .. } => Some(FixedScheduleCenter {
+                        atom, order_variable: center.order_variable,
+                        reference_order: center.reference_order,
+                    }),
+                    _ => None,
+                }
+            }).collect::<Vec<_>>().into();
+            let capacity_bits: Arc<[VariableId]> = (0..7).map(|_| {
+                assembly.add_isolated_variable(Domain::from_bits(3))
+            }).collect::<Vec<_>>().into();
+            let root_width = (usize::BITS - (graph.atom_count() - 1).leading_zeros()) as usize;
+            let root_bits: Arc<[VariableId]> = (0..root_width).map(|_| {
+                assembly.add_isolated_variable(Domain::from_bits(3))
+            }).collect::<Vec<_>>().into();
+            let factor = assembly.add_latent_fixed_schedule(
+                Arc::clone(&root_bits), edges, centers, Arc::clone(&capacity_bits),
+            );
+            (Some(factor), root_bits, capacity_bits)
+        } else { (None, Arc::from(Vec::<VariableId>::new()), Arc::from(Vec::<VariableId>::new())) };
         let segment_topology = allow_segments;
         let molecule = if segment_topology {
             assembly.finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
@@ -752,6 +796,9 @@ impl PreparedNonStereo {
             directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             ring_count_factors: Arc::from(ring_count_factors.into_boxed_slice()),
             ordered_ring_factors: Arc::from(ordered_ring_factors.into_boxed_slice()),
+            fixed_schedule_factor,
+            fixed_schedule_root_bits,
+            fixed_schedule_capacity_bits,
             #[cfg(test)]
             test_atom_labels: Arc::from(test_atom_labels.into_boxed_slice()),
             #[cfg(test)]
@@ -3421,7 +3468,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             restrictions.extend(budget);
             activate.extend(factors);
         }
-        if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
+        let attempted = if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate(candidate)
         } else if restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate_with_bond_refinement(
@@ -3435,7 +3482,73 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 &restrictions,
                 &activate,
             )
+        }?;
+        let Consistency::Consistent(structural) = attempted else {
+            return Ok(Consistency::Contradiction);
+        };
+        let Some((schedule_restrictions, schedule_factors)) = self.fixed_schedule_activation(&structural) else {
+            return Ok(Consistency::Consistent(structural));
+        };
+        structural.transitioned_semantics(&schedule_restrictions, &schedule_factors)
+    }
+
+    fn fixed_schedule_activation(
+        &self,
+        structural: &WriterState<S>,
+    ) -> Option<(Vec<(VariableId, Domain)>, Vec<FactorId>)> {
+        let graph = self.surface.molecule().graph();
+        let root = structural.selected_tree_root()?;
+        let factor = self.surface.fixed_schedule_factor?;
+        if structural.factor_is_active(factor) { return None; }
+        let capacity = schedule_namespace_capacity(self.regime, self.labels.maximum_spelling_label());
+        let mut tree = vec![Vec::<(AtomId, BondId)>::new(); graph.atom_count()];
+        let mut ring_count = 0_usize;
+        let mut ring_degree = vec![0_usize; graph.atom_count()];
+        let mut traversal_count = 0_usize;
+        for bond in graph.bond_ids() {
+            let edge = graph.bond(bond).expect("prepared schedule edge must exist");
+            match structural.fixed_bond_role(bond)? {
+                BondRole::Traversal => {
+                    tree[edge.a().index()].push((edge.b(), bond));
+                    tree[edge.b().index()].push((edge.a(), bond));
+                    traversal_count += 1;
+                }
+                BondRole::Ring => {
+                    ring_degree[edge.a().index()] += 1;
+                    ring_degree[edge.b().index()] += 1;
+                    ring_count += 1;
+                }
+            }
         }
+        if ring_count <= capacity || traversal_count + 1 != graph.atom_count() { return None; }
+        let mut entry = vec![None::<BondId>; graph.atom_count()];
+        let mut visited = vec![false; graph.atom_count()];
+        visited[root.index()] = true;
+        let mut pending = vec![root];
+        while let Some(atom) = pending.pop() {
+            let children = tree[atom.index()].iter().filter(|(other, _)| !visited[other.index()])
+                .copied().collect::<Vec<_>>();
+            if self.surface.tetrahedral_center(atom).is_none()
+                && (children.len() > 1 || ring_degree[atom.index()] > 1) { return None; }
+            for (child, bond) in children {
+                visited[child.index()] = true;
+                entry[child.index()] = Some(bond);
+                pending.push(child);
+            }
+        }
+        if visited.iter().any(|visited| !visited) { return None; }
+        let mut factors = vec![factor];
+        for atom in graph.atom_ids() {
+            if let Some(center) = self.surface.tetrahedral_center(atom) {
+                factors.push(center.layout_factor(entry[atom.index()]));
+            }
+        }
+        let restrictions = self.surface.fixed_schedule_capacity_bits.iter().enumerate()
+            .map(|(bit, variable)| (*variable, Domain::singleton(((capacity >> bit) & 1) as u8).unwrap()))
+            .chain(self.surface.fixed_schedule_root_bits.iter().enumerate().map(|(bit, variable)| {
+                (*variable, Domain::singleton(((root.index() >> bit) & 1) as u8).unwrap())
+            })).collect();
+        Some((restrictions, factors))
     }
 
     fn ring_resource_entry_constraint(

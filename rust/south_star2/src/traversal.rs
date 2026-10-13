@@ -669,6 +669,19 @@ pub(crate) struct TraversalState {
 }
 
 impl TraversalState {
+    pub(crate) fn selected_tree_root(&self, graph: &PreparedGraph) -> Option<AtomId> {
+        let mut roots = graph.atom_ids().filter(|atom| {
+            self.progress.atom_is_visited(*atom) && !graph.neighbors(*atom)
+                .expect("prepared atom must have neighbours")
+                .iter().any(|incident| matches!(
+                    self.progress.bonds[incident.bond().index()],
+                    BondProgress::Traversed { to, .. } if to == *atom
+                ))
+        });
+        let root = roots.next()?;
+        roots.next().is_none().then_some(root)
+    }
+
     pub(crate) fn new(graph: &PreparedGraph) -> Self {
         Self::new_with_segments(graph, false)
     }

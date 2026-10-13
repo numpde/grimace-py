@@ -187,6 +187,17 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.prepared.topology()
     }
 
+    pub(crate) fn selected_tree_root(&self) -> Option<AtomId> {
+        self.traversal.selected_tree_root(self.prepared.graph())
+    }
+
+    pub(crate) fn fixed_bond_role(&self, bond: BondId) -> Option<BondRole> {
+        let roles = self.bond_role_domain(bond);
+        if roles == BondRole::Traversal.singleton_domain() { Some(BondRole::Traversal) }
+        else if roles == BondRole::Ring.singleton_domain() { Some(BondRole::Ring) }
+        else { None }
+    }
+
     pub(crate) const fn graph_is_complete(&self) -> bool {
         self.traversal.graph_is_complete()
     }

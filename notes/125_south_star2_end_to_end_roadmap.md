@@ -2019,3 +2019,55 @@ events, then connect it to the incremental solver. Do not use runtime suffix
 enumeration or a molecule-specific branch guard. Lexical prefix lifting,
 unfixed topology, and full admitted-graph completeness remain separate proof
 obligations.
+
+### Fixed-tree future ring schedule slice
+
+The native writer now activates one latent event-schedule factor when a candidate
+fixes every bond role to one spanning traversal tree, has one selected root, and
+requires more ring identities than the regime's total label namespace. A
+non-tetrahedral atom must have at most one traversal child and one ring
+incidence; existing tetrahedral order variables and entry layout factors own
+all other local order constraints. The factor visits the fixed rooted tree in
+those orders, opens or closes each ring identity at its endpoint occurrence,
+and rejects any event cut whose live-ring count exceeds the namespace. Root and
+capacity bits are derived from the unpublished writer candidate, then activated
+with all selected entry layouts before the candidate token is offered. Native
+exact-component search joins this relation to the same order variables and
+projects support; the factor itself checks only complete assignments. This is
+finite shared constraint search, with potentially exponential order choices;
+it does not run a writer suffix walk or construct a support DAG.
+
+The formerly ignored one-label two-center diamond regression now passes. An
+unseeded writer test reaches the fixed-role guard when the first branch seals
+the root ring phase; it checks factor activation and the surviving sibling
+order against the independent 24-by-24 event reference. A separate test checks
+the composed layout and schedule relation against that reference for every
+order pair, and a native/exhaustive test compares projected domains. The
+disconnected dot-branch test confirms that case remains outside this factor.
+These were bounded offline runs with verified process-tree cleanup; logs are
+`/tmp/grimace-fixed-schedule-focused.log`,
+`/tmp/grimace-fixed-schedule-regression.log`,
+`/tmp/grimace-fixed-schedule-dot-guard.log`, and
+`/tmp/grimace-fixed-schedule-check.log`.
+
+The reduced one-label test namespace causes test builds to prepare the latent
+factor on this small graph; the default production namespace has 100 generic
+labels or 99 RDKit labels, so this fixture does not prove a default public
+counterexample. Unfixed roles, a selected forest with multiple roots, and
+non-tetrahedral atoms with more than one child or ring incidence receive no
+schedule pruning. A branch published before the roles become fixed may still
+lack this future proof. Lexical prefix lifting, broader forest schedules, and
+full admitted-graph completeness remain separate obligations.
+
+The integrated bounded offline release build produced CPython 3.12 wheel
+SHA-256 `2d349b16455b27845cdd0c3043116d3da4e2a9a255bee78f8575ae610aac03af`.
+Its extracted extension SHA-256 is
+`0001e078d9bedac2a2773de0dc8a9eba8fb6d124d3bc28df38ba35c0fce22af3`.
+All 16 public prefix tests passed against both the extracted wheel and the
+refreshed checkout extension. The previous checkout extension is preserved at
+`/tmp/grimace-fixed-schedule-checkout-core-before.so`; the checkout extension
+bytes match the verified wheel extension. Build and public-test runners all
+reported `verified_no_live_members` cleanup. Evidence logs are
+`/tmp/grimace-fixed-schedule-wheel-build.log`,
+`/tmp/grimace-fixed-schedule-wheel-public.log`, and
+`/tmp/grimace-fixed-schedule-checkout-public.log`.

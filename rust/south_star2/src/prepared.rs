@@ -317,6 +317,17 @@ impl PreparedConstraintAssembly {
             .expect("prepared tetrahedral layout must define a valid latent factor")
     }
 
+    pub(crate) fn add_latent_fixed_schedule(
+        &mut self,
+        root_bits: Arc<[VariableId]>,
+        edges: Arc<[crate::model::FixedScheduleEdge]>,
+        centers: Arc<[crate::model::FixedScheduleCenter]>,
+        capacity_bits: Arc<[VariableId]>,
+    ) -> FactorId {
+        self.builder.add_latent_fixed_schedule(root_bits, edges, centers, capacity_bits)
+            .expect("prepared fixed schedule must define a valid latent factor")
+    }
+
     pub(crate) fn finish(self) -> PreparedMolecule {
         self.finish_with_topology(crate::model::TraversalTopologyRequirement::Tree)
     }

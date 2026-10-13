@@ -15,7 +15,7 @@ use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
 use crate::model::{
     BinaryRelationFactor, ConstraintModel, DirectionalRingPlacementFactor, EdgeRolePartition,
-    FactorActivation, FactorDefinition, TetrahedralLayoutFactor, TraversalTopologyFactor,
+    FactorActivation, FactorDefinition, FixedScheduleFactor, TetrahedralLayoutFactor, TraversalTopologyFactor,
 };
 use crate::persistent::PagedStore;
 
@@ -391,6 +391,9 @@ impl NativeSolverState {
                 FactorDefinition::OrderedRingPhase(phase) => {
                     revise_ordered_ring_phase(phase, &mut self.domains)?
                 }
+                FactorDefinition::FixedSchedule(schedule) => {
+                    revise_fixed_schedule(schedule, &mut self.domains)?
+                }
             };
 
             for variable in reductions {
@@ -512,6 +515,11 @@ impl NativeSolverState {
                     core_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
                     core_variables.extend(phase.bonds().iter().map(|(_, edge)| edge.decision_variable()));
                 }
+                FactorDefinition::FixedSchedule(schedule) => {
+                    core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                    core_variables.extend(schedule.capacity_bits().iter().copied());
+                    core_variables.extend(schedule.root_bits().iter().copied());
+                }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
         }
@@ -566,6 +574,11 @@ impl NativeSolverState {
                 FactorDefinition::OrderedRingPhase(phase) => {
                     projected_variables.extend(phase.free_bits().iter().copied());
                     projected_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
+                }
+                FactorDefinition::FixedSchedule(schedule) => {
+                    projected_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                    projected_variables.extend(schedule.capacity_bits().iter().copied());
+                    projected_variables.extend(schedule.root_bits().iter().copied());
                 }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
@@ -756,6 +769,19 @@ impl NativeExactPlan {
                         }
                         phase.variables()
                     }
+                    FactorDefinition::FixedSchedule(schedule) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_resource_factors.insert(factor_id);
+                        potential_core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                        potential_core_variables.extend(schedule.capacity_bits().iter().copied());
+                        potential_core_variables.extend(schedule.root_bits().iter().copied());
+                        for edge in schedule.edges() {
+                            structural_partitions.entry(edge.decision_variable)
+                                .and_modify(|existing| assert_eq!(*existing, edge.role_partition))
+                                .or_insert(edge.role_partition);
+                        }
+                        schedule.variables()
+                    }
                     FactorDefinition::AromaticMatching(_) => {
                         unreachable!(
                             "exclusive aromatic matching factors are not exact-search seeds"
@@ -778,7 +804,8 @@ impl NativeExactPlan {
                             FactorDefinition::BinaryRelation(_)
                             | FactorDefinition::TetrahedralLayout(_)
                             | FactorDefinition::RingCountAtMost(_)
-                            | FactorDefinition::OrderedRingPhase(_) => {
+                            | FactorDefinition::OrderedRingPhase(_)
+                            | FactorDefinition::FixedSchedule(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
                                 }
@@ -812,6 +839,7 @@ impl NativeExactPlan {
                                                 | FactorDefinition::TetrahedralLayout(_)
                                                 | FactorDefinition::RingCountAtMost(_)
                                                 | FactorDefinition::OrderedRingPhase(_)
+                                                | FactorDefinition::FixedSchedule(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
                                             pending.push_back(candidate);
@@ -1322,6 +1350,31 @@ fn revise_tetrahedral_layout(
         }
     }
     Ok(reductions)
+}
+
+fn revise_fixed_schedule(
+    factor: &FixedScheduleFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<Vec<VariableId>, NativeSolverError> {
+    if factor.capacity_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
+        || factor.root_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
+        || factor.centers().iter().any(|center| !domains[center.order_variable.index()].is_singleton()) {
+        return Ok(Vec::new());
+    }
+    for edge in factor.edges() {
+        let current = domains[edge.decision_variable.index()];
+        if !current.intersect(edge.role_partition.traversal_values()).is_empty()
+            && !current.intersect(edge.role_partition.ring_values()).is_empty() {
+            return Ok(Vec::new());
+        }
+    }
+    let assignment = (0..domains.len()).map(|index| domains[index].iter().next()
+        .expect("consistent domain must be nonempty")).collect::<Vec<_>>();
+    if factor.permits(|variable| assignment[variable.index()]) {
+        Ok(Vec::new())
+    } else {
+        Err(NativeSolverError::Contradiction)
+    }
 }
 
 fn revise_traversal_topology(

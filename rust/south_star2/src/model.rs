@@ -271,6 +271,19 @@ pub struct TetrahedralLayoutFactor {
     variables: Box<[VariableId]>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RingCountAtMostFactor {
+    bonds: Box<[SpanningTreeEdge]>,
+    budget_bits: Box<[VariableId]>,
+    variables: Box<[VariableId]>,
+}
+
+impl RingCountAtMostFactor {
+    pub fn bonds(&self) -> &[SpanningTreeEdge] { &self.bonds }
+    pub fn budget_bits(&self) -> &[VariableId] { &self.budget_bits }
+    pub fn variables(&self) -> &[VariableId] { &self.variables }
+}
+
 impl TetrahedralLayoutFactor {
     pub const fn order_variable(&self) -> VariableId {
         self.order_variable
@@ -355,6 +368,7 @@ pub enum FactorDefinition {
     DirectionalRingPlacement(DirectionalRingPlacementFactor),
     TraversalTopology(TraversalTopologyFactor),
     TetrahedralLayout(TetrahedralLayoutFactor),
+    RingCountAtMost(RingCountAtMostFactor),
 }
 
 impl FactorDefinition {
@@ -365,6 +379,7 @@ impl FactorDefinition {
             Self::DirectionalRingPlacement(factor) => factor.variables(),
             Self::TraversalTopology(factor) => factor.variables(),
             Self::TetrahedralLayout(factor) => factor.variables(),
+            Self::RingCountAtMost(factor) => factor.variables(),
         }
     }
 }
@@ -472,6 +487,49 @@ impl ConstraintModelBuilder {
         self.variables.push(VariableDefinition { initial_domain });
         self.factors_by_variable.push(Vec::new());
         Ok(variable)
+    }
+
+    pub fn add_latent_ring_count_at_most(
+        &mut self,
+        bonds: impl IntoIterator<Item = SpanningTreeEdge>,
+        budget_bits: impl IntoIterator<Item = VariableId>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let bonds = bonds.into_iter().collect::<Vec<_>>();
+        let budget_bits = budget_bits.into_iter().collect::<Vec<_>>();
+        if budget_bits.len() > usize::BITS as usize {
+            return Err(ConstraintModelError::InvalidRingCountBudgetWidth(budget_bits.len()));
+        }
+        let variables = bonds.iter().map(|bond| bond.decision_variable())
+            .chain(budget_bits.iter().copied()).collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        for &variable in &variables {
+            if self.variables.get(variable.index()).is_none() {
+                return Err(ConstraintModelError::UnknownVariable(variable));
+            }
+            if !seen.insert(variable) {
+                return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
+            }
+        }
+        for &variable in &budget_bits {
+            if !self.variables[variable.index()].initial_domain.is_subset_of(Domain::from_bits(3)) {
+                return Err(ConstraintModelError::InvalidRingCountBudgetDomain(variable));
+            }
+        }
+        for bond in &bonds {
+            let variable = bond.decision_variable();
+            let domain = self.variables[variable.index()].initial_domain;
+            let traversal = bond.role_partition().traversal_values();
+            let ring = bond.role_partition().ring_values();
+            if !traversal.intersect(ring).is_empty()
+                || domain.intersect(traversal).is_empty() && domain.intersect(ring).is_empty()
+                || !domain.is_subset_of(traversal.union(ring)) {
+                return Err(ConstraintModelError::InvalidEdgeRolePartition(variable));
+            }
+        }
+        self.push_factor(FactorDefinition::RingCountAtMost(RingCountAtMostFactor {
+            bonds: bonds.into_boxed_slice(), budget_bits: budget_bits.into_boxed_slice(),
+            variables: variables.into_boxed_slice(),
+        }), FactorActivation::Latent)
     }
 
     pub fn add_aromatic_matching(
@@ -993,7 +1051,8 @@ impl ConstraintModelBuilder {
             .find_map(|factor| match &self.factors[factor.index()] {
                 FactorDefinition::AromaticMatching(_)
                 | FactorDefinition::BinaryRelation(_)
-                | FactorDefinition::DirectionalRingPlacement(_) => None,
+                | FactorDefinition::DirectionalRingPlacement(_)
+                | FactorDefinition::RingCountAtMost(_) => None,
                 FactorDefinition::TraversalTopology(spanning) => spanning
                     .edges()
                     .iter()
@@ -1031,6 +1090,8 @@ pub enum ConstraintModelError {
     ConflictingEdgeRolePartition(VariableId),
     OverlappingTraversalTopologyVariable(VariableId),
     InvalidTetrahedralBondCount(usize),
+    InvalidRingCountBudgetWidth(usize),
+    InvalidRingCountBudgetDomain(VariableId),
     InvalidTetrahedralPatternDomain {
         variable: VariableId,
         expected: Domain,
@@ -1127,6 +1188,12 @@ impl fmt::Display for ConstraintModelError {
                 formatter,
                 "a tetrahedral layout factor requires three or four bond variables, got {count}"
             ),
+            Self::InvalidRingCountBudgetWidth(width) => write!(
+                formatter, "cannot add a ring-count factor with {width} budget bits; the limit is {} bits", usize::BITS
+            ),
+            Self::InvalidRingCountBudgetDomain(variable) => write!(
+                formatter, "cannot add a ring-count factor with budget bit {variable:?}; its initial domain must contain only 0 and 1"
+            ),
             Self::InvalidTetrahedralPatternDomain { variable, expected } => write!(
                 formatter,
                 "tetrahedral role-pattern variable {variable:?} must have initial domain {expected:?}"
@@ -1155,6 +1222,21 @@ impl std::error::Error for ConstraintModelError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ring_count_builder_rejects_nonbinary_budget_and_oversized_width() {
+        let mut builder = ConstraintModelBuilder::new();
+        let nonbinary = builder.add_variable(Domain::singleton(2).unwrap()).unwrap();
+        let error = builder.add_latent_ring_count_at_most([], [nonbinary]).unwrap_err();
+        assert_eq!(error, ConstraintModelError::InvalidRingCountBudgetDomain(nonbinary));
+        assert!(error.to_string().contains("initial domain must contain only 0 and 1"));
+
+        let bits = (0..=usize::BITS).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+            .collect::<Vec<_>>();
+        let error = builder.add_latent_ring_count_at_most([], bits).unwrap_err();
+        assert_eq!(error, ConstraintModelError::InvalidRingCountBudgetWidth(usize::BITS as usize + 1));
+        assert!(error.to_string().contains("cannot add a ring-count factor"));
+    }
 
     fn two_value_domain() -> Domain {
         Domain::from_indices([0, 1]).unwrap()

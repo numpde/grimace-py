@@ -699,9 +699,9 @@ impl ConstraintSolver for PendingContradictionSolver {
 }
 
 #[derive(Clone, Debug)]
-struct FailSecondDirectionalMarkSolver(NativeSolverState);
+struct FailDirectionalMarkSolver(NativeSolverState);
 
-impl ConstraintSolver for FailSecondDirectionalMarkSolver {
+impl ConstraintSolver for FailDirectionalMarkSolver {
     type Failure = InjectedSolverFailure;
 
     fn initial(
@@ -724,9 +724,8 @@ impl ConstraintSolver for FailSecondDirectionalMarkSolver {
         restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
         activate: &[crate::ids::FactorId],
     ) -> Result<Consistency<Self>, Self::Failure> {
-        if restrictions.iter().any(|(variable, domain)| {
-            *variable == crate::ids::VariableId::new(3)
-                && *domain == CarrierMark::BackslashAtFixedA.singleton_domain()
+        if restrictions.iter().any(|(_variable, domain)| {
+            *domain == CarrierMark::BackslashAtFixedA.singleton_domain()
         }) {
             return Err(InjectedSolverFailure::Restriction);
         }
@@ -1756,9 +1755,9 @@ fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
         molecule.bond_role_partition(bonds[0]),
         Some(BondRepresentation::role_partition())
     );
-    assert_eq!(model.factor_count(), 1);
+    assert_eq!(model.factor_count(), 1 + surface.ring_count_factors.iter().flatten().count());
     assert!(matches!(
-        model.factor(crate::ids::FactorId::new(0)),
+        model.factor(crate::ids::FactorId::new((model.factor_count() - 1) as u32)),
         Some(crate::model::FactorDefinition::TraversalTopology(_))
     ));
 }
@@ -1787,8 +1786,10 @@ fn surface_prepares_one_latent_layout_context_per_tetrahedral_entry() {
     let model = surface.molecule().constraint_model();
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
 
-    assert_eq!(model.variable_count(), bonds.len() + 2);
-    assert_eq!(model.factor_count(), 1 + bonds.len() + 1);
+    assert_eq!(model.variable_count(), bonds.len() + 2
+        + surface.ring_count_factors.iter().flatten().map(|(_, bits)| bits.len()).sum::<usize>());
+    assert_eq!(model.factor_count(), 1 + bonds.len() + 1
+        + surface.ring_count_factors.iter().flatten().count());
     assert_eq!(
         model.potential_factors_for_variable(center.order_variable),
         Some(
@@ -5699,7 +5700,7 @@ fn preparation_rejects_contradictory_directional_cycles_and_flattens_consistent_
     let consistent = directional_hexagon_surface([true, false, false]).unwrap();
     assert_eq!(
         consistent.molecule().constraint_model().factor_count(),
-        13,
+        13 + consistent.ring_count_factors.iter().flatten().count(),
         "three pattern-to-left, pattern-to-right, and cross-side relations plus one spanning factor"
     );
     let model = consistent.molecule().constraint_model_arc();
@@ -5824,7 +5825,7 @@ fn shared_directional_carrier_reuses_one_sign_variable() {
     assert_eq!(variables.into_iter().collect::<BTreeSet<_>>().len(), 3);
     assert_eq!(
         surface.molecule().constraint_model().factor_count(),
-        10,
+        10 + surface.ring_count_factors.iter().flatten().count(),
         "two side-pattern triples plus one molecular spanning factor"
     );
 }
@@ -7250,9 +7251,9 @@ fn branch_directional_mark_is_selected_after_the_parenthesis() {
 }
 
 #[test]
-fn backend_failure_on_second_directional_mark_aborts_the_complete_frontier() {
+fn backend_failure_on_directional_mark_aborts_the_complete_frontier() {
     let (surface, atoms, _) = directional_chain_fixture();
-    let initial = NonStereoWriterState::<FailSecondDirectionalMarkSolver>::initial(&surface)
+    let initial = NonStereoWriterState::<FailDirectionalMarkSolver>::initial(&surface)
         .unwrap()
         .unwrap_consistent();
     let (_, rooted) = only_root_atom(&initial, atoms[0]);
@@ -8384,4 +8385,141 @@ fn public_ring_label_capacity_rejects_a_forced_101st_opening() {
     assert!(!triangle_root.choices().unwrap().iter().any(|choice|
         choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
     ), "a branch child that can only demand an unavailable ring label must not be offered");
+}
+
+#[test]
+fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..4).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
+        .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
+        .collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..4).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let (_, root) = only_root_atom(&state, atoms[0]);
+    assert!(!root.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+            incident(&surface, atoms[0], bonds[0])
+        ))
+    ), "diamond branch needs two concurrent ring labels before leaving its local ring phase");
+}
+
+#[test]
+fn releasing_a_real_held_label_restores_diamond_branch() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..6).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = [(0, 1), (2, 3), (2, 4), (2, 5), (3, 4), (3, 5)]
+        .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
+        .collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..6).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(1);
+    let (_, ethane) = only_root_atom(&state, atoms[0]);
+    let held = ethane.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
+    ).expect("ethane ring opens").into_successor();
+    let (_, pending_diamond) = only_component_separator(&held, atoms[2]);
+    let (_, diamond) = only_choice(&pending_diamond, "C");
+    let branch_incident = incident(&surface, atoms[2], bonds[1]);
+    assert!(!diamond.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ));
+    let rescue = diamond.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
+    ).expect("dot path reaches the held ethane endpoint").into_successor();
+    let (_, rescue_atom) = only_choice(&rescue, "C");
+    let released = rescue_atom.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.is_clean()
+    ).expect("closing held ethane ring frees its label").into_successor();
+    let (_, restored) = only_choice(&released, ")");
+    assert!(restored.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ));
+    let branch = restored.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ).unwrap().into_successor();
+    let (_, child) = only_choice(&branch, "C");
+    let first_open = child.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[4])
+    ).expect("B opens BC").into_successor();
+    let second_open = first_open.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[5])
+    ).expect("B opens BD").into_successor();
+    let (_, parent) = only_choice(&second_open, ")");
+    let c_incident = incident(&surface, atoms[2], bonds[2]);
+    let c_branch = parent.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(c_incident))
+    ).expect("A enters C").into_successor();
+    let (_, c) = only_choice(&c_branch, "C");
+    let c_closed = c.choices().unwrap().into_iter().find(|choice|
+        !choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[4])
+    ).expect("C closes BC").into_successor();
+    let (_, parent) = only_choice(&c_closed, ")");
+    let d_incident = incident(&surface, atoms[2], bonds[3]);
+    let d_pending = parent.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::InlineAtom(d_incident))
+    ).expect("A enters D").into_successor();
+    let (_, d) = only_choice(&d_pending, "C");
+    let d_closed = d.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.is_clean()
+    ).expect("D closes BD").into_successor();
+    assert!(d_closed.is_accepted());
+}
+
+#[test]
+#[ignore = "100-label positive-capacity diagnostic; run with bounded single-test command"]
+fn public_ring_label_capacity_rejects_two_forced_openings_with_one_free_slot() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..202).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let mut bonds = (0..99).map(|i| graph.add_bond(atoms[2*i], atoms[2*i+1]).unwrap())
+        .collect::<Vec<_>>();
+    let diamond = [(198, 199), (198, 200), (198, 201), (199, 200), (199, 201)]
+        .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
+        .collect::<Vec<_>>();
+    bonds.extend(diamond);
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..atoms.len()).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    for i in 0..99 {
+        let rooted = if i == 0 { only_root_atom(&state, atoms[0]).1 } else {
+            let (_, pending) = only_component_separator(&state, atoms[2*i]);
+            only_choice(&pending, "C").1
+        };
+        state = rooted.choices().unwrap().into_iter().find(|choice|
+            choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[i])
+        ).expect("each ethane ring holds one real label").into_successor();
+    }
+    assert_eq!(state.labels.bonds_by_slot.len(), 99);
+    let (_, pending_diamond) = only_component_separator(&state, atoms[198]);
+    let (_, root) = only_choice(&pending_diamond, "C");
+    let branch = incident(&surface, atoms[198], bonds[99]);
+    assert!(!root.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch))
+    ));
+    let rescue = root.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
+    ).expect("dot path reaches a held ethane endpoint").into_successor();
+    let (_, rescue_atom) = only_choice(&rescue, "C");
+    let released = rescue_atom.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.len() == 98
+    ).expect("real closure frees one label").into_successor();
+    let (_, restored) = only_choice(&released, ")");
+    assert!(restored.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch))
+    ));
 }

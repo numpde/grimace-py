@@ -236,6 +236,15 @@ impl PreparedConstraintAssembly {
             .expect("prepared semantic variables must fit the constraint identifier space")
     }
 
+    pub(crate) fn add_latent_ring_count_at_most(
+        &mut self,
+        bonds: impl IntoIterator<Item = SpanningTreeEdge>,
+        budget_bits: impl IntoIterator<Item = VariableId>,
+    ) -> FactorId {
+        self.builder.add_latent_ring_count_at_most(bonds, budget_bits)
+            .expect("prepared atom must define a valid ring-count factor")
+    }
+
     pub(crate) fn add_aromatic_matching(
         &mut self,
         atom_variables: impl IntoIterator<Item = VariableId>,

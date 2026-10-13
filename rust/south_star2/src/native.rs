@@ -385,6 +385,9 @@ impl NativeSolverState {
                         .fetch_add(1, Ordering::Relaxed);
                     revise_tetrahedral_layout(layout, &mut self.domains)?
                 }
+                FactorDefinition::RingCountAtMost(count) => {
+                    revise_ring_count_at_most(count, &mut self.domains)?
+                }
             };
 
             for variable in reductions {
@@ -472,7 +475,11 @@ impl NativeSolverState {
                 self.factor_is_active(*factor) == Some(true)
             })
             .collect::<Vec<_>>();
-        if component.always_core_variables.is_empty() && active_layouts.is_empty() {
+        let active_counts = component.potential_count_factors.iter().copied()
+            .filter(|factor| self.factor_is_active(*factor) == Some(true))
+            .collect::<Vec<_>>();
+        if component.always_core_variables.is_empty() && active_layouts.is_empty()
+            && active_counts.is_empty() {
             return Ok(Vec::new());
         }
         let mut core_variables = component.always_core_variables.to_vec();
@@ -491,6 +498,14 @@ impl NativeSolverState {
                 core_variables.push(variable);
             }
         }
+        for factor in &active_counts {
+            let FactorDefinition::RingCountAtMost(count) = self.model.factor(*factor)
+                .expect("active count factor must exist") else {
+                unreachable!("potential count IDs must retain their factor kind");
+            };
+            core_variables.extend(count.budget_bits().iter().copied());
+            core_variables.extend(count.bonds().iter().map(|bond| bond.decision_variable()));
+        }
         core_variables.sort_unstable();
         core_variables.dedup();
         let structural_role_is_ambiguous = component.structural_variables.iter().any(|entry| {
@@ -500,6 +515,7 @@ impl NativeSolverState {
         if component.always_core_variables.is_empty()
             && !active_layout_cores_overlap
             && !structural_role_is_ambiguous
+            && active_counts.is_empty()
         {
             return Ok(Vec::new());
         }
@@ -534,6 +550,13 @@ impl NativeSolverState {
                 unreachable!("potential layout IDs must retain their factor kind");
             };
             projected_variables.extend([layout.order_variable(), layout.role_pattern_variable()]);
+        }
+        for factor in active_counts {
+            let FactorDefinition::RingCountAtMost(count) = self.model.factor(factor)
+                .expect("active count factor must exist") else {
+                unreachable!("potential count IDs must retain their factor kind");
+            };
+            projected_variables.extend(count.budget_bits().iter().copied());
         }
         projected_variables.sort_unstable();
         projected_variables.dedup();
@@ -655,6 +678,7 @@ impl NativeExactPlan {
 
             let mut binary_factors = BTreeSet::new();
             let mut potential_layout_factors = BTreeSet::new();
+            let mut potential_count_factors = BTreeSet::new();
             let mut always_core_variables = BTreeSet::new();
             let mut potential_core_variables = BTreeSet::new();
             let mut structural_factors = BTreeSet::new();
@@ -695,6 +719,18 @@ impl NativeExactPlan {
                         }
                         layout.variables()
                     }
+                    FactorDefinition::RingCountAtMost(count) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_count_factors.insert(factor_id);
+                        potential_core_variables.extend(count.budget_bits().iter().copied());
+                        for bond in count.bonds() {
+                            structural_partitions
+                                .entry(bond.decision_variable())
+                                .and_modify(|existing| assert_eq!(*existing, bond.role_partition()))
+                                .or_insert(bond.role_partition());
+                        }
+                        count.variables()
+                    }
                     FactorDefinition::AromaticMatching(_) => {
                         unreachable!(
                             "exclusive aromatic matching factors are not exact-search seeds"
@@ -715,7 +751,8 @@ impl NativeExactPlan {
                     {
                         match model.factor(neighbour).expect("adjacent factor must exist") {
                             FactorDefinition::BinaryRelation(_)
-                            | FactorDefinition::TetrahedralLayout(_) => {
+                            | FactorDefinition::TetrahedralLayout(_)
+                            | FactorDefinition::RingCountAtMost(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
                                 }
@@ -747,6 +784,7 @@ impl NativeExactPlan {
                                             model.factor(candidate).expect("factor must exist"),
                                             FactorDefinition::BinaryRelation(_)
                                                 | FactorDefinition::TetrahedralLayout(_)
+                                                | FactorDefinition::RingCountAtMost(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
                                             pending.push_back(candidate);
@@ -762,7 +800,8 @@ impl NativeExactPlan {
             let always_core_variables = always_core_variables.into_iter().collect::<Vec<_>>();
             let potential_layout_factors = potential_layout_factors.into_iter().collect::<Vec<_>>();
             let component =
-                if structural_partitions.is_empty() && potential_layout_factors.is_empty() {
+                if structural_partitions.is_empty() && potential_layout_factors.is_empty()
+                    && potential_count_factors.is_empty() {
                     // Arc consistency is exact on an acyclic binary incidence
                     // graph, so only cyclic pure-binary components need search.
                     (binary_factors.len() >= always_core_variables.len()).then(|| {
@@ -787,6 +826,7 @@ impl NativeExactPlan {
                     Some(ExactComponent::Mixed(MixedExactComponent {
                         always_core_variables: always_core_variables.into_boxed_slice(),
                         potential_layout_factors: potential_layout_factors.into_boxed_slice(),
+                        potential_count_factors: potential_count_factors.into_iter().collect::<Vec<_>>().into_boxed_slice(),
                         structural_variables: structural_variables.into_boxed_slice(),
                         projected_variables: projected_variables
                             .into_iter()
@@ -843,6 +883,7 @@ impl ExactComponent {
 struct MixedExactComponent {
     always_core_variables: Box<[VariableId]>,
     potential_layout_factors: Box<[FactorId]>,
+    potential_count_factors: Box<[FactorId]>,
     structural_variables: Box<[StructuralProjection]>,
     projected_variables: Box<[VariableId]>,
 }
@@ -1090,6 +1131,40 @@ fn values_with_support(
         }
     }
     retained
+}
+
+fn revise_ring_count_at_most(
+    factor: &crate::model::RingCountAtMostFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<Vec<VariableId>, NativeSolverError> {
+    let mut budget = 0_usize;
+    for (bit, &variable) in factor.budget_bits().iter().enumerate() {
+        let domain = domains[variable.index()];
+        if !domain.is_singleton() { return Ok(Vec::new()); }
+        budget |= usize::from(domain.iter().next().unwrap()) << bit;
+    }
+    let mut required = 0_usize;
+    let mut ambiguous = Vec::new();
+    for bond in factor.bonds() {
+        let variable = bond.decision_variable();
+        let domain = domains[variable.index()];
+        let traversal = !domain.intersect(bond.role_partition().traversal_values()).is_empty();
+        let ring = !domain.intersect(bond.role_partition().ring_values()).is_empty();
+        match (traversal, ring) {
+            (false, true) => required += 1,
+            (true, true) => ambiguous.push((variable, bond.role_partition().traversal_values())),
+            (true, false) => {},
+            (false, false) => return Err(NativeSolverError::Contradiction),
+        }
+    }
+    if required > budget { return Err(NativeSolverError::Contradiction); }
+    if required < budget { return Ok(Vec::new()); }
+    let mut reductions = Vec::new();
+    for (variable, traversal) in ambiguous {
+        domains[variable.index()] = domains[variable.index()].intersect(traversal);
+        reductions.push(variable);
+    }
+    Ok(reductions)
 }
 
 fn revise_tetrahedral_layout(
@@ -1474,10 +1549,81 @@ fn variable_id_from_index(index: usize) -> VariableId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::AtomId;
+    use crate::solver::ConstraintSolver;
     use crate::model::{
         BondRole, ConstraintModelBuilder, EdgeRolePartition, SpanningTreeEdge,
         TetrahedralLayoutBond,
     };
+
+    #[test]
+    fn active_ring_count_joins_correlated_roles_in_exact_projection() {
+        let mut builder = ConstraintModelBuilder::new();
+        let roles = (0..3).map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let budget = builder.add_variable(Domain::from_bits(3)).unwrap();
+        builder.add_binary_relation(roles[0], roles[1], [(0, 0), (1, 1)]).unwrap();
+        builder.add_binary_relation(roles[1], roles[2], [(0, 1), (1, 0)]).unwrap();
+        let bonds = roles.iter().enumerate().map(|(i, &variable)| {
+            SpanningTreeEdge::with_role_partition(variable, AtomId::new(0),
+                AtomId::new((i + 1) as u32), EdgeRolePartition::bond_role())
+        });
+        let factor = builder.add_latent_ring_count_at_most(bonds, [budget]).unwrap();
+        let model = Arc::new(builder.build());
+        let initial = NativeSolverState::initial(Arc::clone(&model)).unwrap();
+        assert!(roles.iter().all(|&role| initial.domain(role) == Some(BondRole::role_domain())));
+        let native = NativeSolverState::with_transition(&initial,
+            [(budget, Domain::singleton(1).unwrap())], [factor]).unwrap();
+        let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
+            .unwrap().unwrap_consistent().transitioned(
+                &[(budget, Domain::singleton(1).unwrap())], &[factor]
+            ).unwrap().unwrap_consistent();
+        for (variable, expected) in roles.into_iter().zip([0, 0, 1]) {
+            assert_eq!(native.domain(variable), Some(Domain::singleton(expected).unwrap()));
+            assert_eq!(native.domain(variable), oracle.domain(variable));
+        }
+    }
+
+    #[test]
+    fn ring_count_budget_spans_more_than_sixty_four_incident_bonds() {
+        let mut builder = ConstraintModelBuilder::new();
+        let bonds = (0..70).map(|i| {
+            let domain = if i < 2 { BondRole::Ring.singleton_domain() }
+                else { BondRole::Traversal.singleton_domain() };
+            let variable = builder.add_variable(domain).unwrap();
+            SpanningTreeEdge::with_role_partition(variable, AtomId::new(0),
+                AtomId::new((i + 1) as u32), EdgeRolePartition::bond_role())
+        }).collect::<Vec<_>>();
+        let bits = (0..7).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+            .collect::<Vec<_>>();
+        let factor = builder.add_latent_ring_count_at_most(bonds, bits.iter().copied()).unwrap();
+        let initial = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        assert_eq!(initial.factor_is_active(factor), Some(false));
+        let restrictions = bits.iter().enumerate().map(|(i, &variable)|
+            (variable, Domain::singleton(u8::from(i == 0)).unwrap()));
+        assert!(matches!(NativeSolverState::with_transition(&initial, restrictions, [factor]),
+            Err(NativeSolverError::Contradiction)));
+    }
+
+    #[test]
+    fn active_ring_count_projects_an_unfixed_budget_bit() {
+        let mut builder = ConstraintModelBuilder::new();
+        let role = builder.add_variable(BondRole::Ring.singleton_domain()).unwrap();
+        let budget = builder.add_variable(Domain::from_bits(3)).unwrap();
+        let factor = builder.add_latent_ring_count_at_most([
+            SpanningTreeEdge::with_role_partition(role, AtomId::new(0), AtomId::new(1),
+                EdgeRolePartition::bond_role())
+        ], [budget]).unwrap();
+        let model = Arc::new(builder.build());
+        let native = NativeSolverState::with_transition(
+            &NativeSolverState::initial(Arc::clone(&model)).unwrap(), [], [factor]
+        ).unwrap();
+        let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
+            .unwrap().unwrap_consistent().transitioned(&[], &[factor])
+            .unwrap().unwrap_consistent();
+        assert_eq!(native.domain(budget), Some(Domain::singleton(1).unwrap()));
+        assert_eq!(native.domain(budget), oracle.domain(budget));
+    }
 
     fn two_values() -> Domain {
         Domain::from_indices([0, 1]).unwrap()

@@ -1842,3 +1842,64 @@ extension was backed up and replaced with the wheel's extension (SHA256
 `9926635e982ebca3a293149461c3c4da13a7aa0e6753fda817a58dd4b78683d9`),
 then the same 16 tests passed against the checkout. Each bounded runner
 reported verified process cleanup.
+
+## 2026-10-13 positive ring-label capacity design
+
+A diamond graph with edges AB, AC, AD, BC, BD exposes a local capacity
+contradiction: entering B as a branch child from A seals A's ring phase, so
+BC and BD must both be ring edges. With one free label, the current writer
+offers that branch and the new child has no semantic successor. This is a
+native graph/event witness, not a claim about complete RDKit writer parity.
+
+The intended owner is one latent ring-count factor prepared for each atom.
+It counts Ring roles among all incident bonds and has Boolean budget bits.
+On entry, when the bound is narrower than the atom degree, the writer fixes
+the bits and activates the factor in the same solver transition as the
+structural candidate. The bound is free labels plus twice the already waiting
+local closures: those closures are themselves Ring roles and each can release
+one label before a new opening. With at most 100 visible labels the bound is
+at most 200, so eight bits suffice without restricting graph degree. Exact
+joint projection must include the count factor, topology and active stereo
+factors; local forced-role counts alone miss correlated obligations.
+
+Alternatives considered: one factor per possible bound duplicates the model;
+a scalar contextual solver transition changes the solver contract and exact
+plan; testing completed suffixes would move capacity outside the live
+constraint model. The possible regret is increased exact-search work on
+high-degree ambiguous atoms, which needs a focused native work bound before
+broad integration. The old zero-budget restriction is replaced by the new
+factor at atom entry, leaving one owner for this local capacity obligation.
+
+The positive-capacity implementation uses one latent per-atom factor with
+Boolean budget bits. Its typed model boundary rejects nonbinary budget
+domains and bit widths beyond the native integer width. Native propagation
+handles immediate minimum-count contradictions; mixed exact projection joins
+correlated bond roles with topology and other active semantic factors. The
+exhaustive reference backend evaluates the same factor.
+
+In the isolated `47448326` archive, the diamond root-branch test was RED
+before the factor and GREEN afterward. A two-label test with a real held
+ethane ring refused the diamond branch with one free slot, released that slot
+through a real closure, restored the branch, and reached an accepted state
+through both diamond openings and closures. Correlated-role and unfixed-budget
+tests matched the exhaustive oracle. A 70-incident-bond factor test confirmed
+there is no 63-bond degree cap. The focused native writer set passed 118 tests
+with two ignored; model and count-factor tests passed. Finished bounded runs
+reported verified process cleanup.
+
+An ignored actual-namespace diagnostic with 99 real held ethane rings and one
+free label passed: the diamond branch was pruned, then a real ethane closure
+restored it. Its final bounded run took 44.26 seconds and verified process
+cleanup. A prior pre-guard run passed in 82.43 seconds; the early degree guard
+avoids constructing prospective traversal contexts when free slots already
+cover every incident bond. The small-namespace accepted continuation remains
+the detailed recovery witness. These are selected native event paths, not
+complete public string-support equality or RDKit writer parity.
+
+The integrated bounded offline release build produced CPython 3.12 wheel
+SHA256 `2f53e54f996d9759b32b175e7bc3519dd9671c4c17ca2f13c70143743b065698`.
+Its extracted package and the checkout refreshed from its extension each
+passed all 16 public-prefix tests. The extracted and checkout extension
+SHA256 was `38d04e269971fe578b092dd4efdda386b064518f20dd5cd78ad0d457043c825e`;
+the prior checkout extension was backed up. The build and both public runs
+reported verified process cleanup.

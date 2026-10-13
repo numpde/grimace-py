@@ -277,6 +277,15 @@ fn assignment_satisfies(
                         role_values.contains(value)
                     })
             }
+            FactorDefinition::RingCountAtMost(count) => {
+                let budget = count.budget_bits().iter().enumerate().fold(0_usize, |value, (bit, variable)| {
+                    value | (usize::from(assignment[variable.index()]) << bit)
+                });
+                count.bonds().iter().filter(|bond| {
+                    bond.role_partition().ring_values()
+                        .contains(assignment[bond.decision_variable().index()])
+                }).count() <= budget
+            }
         }
     })
 }

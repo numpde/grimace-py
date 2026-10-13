@@ -1155,6 +1155,116 @@ mod tests {
     }
 
     #[test]
+    fn finite_rooted_forest_prefixes_have_at_most_one_unvisited_tree_attachment() {
+        let mut checked = 0_usize;
+        let mut attached = 0_usize;
+        let mut unattached = 0_usize;
+        for atom_count in 2..=4_usize {
+            let pairs = (0..atom_count)
+                .flat_map(|a| (a + 1..atom_count).map(move |b| (a, b)))
+                .collect::<Vec<_>>();
+            for graph_mask in 0..(1_usize << pairs.len()) {
+                for traversal_mask in 0..(1_usize << pairs.len()) {
+                    if traversal_mask & !graph_mask != 0 {
+                        continue;
+                    }
+                    let traversal_edges = pairs.iter().enumerate()
+                        .filter(|(index, _)| traversal_mask & (1 << index) != 0)
+                        .map(|(_, &pair)| pair)
+                        .collect::<Vec<_>>();
+                    let mut full_component = (0..atom_count).collect::<Vec<_>>();
+                    let mut cyclic = false;
+                    for &(a, b) in &traversal_edges {
+                        let first = full_component[a];
+                        let second = full_component[b];
+                        if first == second {
+                            cyclic = true;
+                            break;
+                        }
+                        for component in &mut full_component {
+                            if *component == second {
+                                *component = first;
+                            }
+                        }
+                    }
+                    if cyclic {
+                        continue;
+                    }
+                    for visited in 1..(1_usize << atom_count) - 1 {
+                        let mut visited_component = (0..atom_count).collect::<Vec<_>>();
+                        let mut unvisited_component = (0..atom_count).collect::<Vec<_>>();
+                        for &(a, b) in &traversal_edges {
+                            if (visited >> a) & 1 != (visited >> b) & 1 {
+                                continue;
+                            }
+                            let components = if visited & (1 << a) != 0 {
+                                &mut visited_component
+                            } else {
+                                &mut unvisited_component
+                            };
+                            let first = components[a];
+                            let second = components[b];
+                            for component in components {
+                                if *component == second {
+                                    *component = first;
+                                }
+                            }
+                        }
+                        for roots in 1..(1_usize << atom_count) {
+                            if roots & !visited != 0 {
+                                continue;
+                            }
+                            let valid_visited_trees = (0..atom_count)
+                                .filter(|&atom| visited & (1 << atom) != 0)
+                                .all(|atom| (0..atom_count)
+                                    .filter(|&other| visited & (1 << other) != 0
+                                        && visited_component[other] == visited_component[atom]
+                                        && roots & (1 << other) != 0)
+                                    .count() == 1);
+                            if !valid_visited_trees {
+                                continue;
+                            }
+                            let rooted_forest = (0..atom_count)
+                                .filter(|&atom| roots & (1 << atom) != 0)
+                                .all(|atom| (0..atom)
+                                    .filter(|&other| roots & (1 << other) != 0
+                                        && full_component[other] == full_component[atom])
+                                    .count() == 0);
+                            if !rooted_forest {
+                                continue;
+                            }
+                            checked += 1;
+                            let mut seen_unvisited_components = Vec::new();
+                            for atom in 0..atom_count {
+                                if visited & (1 << atom) != 0
+                                    || seen_unvisited_components.contains(&unvisited_component[atom])
+                                {
+                                    continue;
+                                }
+                                seen_unvisited_components.push(unvisited_component[atom]);
+                                let attachment_count = traversal_edges.iter()
+                                    .filter(|&&(a, b)| {
+                                        (visited & (1 << a) != 0
+                                            && visited & (1 << b) == 0
+                                            && unvisited_component[b] == unvisited_component[atom])
+                                            || (visited & (1 << b) != 0
+                                                && visited & (1 << a) == 0
+                                                && unvisited_component[a] == unvisited_component[atom])
+                                    })
+                                    .count();
+                                assert!(attachment_count <= 1,
+                                    "n={atom_count} graph={graph_mask:b} traversal={traversal_mask:b} visited={visited:b} roots={roots:b}");
+                                if attachment_count == 0 { unattached += 1; } else { attached += 1; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!((checked, attached, unattached), (10_900, 8_450, 8_456));
+    }
+
+    #[test]
     fn named_ring_endpoint_remains_writable_across_stable_frame_transitions() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
@@ -1324,6 +1434,8 @@ mod tests {
         let raw = state.observe_raw().traversal;
         assert_eq!(raw.active_frame.unwrap().atom, atoms[0]);
         assert!(raw.branch_returns.is_empty());
+        assert!(state.traversal.can_enter_atom(prepared.graph(), atoms[1], Some(parent)));
+        assert!(state.structural_frontier().inline_children().contains(&incident(&prepared, atoms[0], parent)));
         assert!(!state.derive_candidates().candidates().iter().any(|candidate| matches!(
             candidate, StructuralCandidate::RingOpen { .. } | StructuralCandidate::RingClose { .. }
         )));
@@ -1372,6 +1484,12 @@ mod tests {
         assert_eq!(frame.atom, atoms[2]);
         assert_eq!(frame.entry_bond, None);
         assert!(raw.branch_returns.is_empty());
+        for incident in prepared.graph().neighbors(atoms[0]).unwrap() {
+            if !raw.visited_atoms.contains(&incident.atom()) {
+                assert_ne!(raw.bond_progress[incident.bond().index()], ObservedBondProgress::Unrepresented);
+            }
+        }
+        assert!(state.traversal.can_enter_atom(prepared.graph(), atoms[1], Some(child)));
         let entry = incident(&prepared, atoms[2], child);
         let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
             .enter_committed_inline_child(entry);
@@ -1462,6 +1580,7 @@ mod tests {
         let right = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let prepared = forest(graph.build());
         let rooted = rooted(&prepared, atoms[0]);
+        assert!(rooted.semantic_domain(prepared.root_variable(atoms[2]).unwrap()).contains(1));
         let left_traversal = rooted.restricted_bond_domains_for_test(&[
             (left, BondRole::Traversal.singleton_domain()),
         ]).unwrap().unwrap_consistent();

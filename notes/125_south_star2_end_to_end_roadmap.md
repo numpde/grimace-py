@@ -1504,3 +1504,28 @@ of its premises through transitions, and publication of each abstract event
 as a candidate are distinct obligations; the latter two remain unproved.
 Ring-label capacity, chemistry, profile restrictions, and later factor
 activation remain separate obligations.
+
+The finite rooted-Forest attachment check enumerates every labeled simple
+graph on two through four atoms, every acyclic Traversal/Ring assignment, and
+every visited/root subset consistent with one emitted root per visited
+Traversal tree and at most one emitted root per full Traversal tree. Its
+independent graph partition finds 10,900 compatible rows. Every unvisited
+Traversal component has at most one Traversal attachment to visited atoms;
+8,450 attached and 8,456 unattached residual components occur. This checks
+the stated graph lemma at the finite bound, without assigning roots to future
+trees or constructing writer successor paths; it does not prove arbitrary
+graph sizes. The native-backed writer-state root-factor test additionally
+observes that a root role remains selectable without a forced Traversal path
+to the emitted root and becomes unselectable when such a path is forced.
+Selected live dot-branch and cross-segment transitions check `can_enter_atom`,
+child publication, and absence of unrepresented incidences from a permanently
+finished atom to an unvisited atom. These root-availability observations use
+ordinary preparation, no explicit restrictions on unvisited root variables,
+and the current rooted-Forest factor; once all scopes finish, an unvisited
+component without a forced Traversal path to an emitted root retains a root
+choice. Additional profile root restrictions can remove that choice. One
+remaining operational bridge is to show that `ResidualPartition::attachments`
+equals all unrepresented frame-to-unvisited incidences through residual splits,
+inline parent discard,
+and dot-segment transitions under an outer branch. That equality is needed to
+lift the graph lemma through every frame completion and root publication.

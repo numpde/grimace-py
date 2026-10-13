@@ -1976,3 +1976,46 @@ prefix tests. The previous ignored checkout extension was backed up at
 build and both public runs reported verified process-tree cleanup. Focused
 tetrahedral, finite relation, joint native/exhaustive, and existing ordinary
 capacity tests passed under bounded runs.
+
+### Future two-center ring schedule obligation
+
+A finite diamond exposes a boundary beyond local entry factors. Let A-B, A-C,
+A-D be traversal edges, and B-C, B-D be ring edges. A and B each have three
+bond ligands and virtual H. With one live ring label, a depth-first order that
+starts at C can finish only as C, B, D: C opens B-C, B closes B-C before opening
+B-D, and D closes B-D. The symmetric D, B, C order is also feasible. Starting
+at B needs two openings there; C, D, B and D, C, B need two simultaneously
+open labels before B. The relation enumerates all 24 A orders and 24 B orders,
+checks both tetra layouts, and updates the two ring-edge identities after each
+event. Its finite test retains exactly the two feasible order pairs, in opposite
+A marker parities. Run the selfcheck with
+`python3 scripts/run_bounded_tests.py --wall-seconds 90 --rss-mib 2048 --cpu-seconds 90 --address-space-mib 4096 -- env CARGO_NET_OFFLINE=true cargo test -p grimace-south-star2 --lib finite_two_center_diamond_schedule_requires_close_before_next_open`.
+
+An opt-in native regression uses this four-atom prepared graph with C and O
+terminal spellings, fixes the five edge roles as above, limits the test label
+namespace to one, and roots at A through normal writer transitions. For A's
+`[C@H]` marker, the writer currently publishes the `(` branch toward O even
+though that marker fixes the D, C, B order; the independent complete schedule
+relation finds no continuation for that branch. The other parity has the
+compatible C, B, D schedule, so the reference detects overpruning as well as
+overpublication. The regression is ignored while red; run it explicitly with
+`python3 scripts/run_bounded_tests.py --wall-seconds 90 --rss-mib 2048 --cpu-seconds 90 --address-space-mib 4096 -- env CARGO_NET_OFFLINE=true cargo test -p grimace-south-star2 --lib tetrahedral_diamond_first_child_respects_future_ring_schedule -- --ignored`.
+The finite reference selfcheck passed its focused bounded run. The opt-in
+regression failed its stated assertion (`offered=true`, `viable=false` for
+`[C@H]` and first A-D), not a time or resource limit; both runs reported
+`verified_no_live_members` cleanup.
+This is a conditional internal productivity defect for the forced roles and
+one-label test namespace. It does not establish a default 100-label public
+counterexample, all-molecule incompleteness, or exact RDKit parity.
+
+The next owner needs one shared future event-schedule and peak-live-label
+relation over the same topology and tetra orders. An individual center's ring
+budget cannot express which ring identities cross child subtrees or when a
+future center releases a held label. A scalar peak summary per child is
+insufficient if ring edges cross those subtrees; any composable summary must
+retain the boundary ring identities and their live state. Derive the fixed
+traversal-tree schedule relation first, prove its composition at child and ring
+events, then connect it to the incremental solver. Do not use runtime suffix
+enumeration or a molecule-specific branch guard. Lexical prefix lifting,
+unfixed topology, and full admitted-graph completeness remain separate proof
+obligations.

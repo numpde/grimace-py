@@ -8767,6 +8767,126 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
     ), "diamond branch needs two concurrent ring labels before leaving its local ring phase");
 }
 
+fn diamond_schedule_fits(
+    bonds: &[BondId; 5], parent_reference: &[TetrahedralLigand; 4],
+    child_reference: &[TetrahedralLigand; 4], parent_value: u8, child_value: u8, first: BondId,
+) -> bool {
+    let parent_order = independent_tetrahedral_order(parent_reference, parent_value);
+    let child_order = independent_tetrahedral_order(child_reference, child_value);
+    if parent_order[0] != TetrahedralLigand::VirtualHydrogen
+        || child_order[..2] != [TetrahedralLigand::Bond(bonds[0]),
+            TetrahedralLigand::VirtualHydrogen]
+        || parent_order[1] != TetrahedralLigand::Bond(first) {
+        return false;
+    }
+    let mut open = [false; 2];
+    for ligand in &parent_order[1..] {
+        let ring_indices: &[usize] = match ligand {
+            TetrahedralLigand::Bond(bond) if *bond == bonds[0] => {
+                // At B, the entry and virtual H precede its two ring incidences.
+                for ring in &child_order[2..] {
+                    let index = if *ring == TetrahedralLigand::Bond(bonds[3]) { 0 }
+                        else if *ring == TetrahedralLigand::Bond(bonds[4]) { 1 }
+                        else { return false };
+                    open[index] = !open[index];
+                    if open.iter().filter(|value| **value).count() > 1 { return false; }
+                }
+                &[]
+            }
+            TetrahedralLigand::Bond(bond) if *bond == bonds[1] => &[0],
+            TetrahedralLigand::Bond(bond) if *bond == bonds[2] => &[1],
+            _ => return false,
+        };
+        for index in ring_indices {
+            open[*index] = !open[*index];
+            if open.iter().filter(|value| **value).count() > 1 { return false; }
+        }
+    }
+    open == [false; 2]
+}
+
+#[test]
+fn finite_two_center_diamond_schedule_requires_close_before_next_open() {
+    let bonds: [BondId; 5] = std::array::from_fn(|index| BondId::new(index as u32));
+    let parent_reference = [TetrahedralLigand::Bond(bonds[0]),
+        TetrahedralLigand::Bond(bonds[1]), TetrahedralLigand::Bond(bonds[2]),
+        TetrahedralLigand::VirtualHydrogen];
+    let child_reference = [TetrahedralLigand::Bond(bonds[0]),
+        TetrahedralLigand::Bond(bonds[3]), TetrahedralLigand::Bond(bonds[4]),
+        TetrahedralLigand::VirtualHydrogen];
+    let surviving = (0..24).flat_map(|parent_value| (0..24).flat_map(move |child_value|
+        [bonds[1], bonds[2]].into_iter().filter_map(move |first|
+            diamond_schedule_fits(&bonds, &parent_reference, &child_reference,
+                parent_value, child_value, first).then_some((parent_value, child_value, first)))))
+        .collect::<Vec<_>>();
+    assert_eq!(surviving.len(), 2);
+    let projected = surviving.iter().map(|(parent, _, first)|
+        (independent_tetrahedral_order_is_even(&parent_reference, *parent), *first))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(projected, BTreeSet::from([(true, bonds[1]), (false, bonds[2])]));
+    for (_, child, first) in surviving {
+        let child_order = independent_tetrahedral_order(&child_reference, child);
+        assert_eq!(child_order[2], TetrahedralLigand::Bond(
+            if first == bonds[1] { bonds[3] } else { bonds[4] }));
+    }
+}
+
+#[test]
+#[ignore = "known future two-center ring schedule overpublishes a branch; run focused after owner fix"]
+fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
+        .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[1]), TetrahedralLigand::Bond(bonds[2]),
+                    TetrahedralLigand::VirtualHydrogen],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[3]), TetrahedralLigand::Bond(bonds[4]),
+                    TetrahedralLigand::VirtualHydrogen],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("O".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
+        let partition = surface.molecule().bond_role_partition(bond).unwrap();
+        (surface.molecule().bond_decision_variable(bond).unwrap(),
+            if index < 3 { partition.traversal_values() } else { partition.ring_values() })
+    }).collect::<Vec<_>>();
+    state.structural = state.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let roots = completed_atom_witnesses(&state, atoms[0]);
+    assert_eq!(roots.len(), 2);
+    let parent_reference = surface.tetrahedral_center(atoms[0]).unwrap().reference_order;
+    let child_reference = surface.tetrahedral_center(atoms[1]).unwrap().reference_order;
+    for (text, root) in roots {
+        let parity_even = text == "[C@H]";
+        for first in [bonds[1], bonds[2]] {
+            let viable = (0..24).any(|parent_value|
+                independent_tetrahedral_order_is_even(&parent_reference, parent_value) == parity_even
+                    && (0..24).any(|child_value| diamond_schedule_fits(&bonds, &parent_reference, &child_reference, parent_value, child_value, first)));
+            let offered = root.choices().unwrap().iter().any(|choice|
+                choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+                    incident(&surface, atoms[0], first))));
+            assert_eq!(offered, viable,
+                "root marker {text}, first bond {first:?}: branch must preserve one complete two-center schedule");
+        }
+    }
+}
+
 #[test]
 fn releasing_a_real_held_label_restores_diamond_branch() {
     let mut graph = PreparedGraphBuilder::new();

@@ -1505,6 +1505,33 @@ as a candidate are distinct obligations; the latter two remain unproved.
 Ring-label capacity, chemistry, profile restrictions, and later factor
 activation remain separate obligations.
 
+## Residual attachment definition and bounded qualification
+
+For a visited frame atom, a residual attachment contains exactly its
+unrepresented incidences to unvisited atoms, grouped by connected component
+of the unvisited induced graph. `ResidualPartition::remove_atom` deletes the
+newly visited atom. With zero residual neighbours it removes an isolated
+component; with one it retains the connected remainder; with several it
+searches each remaining neighbour's reachable atoms and assigns one component
+per reachable set. Assuming the pre-deletion partition is correct, these cases
+preserve the unvisited connected components. `attachments` then scans every
+incident edge of the frame atom and groups precisely the edges whose bond is
+unrepresented and other atom unvisited. Thus an empty attachment list means
+there is no such incidence at that atom, provided the partition and bond
+progress agree with the visited set.
+
+A native test checks this definition on all 43 connected labelled simple
+graphs with two through four atoms, all 601 nonempty visited subsets, and all
+1,268 choices of a visited frame atom. It compares incremental groups with
+the existing independent BFS reconstruction and independently flattens the
+groups against the graph's eligible incidences. This uses canonical deletion
+order and unrepresented bond progress; the earlier selected five-atom shape
+test covers all deletion permutations for those shapes. Existing constructor
+tests additionally check that inline advance, branch-child completion, and a
+dot segment inside an outer branch leave discarded atoms with no eligible
+incidences. These finite checks support the partition/attachment premise;
+they do not establish every writer prefix or universal candidate completion.
+
 The finite rooted-Forest attachment check enumerates every labeled simple
 graph on two through four atoms, every acyclic Traversal/Ring assignment, and
 every visited/root subset consistent with one emitted root per visited

@@ -1296,6 +1296,70 @@ mod tests {
         state.enter_branch_child(graph, incident);
     }
 
+    fn assert_no_abandoned_incidence(graph: &PreparedGraph, state: &TraversalState, atom: AtomId) {
+        assert!(graph.neighbors(atom).unwrap().iter().copied().all(|incident| {
+            state.progress.classify_incident(graph, atom, incident)
+                != IncidentBondState::UnrepresentedToUnvisitedAtom
+        }), "a discarded frame must not own an unrepresented incidence");
+    }
+
+    #[test]
+    fn small_connected_graph_attachments_match_independent_residual_bfs() {
+        let mut graphs = 0;
+        let mut visited_subsets = 0;
+        let mut frame_comparisons = 0;
+        for atom_count in 2..=4 {
+            let edges = (0..atom_count)
+                .flat_map(|a| (a + 1..atom_count).map(move |b| (a, b)))
+                .collect::<Vec<_>>();
+            for edge_mask in 0..(1_usize << edges.len()) {
+                let selected = edges.iter().enumerate()
+                    .filter_map(|(index, &edge)| ((edge_mask >> index) & 1 == 1).then_some(edge))
+                    .collect::<Vec<_>>();
+                let graph = graph_fixture(atom_count, &selected);
+                if full_residual_components(&graph, &BTreeSet::new()).len() != 1 {
+                    continue;
+                }
+                graphs += 1;
+                for visited_mask in 1..(1_usize << atom_count) {
+                    visited_subsets += 1;
+                    let mut residual = ResidualPartition::new(&graph);
+                    let mut progress = GraphProgress::new(&graph);
+                    let mut visited = Vec::new();
+                    for atom in graph.atom_ids() {
+                        if (visited_mask >> atom.index()) & 1 == 1 {
+                            progress.visit_atom(atom);
+                            residual.remove_atom(&graph, atom);
+                            visited.push(atom);
+                        }
+                    }
+                    for atom in visited {
+                        frame_comparisons += 1;
+                        let attachments = residual.attachments(&graph, &progress, atom);
+                        assert_eq!(
+                            attachments,
+                            residual_attachments_full(&graph, &progress, atom),
+                            "graph {atom_count}:{edge_mask}, visited {visited_mask}, frame {atom:?}"
+                        );
+                        let mut actual = attachments.iter()
+                            .flat_map(|group| group.incidences().iter().copied())
+                            .collect::<Vec<_>>();
+                        let mut expected = graph.neighbors(atom).unwrap().iter().copied()
+                            .filter(|incident| {
+                                progress.classify_incident(&graph, atom, *incident)
+                                    == IncidentBondState::UnrepresentedToUnvisitedAtom
+                            })
+                            .collect::<Vec<_>>();
+                        actual.sort_by_key(|incident| incident.bond());
+                        expected.sort_by_key(|incident| incident.bond());
+                        assert_eq!(actual, expected);
+                    }
+                }
+            }
+        }
+        assert_eq!((graphs, visited_subsets, frame_comparisons), (43, 601, 1268));
+    }
+
     #[test]
     fn residual_partition_matches_full_recomputation_for_bounded_deletions() {
         let fixtures = [
@@ -1357,6 +1421,7 @@ mod tests {
                 &graph,
                 incident(&graph, atoms[index], bonds[index]),
             );
+            assert_no_abandoned_incidence(&graph, &state, atoms[index]);
         }
 
         assert_eq!(state.residual_split_scan_count(), 0);
@@ -1460,6 +1525,7 @@ mod tests {
         ));
 
         assert_eq!(state.complete_path(&graph), Some(atoms[1]));
+        assert_no_abandoned_incidence(&graph, &state, atoms[3]);
         assert!(Arc::ptr_eq(
             state.branch_returns.as_ref().unwrap(),
             fork_top.parent.as_ref().unwrap()
@@ -1526,6 +1592,26 @@ mod tests {
             state.active_attachments()[0].incidences(),
             &[incident(&graph, atoms[0], inline)]
         );
+    }
+
+    #[test]
+    fn dot_segment_inside_branch_abandons_only_resolved_frames() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let branch = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let ring = builder.add_bond(atoms[1], atoms[2]).unwrap();
+        let graph = builder.build();
+        let mut state = TraversalState::new_with_segments(&graph, true);
+        state.begin_segment(&graph, atoms[0]);
+        enter_branch(&mut state, &graph, incident(&graph, atoms[0], branch));
+        state.open_ring_endpoint(&graph, incident(&graph, atoms[1], ring));
+        state.begin_dot_segment(&graph, atoms[2]);
+        assert_no_abandoned_incidence(&graph, &state, atoms[1]);
+        state.close_ring_endpoint(&graph, incident(&graph, atoms[2], ring));
+        assert_eq!(state.complete_path(&graph), Some(atoms[0]));
+        assert_no_abandoned_incidence(&graph, &state, atoms[2]);
+        assert_eq!(state.complete_path(&graph), None);
+        assert_no_abandoned_incidence(&graph, &state, atoms[0]);
     }
 
     #[test]
@@ -1597,7 +1683,9 @@ mod tests {
         );
 
         enter_inline(&mut state, &graph, incident(&graph, atoms[0], first));
+        assert_no_abandoned_incidence(&graph, &state, atoms[0]);
         enter_inline(&mut state, &graph, incident(&graph, atoms[1], second));
+        assert_no_abandoned_incidence(&graph, &state, atoms[1]);
         let closing = incident(&graph, atoms[2], ring);
         assert_eq!(
             state.ring_first_endpoint_for_active_incident(&graph, closing),
@@ -1615,5 +1703,6 @@ mod tests {
         );
         assert!(state.graph_is_complete());
         assert_eq!(state.complete_path(&graph), None);
+        assert_no_abandoned_incidence(&graph, &state, atoms[2]);
     }
 }

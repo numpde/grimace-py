@@ -1185,3 +1185,18 @@ The candidate public test accepts `[H]c1=cc=cc=c1` in `GENERAL` and its
 smallest-label counterpart in `COMPACT`. The synthetic native graph fixture
 tests atom eligibility only; it does not reproduce every Python preparation
 detail needed for those full paths.
+
+## 2026-10-13 selected leading-dot tetrahedral qualification
+
+A bounded independent event witness interprets a four-atom C/F/Cl/Br star
+with one H-bearing tetrahedral carbon. OpenSMILES v1.0 §§3.7.1 and 3.8.2
+permit the dot-started branch and place an incoming ligand before bracket H;
+ring-bond occurrence order reserves the ligand slot before closure. The
+fixture checks `F1(.[C@@H]1(Cl)Br)` and `[C@@H]1(.F1)(Cl)Br` against
+`F[C@H](Cl)Br`, their compact label-zero forms, and opposite markers with
+both original and atom-renumbered source. The helper constructs edges and
+signed ligand-order parity from tokens without asking RDKit to parse emitted
+strings or consulting production parity internals. This temporary witness
+should fold into the shared fact/event/constraint/solver/renderer model.
+It qualifies these selected paths only; full Forest stereo, exact RDKit writer
+support, and complete `MAXIMAL` coverage remain open.

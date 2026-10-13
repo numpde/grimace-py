@@ -113,7 +113,7 @@ relax spelling only; it cannot stand in for the structural contract.
 | Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `GENERAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
-| Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment witnesses also pass in both languages | Extend qualification to leading-dot stereo paths and other unqualified syntax |
+| Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment and leading-dot branch witnesses also pass in both languages | Extend qualification to other leading-dot stereo paths and unqualified syntax |
 | Aromaticity | Aromatic, Kekule, and selected mixed bare or bracket spellings in `GENERAL` and `COMPACT` | Qualify remaining mixed spellings, bond omissions, and aromatic semantic cases |
 | Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
@@ -125,8 +125,14 @@ Selected tetrahedral Forest paths also admit ring-separated ligands, including
 `F[C@H](Cl)Br`. These are semantic parse-back witnesses, not RDKit writer
 support claims. Selected configured E/Z Forest paths now reach acceptance with carrier marks
 across dot/ring boundaries in both languages and parse back to the source
-stereo. Other directional Forest paths and leading-dot stereo paths remain
-unqualified.
+stereo. A separate narrow event witness checks `F1(.[C@@H]1(Cl)Br)` and
+`[C@@H]1(.F1)(Cl)Br` for `F[C@H](Cl)Br`, with smallest-label counterparts
+in `COMPACT`. It records the incoming ligand before bracket H, reserves a
+ring-opening ligand slot at its written position, and checks the opposite
+marker and atom-renumbered source. This test-only interpreter handles only a
+distinct C/F/Cl/Br star with one H-bearing center; it is not a general SMILES
+parser or an RDKit writer-support claim. Other directional Forest paths and
+leading-dot stereo paths remain unqualified.
 The aromatic source spelling, Kekule alternatives, and selected
 mixed spellings retain one matching constraint across segments.
 `GENERAL` accepts checked benzene, pyrrole, charged pyridinium, and

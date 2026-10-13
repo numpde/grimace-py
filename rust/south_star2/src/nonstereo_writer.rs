@@ -3146,6 +3146,20 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             if matches!(self.regime, WriterRegime::Generic { .. })
                 && self.surface.bond_tokens[bond.index()] == NonStereoBondToken::Elided
             {
+                let other = self.surface.molecule().graph().bond(bond).unwrap().other(from).unwrap();
+                if self.compact_emitted_aromatic(from, None) {
+                    if let Some(mode_variable) = self.surface.atom_aromatic_modes[other.index()] {
+                        return self.structural.semantic_domain(mode_variable).iter().flat_map(|mode| {
+                            let restriction = vec![(mode_variable, Domain::singleton(mode).unwrap())];
+                            let explicit = (0, "-", restriction.clone(), BondRepresentation::explicit_domain());
+                            if self.compact_emitted_aromatic(other, Some(mode)) {
+                                vec![explicit]
+                            } else {
+                                vec![(0, "", restriction, BondRepresentation::elided_domain()), explicit]
+                            }
+                        }).collect();
+                    }
+                }
                 return vec![
                     (0, "", Vec::new(), BondRepresentation::elided_domain()),
                     (0, "-", Vec::new(), BondRepresentation::explicit_domain()),

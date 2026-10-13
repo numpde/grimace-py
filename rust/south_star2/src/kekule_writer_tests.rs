@@ -175,6 +175,125 @@ fn graph_surface(atoms: Vec<PreparedAtomToken>, edges: &[(usize, usize, NonStere
 }
 
 #[test]
+fn maximal_ordinary_single_bridge_respects_both_emitted_aromatic_modes() {
+    let atoms = (0..12).map(|index| facts("C", true, 0, if index == 0 || index == 6 { 0 } else { 1 }, Some(4))).collect();
+    let mut edges = (0..6).map(|index| (index, (index + 1) % 6, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    edges.extend((6..12).map(|index| (index, 6 + (index + 1 - 6) % 6, NonStereoBondToken::Aromatic)));
+    edges.push((0, 6, NonStereoBondToken::Elided));
+    let bridge = BondId::new(u32::try_from(edges.len() - 1).unwrap());
+    let surface = graph_surface(atoms, &edges).unwrap();
+    let source = AtomId::new(0);
+    let other = AtomId::new(6);
+    for (source_text, source_mode) in [("c", 0_u8), ("C", 1)] {
+        let roots = consume(&surface, source_text).into_iter().filter(|state| {
+            state.active_atom() == Some(source)
+                && state.atom_spelling.is_none()
+                && state.structural.semantic_domain(surface.atom_aromatic_modes[source.index()].unwrap())
+                    == Domain::singleton(source_mode).unwrap()
+        }).collect::<Vec<_>>();
+        assert!(!roots.is_empty(), "prepared source mode must reach a completed atom token");
+        for other_mode in [0_u8, 1] {
+            let mut checked = 0;
+            for root in &roots {
+                let mut state = root.clone();
+                state.structural = state.structural.transitioned_semantics(
+                    &[(surface.atom_aromatic_modes[other.index()].unwrap(), Domain::singleton(other_mode).unwrap())], &[])
+                    .unwrap().unwrap_consistent();
+                let texts = state.chemical_bond_specs(bridge, source).into_iter()
+                    .map(|(_, text, _, _)| text).collect::<std::collections::BTreeSet<_>>();
+                let expected = if source_mode == 0 && other_mode == 0 {
+                    std::collections::BTreeSet::from(["-"])
+                } else {
+                    std::collections::BTreeSet::from(["", "-"])
+                };
+                assert_eq!(texts, expected, "source={source_text}, other_mode={other_mode}");
+                checked += 1;
+            }
+            assert!(checked > 0);
+        }
+    }
+}
+
+#[test]
+fn maximal_ordinary_single_ring_plan_requires_a_visible_dash_for_two_aromatic_modes() {
+    let atoms = (0..12).map(|index| facts("C", true, 0,
+        if [0, 1, 6, 7].contains(&index) { 0 } else { 1 }, Some(4))).collect();
+    let mut edges = (0..6).map(|index| (index, (index + 1) % 6, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    edges.extend((6..12).map(|index| (index, 6 + (index + 1 - 6) % 6, NonStereoBondToken::Aromatic)));
+    edges.extend([(0, 6, NonStereoBondToken::Elided), (1, 7, NonStereoBondToken::Elided)]);
+    let candidate_ring = BondId::new(12);
+    let surface = graph_surface(atoms, &edges).unwrap();
+    let source = AtomId::new(0);
+    let other = AtomId::new(6);
+    let all_ring_plans = BondRepresentation::role_partition().ring_values();
+    for (source_text, source_mode) in [("c", 0_u8), ("C", 1)] {
+        let roots = consume(&surface, source_text).into_iter().filter(|state| {
+            state.active_atom() == Some(source) && state.atom_spelling.is_none()
+                && state.structural.semantic_domain(surface.atom_aromatic_modes[source.index()].unwrap())
+                    == Domain::singleton(source_mode).unwrap()
+        }).collect::<Vec<_>>();
+        assert!(!roots.is_empty());
+        for other_mode in [0_u8, 1] {
+            for root in &roots {
+                let mut state = root.clone();
+                state.structural = state.structural.transitioned_semantics(
+                    &[(surface.atom_aromatic_modes[other.index()].unwrap(), Domain::singleton(other_mode).unwrap())], &[])
+                    .unwrap().unwrap_consistent();
+                let plans = state.ring_emission_specs(candidate_ring, source).into_iter()
+                    .fold(Domain::empty(), |plans, (_, _, restrictions, allowed)| {
+                        assert!(restrictions.iter().all(|(variable, domain)|
+                            state.structural.semantic_domain(*variable).intersect(*domain) == *domain));
+                        plans.union(allowed)
+                    });
+                let expected = if source_mode == 0 && other_mode == 0 {
+                    all_ring_plans.intersect(BondRepresentation::explicit_domain())
+                } else { all_ring_plans };
+                assert_eq!(plans, expected, "source={source_text}, other_mode={other_mode}");
+            }
+        }
+    }
+}
+
+#[test]
+fn maximal_aromatic_bridge_branch_publishes_dash_before_child_atom() {
+    let atoms = (0..12).map(|index| facts("C", true, 0,
+        if index == 0 || index == 6 { 0 } else { 1 }, Some(4))).collect();
+    let mut edges = (0..6).map(|index| (index, (index + 1) % 6, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();
+    edges.extend((6..12).map(|index| (index, 6 + (index + 1 - 6) % 6, NonStereoBondToken::Aromatic)));
+    edges.push((0, 6, NonStereoBondToken::Elided));
+    let surface = graph_surface(atoms, &edges).unwrap();
+    let source = AtomId::new(0);
+    let other = AtomId::new(6);
+    let bridge = BondId::new(12);
+    let roots = consume(&surface, "c").into_iter().filter(|state|
+        state.active_atom() == Some(source) && state.atom_spelling.is_none()).collect::<Vec<_>>();
+    assert!(!roots.is_empty());
+    let mut branch_count = 0;
+    for mut root in roots {
+        root.structural = root.structural.transitioned_semantics(
+            &[(surface.atom_aromatic_modes[other.index()].unwrap(), Domain::singleton(0).unwrap())], &[])
+            .unwrap().unwrap_consistent();
+        for opening in root.choices().unwrap() {
+            let opened = opening.into_successor();
+            if !matches!(opened.structural.observe_raw().traversal.bond_progress[0],
+                crate::traversal::ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == source) {
+                continue;
+            }
+            for branch in opened.choices().unwrap() {
+                let pending = branch.into_successor();
+                if !matches!(pending.pending, Some(PendingEmission::BranchTraversalEmission(incident))
+                    if incident.bond() == bridge) { continue; }
+                branch_count += 1;
+                let texts = pending.choices().unwrap().into_iter().map(|choice| choice.text().to_owned())
+                    .collect::<std::collections::BTreeSet<_>>();
+                assert_eq!(texts, std::collections::BTreeSet::from(["-".to_owned()]));
+            }
+        }
+    }
+    assert!(branch_count > 0, "the bridge branch must be reachable after the selected ring opening");
+}
+
+#[test]
 fn fused_naphthalene_accepts_three_explicit_matching_witnesses() {
     let atoms = (0..10).map(|i| facts("C", true, 0, if i == 3 || i == 8 { 0 } else { 1 }, Some(4))).collect();
     let mut edges = (0..9).map(|i| (i, i + 1, NonStereoBondToken::Aromatic)).collect::<Vec<_>>();

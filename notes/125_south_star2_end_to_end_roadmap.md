@@ -1755,3 +1755,29 @@ witness at stable event boundaries. It does not establish that every public
 transition supplies such a witness, nor cover aromatic and directional
 composition, other writer profiles, finite-label exhaustion, or unfinished
 atom and bond spellings.
+
+## 2026-10-13 MAXIMAL ordinary aromatic single bond spelling
+
+OpenSMILES §3.5.4 requires an explicit `-` for a nonaromatic single bond
+whose two emitted endpoint atoms are aromatic. RDKit accepts an omitted
+biphenyl bridge and normalizes it to a single bond, so that parse-back is
+broader than the stated OpenSMILES spelling rule. This slice keeps the two
+correctness questions separate.
+
+The Generic MAXIMAL ordinary Elided single-bond production now consults the
+already emitted source mode and restricts the future endpoint's aromatic
+mode before publishing omission. When both modes are aromatic, only `-` is
+produced. If either endpoint emits an aliphatic spelling, omission and `-`
+remain available. The same prepared representation domain excludes Ring00
+for the aromatic/aromatic pair while keeping Ring10, Ring01, and Ring11, so
+one ring endpoint may omit its bond glyph when the other supplies `-`.
+Focused native tests cover four endpoint-mode pairs, the complete ring
+placement domain, and a real branch-carrier choice. They do not establish
+general aromatic writer support or RDKit writer string parity.
+
+Verification: the focused native test module passed 18 tests. A bounded
+offline release build produced a CPython 3.12 wheel, and 16 public prefix
+tests passed against its extracted package. A public MAXIMAL prefix witness
+accepted `c1ccccc1-c1ccccc1` and rejected the omitted-bridge spelling
+`c1ccccc1c1ccccc1`; the same witness passed against the refreshed checkout
+extension. Each bounded run reported verified process cleanup.

@@ -1990,6 +1990,242 @@ fn prepared_tetrahedral_layouts_preserve_every_fixed_local_role_assignment() {
 }
 
 #[test]
+fn fixed_tetrahedral_roles_reach_the_writer_atom_entry_seam() {
+    let mut checked = 0;
+    let mut legal = 0;
+    let mut illegal_entries = 0;
+    let mut parity_probes = 0;
+    for bond_count in [3_usize, 4] {
+        for reverse_markers in [false, true] {
+            let mut graph = PreparedGraphBuilder::new();
+            let atoms = (0..=bond_count).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+            let bonds = (0..bond_count)
+                .map(|index| graph.add_bond(atoms[0], atoms[index + 1]).unwrap())
+                .collect::<Vec<_>>();
+            let mut reference = bonds.iter().copied().map(TetrahedralLigand::Bond).collect::<Vec<_>>();
+            if bond_count == 3 {
+                reference.push(TetrahedralLigand::VirtualHydrogen);
+            }
+            let reference: [TetrahedralLigand; 4] = reference.try_into().unwrap();
+            let marker = |parity: TetrahedralParity| {
+                let at = (parity == TetrahedralParity::Even) != reverse_markers;
+                match (bond_count, at) {
+                    (3, true) => "[C@H]",
+                    (3, false) => "[C@@H]",
+                    (4, true) => "[C@]",
+                    (4, false) => "[C@@]",
+                    _ => unreachable!(),
+                }
+            };
+            let mut tokens = vec![PreparedAtomToken::Tetrahedral {
+                reference_order: reference,
+                text_by_parity: [marker(TetrahedralParity::Even).to_owned(), marker(TetrahedralParity::Odd).to_owned()],
+            }];
+            tokens.extend((0..bond_count).map(|index| PreparedAtomToken::Fixed(char::from(b'A' + index as u8).to_string())));
+            let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+                PreparedMolecule::new(graph.build()), tokens,
+                vec![NonStereoBondToken::Elided; bond_count], Vec::new(),
+                WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+            ).unwrap();
+            let center = surface.tetrahedral_center(atoms[0]).unwrap();
+            for entry in std::iter::once(None).chain(bonds.iter().copied().map(Some)) {
+                let factor = center.layout_factor(entry);
+                for pattern in 0..(1_u8 << bond_count) {
+                    checked += 1;
+                    let entry_is_ring = entry.is_some_and(|bond| {
+                        let bit = bonds.iter().position(|candidate| *candidate == bond).unwrap();
+                        pattern & (1 << bit) != 0
+                    });
+                    let mut ring = Vec::new();
+                    let mut traversal = Vec::new();
+                    let mut restrictions = Vec::new();
+                    for (bit, bond) in bonds.iter().copied().enumerate() {
+                        let partition = surface.molecule().bond_role_partition(bond).unwrap();
+                        let ring_role = pattern & (1 << bit) != 0;
+                        restrictions.push((surface.molecule().bond_decision_variable(bond).unwrap(),
+                            if ring_role { partition.ring_values() } else { partition.traversal_values() }));
+                        if Some(bond) != entry {
+                            (if ring_role { &mut ring } else { &mut traversal }).push(TetrahedralLigand::Bond(bond));
+                        }
+                    }
+                    let mut seeded = initial(&surface);
+                    seeded.structural = seeded.structural.transitioned_semantics(&restrictions, &[])
+                        .unwrap().unwrap_consistent();
+                    let mut actual = Vec::new();
+                    if let Some(entry_bond) = entry {
+                        let index = bonds.iter().position(|bond| *bond == entry_bond).unwrap();
+                        for (_, leaf) in completed_atom_witnesses(&seeded, atoms[index + 1]) {
+                            for choice in ring_witness_choices(&leaf) {
+                                let pending = choice.successor();
+                                if pending_atom(pending) != Some(atoms[0])
+                                    && pending.active_atom() != Some(atoms[0]) {
+                                    continue;
+                                }
+                                actual.extend(complete_atom_witness_from_prefix(pending.clone(), atoms[0], choice.text())
+                                    .into_iter().filter(|(_, state)| {
+                                        state.structural.active_local_bond_order().entry_bond == Some(entry_bond)
+                                    }));
+                            }
+                        }
+                    } else {
+                        actual = completed_atom_witnesses(&seeded, atoms[0]);
+                    }
+                    if entry_is_ring {
+                        illegal_entries += 1;
+                        assert!(actual.is_empty(), "ring bond cannot be traversal entry: {bond_count} {entry:?} {pattern}");
+                        parity_probes += 2;
+                        continue;
+                    }
+                    legal += 1;
+                    let mut prefix = entry.map(TetrahedralLigand::Bond).into_iter().collect::<Vec<_>>();
+                    if bond_count == 3 { prefix.push(TetrahedralLigand::VirtualHydrogen); }
+                    let expected_orders = permutations(&ring).into_iter().flat_map(|ring_order| {
+                        permutations(&traversal).into_iter().map({
+                            let prefix = prefix.clone();
+                            move |traversal_order| prefix.iter().chain(&ring_order).chain(&traversal_order)
+                                .copied().collect::<Vec<_>>()
+                        })
+                    }).collect::<BTreeSet<_>>();
+                    for parity in TetrahedralParity::ALL {
+                        parity_probes += 1;
+                        let expected_domain = Domain::from_indices((0..24).filter(|value| {
+                            expected_orders.contains(&independent_tetrahedral_order(&reference, *value).to_vec())
+                                && independent_tetrahedral_order_is_even(&reference, *value)
+                                    == (parity == TetrahedralParity::Even)
+                        })).unwrap();
+                        let matching = actual.iter().filter(|(text, _)| text == marker(parity)).collect::<Vec<_>>();
+                        assert_eq!(!matching.is_empty(), !expected_domain.is_empty(),
+                            "writer entry parity: {bond_count} {entry:?} {pattern} {parity:?}");
+                        for (_, state) in matching {
+                            assert_eq!(state.structural.semantic_domain(center.order_variable), expected_domain,
+                                "writer order: {bond_count} {entry:?} {pattern} {parity:?}");
+                            assert_eq!(state.structural.semantic_domain(center.role_pattern_variable), Domain::singleton(pattern).unwrap());
+                            assert_eq!(state.structural.semantic_domain(surface.molecule().root_variable(atoms[0]).unwrap()),
+                                Domain::singleton(u8::from(entry.is_none())).unwrap());
+                            assert!(state.structural.atom_is_visited(atoms[0]));
+                            assert!(state.structural.factor_is_active(factor));
+                            assert!(std::iter::once(center.root_layout_factor)
+                                .chain(center.entry_layout_factors.iter().map(|(_, id)| *id))
+                                .filter(|id| *id != factor)
+                                .all(|id| !state.structural.factor_is_active(id)));
+                            for (variable, role) in &restrictions {
+                                assert_eq!(state.structural.semantic_domain(*variable).intersect(*role),
+                                    state.structural.semantic_domain(*variable));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!((checked, legal, illegal_entries, parity_probes), (224, 136, 88, 448));
+}
+
+#[test]
+fn branch_and_explicit_inline_tetrahedral_entries_activate_the_selected_layout() {
+    for (token, has_sibling) in [
+        (NonStereoBondToken::Elided, true),
+        (NonStereoBondToken::Double, true),
+        (NonStereoBondToken::Double, false),
+    ] {
+        let (surface, atoms, bonds) = entered_tetrahedral_fixture(token, has_sibling);
+        let center = surface.tetrahedral_center(atoms[1]).unwrap();
+        let (_, parent) = only_root_atom(&initial(&surface), atoms[0]);
+        let pending = if has_sibling {
+            let branch = ring_witness_choices(&parent)
+                .into_iter()
+                .find(|choice| choice.successor().pending
+                    == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bonds[0]))))
+                .unwrap().into_successor();
+            if token == NonStereoBondToken::Double {
+                only_choice(&branch, "=").1
+            } else {
+                branch
+            }
+        } else {
+            only_choice(&parent, "=").1
+        };
+        let entries = completed_atom_witnesses(&pending, atoms[1]);
+        assert_eq!(entries.len(), 2);
+        for (text, state) in entries {
+            let parity = if text == "[C@]" { TetrahedralParity::Even } else {
+                assert_eq!(text, "[C@@]");
+                TetrahedralParity::Odd
+            };
+            assert_eq!(state.structural.active_local_bond_order().entry_bond, Some(bonds[0]));
+            assert!(state.structural.atom_is_visited(atoms[1]));
+            assert!(state.structural.factor_is_active(center.layout_factor(Some(bonds[0]))));
+            assert!(!state.structural.factor_is_active(center.root_layout_factor));
+            assert_eq!(state.structural.semantic_domain(center.order_variable),
+                center.token_domain(Some(bonds[0]), parity));
+        }
+    }
+}
+
+#[test]
+fn adjacent_tetrahedral_child_entry_retains_the_parent_layout_and_fixed_roles() {
+    let (surface, atoms, bonds) = adjacent_ring_coupled_tetrahedral_fixture();
+    let centers = [atoms[0], atoms[1]].map(|atom| surface.tetrahedral_center(atom).unwrap());
+    let roles = [false, false, false, true, false, false];
+    let restrictions = bonds.iter().copied().zip(roles).map(|(bond, ring)| {
+        let partition = surface.molecule().bond_role_partition(bond).unwrap();
+        (surface.molecule().bond_decision_variable(bond).unwrap(),
+            if ring { partition.ring_values() } else { partition.traversal_values() })
+    }).collect::<Vec<_>>();
+    let mut seeded = initial(&surface);
+    seeded.structural = seeded.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let roots = completed_atom_witnesses(&seeded, atoms[0]);
+    assert_eq!(roots.len(), 2);
+    let mut child_entries = 0;
+    for (parent_text, parent) in roots {
+        assert!(parent.structural.factor_is_active(centers[0].root_layout_factor));
+        let parent_domain = parent.structural.semantic_domain(centers[0].order_variable);
+        let parent_orders = [
+            [TetrahedralLigand::VirtualHydrogen, TetrahedralLigand::Bond(bonds[3]),
+                TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::Bond(bonds[4])],
+            [TetrahedralLigand::VirtualHydrogen, TetrahedralLigand::Bond(bonds[3]),
+                TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::Bond(bonds[0])],
+        ];
+        let parent_even = parent_text == "[C@H]";
+        let expected_parent = Domain::from_indices((0..24).filter(|value| {
+            parent_orders.contains(&independent_tetrahedral_order(&centers[0].reference_order, *value))
+                && independent_tetrahedral_order_is_even(&centers[0].reference_order, *value) == parent_even
+        })).unwrap();
+        assert_eq!(parent_domain, expected_parent);
+        for (pending, prefix) in pending_atom_entries(parent, atoms[1]) {
+            for (child_text, child) in complete_atom_witness_from_prefix(pending, atoms[1], &prefix) {
+                if child.structural.active_local_bond_order().entry_bond != Some(bonds[0]) {
+                    continue;
+                }
+                child_entries += 1;
+                assert_eq!(child.structural.active_local_bond_order().entry_bond, Some(bonds[0]));
+                assert!(child.structural.factor_is_active(centers[0].root_layout_factor));
+                assert!(child.structural.factor_is_active(centers[1].layout_factor(Some(bonds[0]))));
+                assert_eq!(child.structural.semantic_domain(centers[0].order_variable), expected_parent);
+                let child_orders = [
+                    [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::VirtualHydrogen,
+                        TetrahedralLigand::Bond(bonds[1]), TetrahedralLigand::Bond(bonds[5])],
+                    [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::VirtualHydrogen,
+                        TetrahedralLigand::Bond(bonds[5]), TetrahedralLigand::Bond(bonds[1])],
+                ];
+                let child_even = child_text == "[C@H]";
+                let expected_child = Domain::from_indices((0..24).filter(|value| {
+                    child_orders.contains(&independent_tetrahedral_order(&centers[1].reference_order, *value))
+                        && independent_tetrahedral_order_is_even(&centers[1].reference_order, *value) == child_even
+                })).unwrap();
+                assert_eq!(child.structural.semantic_domain(centers[1].order_variable), expected_child);
+                for (variable, role) in &restrictions {
+                    assert_eq!(child.structural.semantic_domain(*variable).intersect(*role),
+                        child.structural.semantic_domain(*variable));
+                }
+            }
+        }
+    }
+    assert!(child_entries > 0);
+}
+
+#[test]
 fn surface_rejects_invalid_tetrahedral_bindings() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());

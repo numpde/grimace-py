@@ -39,6 +39,21 @@ paths complete. The lexical order follows [OpenSMILES §3.8.2](https://opensmile
 the parity-to-marker mapping remains a prepared fact rather than an RDKit
 writer-support claim.
 
+The native writer-entry bridge fixes the same 112 local contexts under both
+marker orientations and probes both parities through actual root or
+leaf-to-center atom choices. On the prescribed elided child route, all 136
+legal prepared cases yield exactly the independently expected marker and
+remaining order domain; 88 entry-ring cases cannot enter through that bond.
+The chosen factor alone activates for the center, its root decision matches
+root or child entry, and the selected traversal/ring role partition is
+preserved. Additional bounded witnesses cover elided and explicit branch
+entries, explicit inline entry, and one adjacent-center child transition with
+both center factors active and fixed incident roles. These observations qualify the
+atom-entry seam for those routes. They do not enumerate full suffix support or
+establish RDKit writer string parity.
+Completion while honoring already selected local orders, and composition with
+finite labels and other semantic factors, remain separate obligations.
+
 Admit tetrahedral facts to generic Forest when no directional relation is present. Preserve the Tree role rule; in Forest, each residual chemical group can contain several traversal incidences, while the actual per-bond traversal/ring decisions and topology factor own role consistency. Keep the entry bond as the tetrahedral entry ligand and do not treat a dot or serialization predecessor as a ligand. Qualify the candidate with bounded native tests for real chiral molecules, opposite parity, sibling incidences, completed support, and rejected premature acceptance. This slice does not change E/Z Forest admission or claim general writer parity.
 
 Candidate evidence: the isolated offline wheel exercised version-keyed semantic witnesses in `GENERAL` and `COMPACT` for both halogenated enantiomers, a ring center with two traversal children in one chemical residual component, and adjacent tetrahedral centers. Each selected path reached acceptance, parsed back with the source chirality, and rejected the opposite marker. The earlier exhaustive tetrahedral semantic loops now explicitly cover the no-dot tree-like sublanguage; their collectors fail with a named budget if this scope grows. These checks do not validate leading-dot tetrahedral branches, all Forest paths, or RDKit writer support for the dot spellings.

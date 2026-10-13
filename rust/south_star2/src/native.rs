@@ -1166,7 +1166,18 @@ fn revise_traversal_topology(
     #[cfg(test)] work: (&AtomicUsize, &AtomicUsize, &AtomicUsize),
     #[cfg(not(test))] _work: (),
 ) -> Result<Vec<VariableId>, NativeSolverError> {
-    let mut components = DisjointSet::new(factor.atoms().len());
+    let rooted = !factor.root_variables().is_empty();
+    let super_root = factor.atoms().len();
+    let mut components = DisjointSet::new(super_root + usize::from(rooted));
+
+    if rooted {
+        for (atom, variable) in factor.root_variables().iter().copied().enumerate() {
+            let domain = domains[variable.index()];
+            if domain == Domain::singleton(1).unwrap() && !components.union(atom, super_root) {
+                return Err(NativeSolverError::Contradiction);
+            }
+        }
+    }
 
     // Forced traversal edges are the independent set that the remaining
     // graphic-matroid basis must extend. A cycle makes extension impossible.
@@ -1185,6 +1196,31 @@ fn revise_traversal_topology(
             (false, true) | (true, true) => {}
             (false, false) => return Err(NativeSolverError::Contradiction),
         }
+    }
+
+    if factor.requirement() == crate::model::TraversalTopologyRequirement::Forest {
+        let mut reductions = Vec::new();
+        if rooted {
+            for (atom, variable) in factor.root_variables().iter().copied().enumerate() {
+                let domain = domains[variable.index()];
+                if components.find(atom) == components.find(super_root) && domain.contains(1) && domain.contains(0) {
+                    domains[variable.index()] = Domain::singleton(0).unwrap();
+                    reductions.push(variable);
+                }
+            }
+        }
+        for edge in factor.edges() {
+            let variable = edge.decision_variable();
+            let domain = domains[variable.index()];
+            let (can_traverse, can_ring) = role_membership(domain, edge.role_partition());
+            if can_traverse && can_ring &&
+                components.find(factor_atom_index(factor, edge.a())) ==
+                components.find(factor_atom_index(factor, edge.b())) {
+                domains[variable.index()] = domain.intersect(edge.role_partition().ring_values());
+                reductions.push(variable);
+            }
+        }
+        return Ok(reductions);
     }
 
     let mut quotient_by_root = BTreeMap::new();
@@ -1231,10 +1267,6 @@ fn revise_traversal_topology(
             a: quotient_by_root[&a_root],
             b: quotient_by_root[&b_root],
         });
-    }
-
-    if factor.requirement() == crate::model::TraversalTopologyRequirement::Forest {
-        return Ok(reductions);
     }
 
     let quotient_node_count = quotient_by_root.len();
@@ -2169,6 +2201,35 @@ mod tests {
         assert!(variables
             .iter()
             .all(|variable| state.exact_plan.component_for(*variable) == Some(component)));
+    }
+
+    #[test]
+    fn rooted_forest_root_variables_participate_in_mixed_projection() {
+        let mut builder = ConstraintModelBuilder::new();
+        let atoms = [crate::AtomId::new(0), crate::AtomId::new(1)];
+        let bond = builder.add_variable(BondRole::role_domain()).unwrap();
+        let roots = atoms.map(|_| builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap());
+        let signal = builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap();
+        for root in roots {
+            builder.add_binary_relation(root, signal, [(0, 0), (1, 1)]).unwrap();
+        }
+        builder.add_rooted_spanning_forest(
+            atoms,
+            [SpanningTreeEdge::new(bond, atoms[0], atoms[1])],
+            atoms.into_iter().zip(roots),
+        ).unwrap();
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        let component = state.exact_plan.component_for(bond).unwrap();
+        assert!(matches!(state.exact_plan.components[component], ExactComponent::Mixed(_)));
+        assert!(roots.iter().chain([signal].iter()).all(|&variable|
+            state.exact_plan.component_for(variable) == Some(component)));
+
+        let forced_traversal = crate::solver::ConstraintSolver::restricted(&state, &[(bond, BondRole::Traversal.singleton_domain())])
+            .unwrap().unwrap_consistent();
+        assert_eq!(forced_traversal.domain(signal), Some(Domain::singleton(0).unwrap()));
+        let selected = crate::solver::ConstraintSolver::restricted(&state, &[(signal, Domain::singleton(1).unwrap())])
+            .unwrap().unwrap_consistent();
+        assert_eq!(selected.domain(bond), Some(BondRole::Ring.singleton_domain()));
     }
 
     #[test]

@@ -1363,3 +1363,65 @@ whole event or spelling productions at their owners. RDKit writer scheduling
 is a separate policy. These local phase facts do not prove that every offered
 prefix has a completed graph, that every grammatical event order is offered,
 or that all bond and stereo interpretations preserve the admitted facts.
+
+## Root ownership in the Forest topology factor: design before implementation
+
+The current Forest factor constrains physical Traversal bonds to be acyclic.
+It has no variable for a textual segment root. A role assignment can therefore
+join two already emitted roots into one Traversal component while remaining a
+valid plain forest assignment. This is a missing model law, independent of the
+writer frontier. On the four-atom path `A-U-V-B`, starting a segment at `A`
+and a dot branch at `B` makes such an all-Traversal role assignment possible
+in the current factor. A bounded public `FCCCl` probe found productive ring
+continuations after the analogous prefix `F(.Cl`; this is not evidence of a
+currently published dead choice. A future profile that restricts all three
+path bonds to Traversal would remove that escape.
+
+For each atom in a Forest-prepared component, preparation should own one
+binary root-role variable: selected when the atom starts a segment and
+unselected when it is entered as a child. The component's existing topology
+factor should include those variables. Interpret a selected root as a virtual
+edge from that atom to one component-local super-root. A valid assignment is
+one whose physical Traversal edges plus selected virtual edges are acyclic.
+This says precisely that each physical Traversal component has at most one
+selected root. At complete traversal, every atom has its root role committed
+and every physical Traversal component has exactly one root because its first
+visited atom started a segment. The virtual edges are solver facts only; they
+do not create SMILES bonds or alter chemical components.
+
+`WriterState` should restrict the existing prepared root variable on each
+`Root`, `DotBranchRoot`, and `DotSegmentRoot` transition, and restrict it to
+unselected on each child-entry transition. No root cache belongs in
+`GraphProgress`. The native Forest projector should union forced virtual
+edges with forced Traversal edges and remove an optional edge's selected role
+when that edge would close a cycle. The independent finite-assignment checker
+should apply the same stated graph law by a separate straightforward component
+count or union procedure. Tree topology retains its physical spanning-tree
+connectivity requirement and needs no virtual super-root path.
+
+First pin the model gap with a native state test: start the two roots on the
+four-atom path, then use the existing test-only bond-domain restriction to
+require all physical bonds to be Traversal. The new factor must report a
+contradiction; the old plain Forest factor accepts the assignment. Also check
+all small complete root/role assignments against the graph law and retain
+productive ring continuations for the public case. This strengthens the
+structural model without adding a profile, changing emitted text, or claiming
+global prefix-completion proof. Ring-label scheduling, lexical availability,
+and semantic factor activation remain separate completion obligations.
+
+The rooted-Forest model slice was checked in an isolated checkout from
+`ed525b06`. Focused native tests cover two emitted roots with a forced
+all-Traversal path, reciprocal root/bond role pruning, empty-root registration,
+mixed-factor projection, and all 64 complete role/root assignments of a
+three-atom triangle against an independently computed component/root-count
+law. Existing tetrahedral root-factor activation and selectable child walks
+passed. The bounded offline release wheel build reported verified cleanup;
+the seven selected public Python modules passed 86 tests against that rebuilt
+extension. For admitted `FCCCl`, both `F(.Cl0)CC0` and `F(.ClC0)C0` remain
+accepted ring continuations. Logs are `/tmp/grimace-rooted-forest-focused.log`,
+`/tmp/grimace-rooted-forest-build.log`, `/tmp/grimace-rooted-forest-public.log`,
+and `/tmp/grimace-rooted-forest-fcccl.log`. The earlier full native run reached
+the support-growth test and exited under its inherited CPU limit after about
+211 seconds; its runner verified no live descendants. That interrupted run is
+not a full-suite pass. The model law does not establish global prefix
+completion, ring-label resource sufficiency, or latent future-factor activation.

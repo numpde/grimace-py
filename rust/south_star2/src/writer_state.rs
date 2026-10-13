@@ -614,6 +614,19 @@ impl<S: ConstraintSolver> WriterState<S> {
             .or_else(|| role.map(|role| self.role_domain(bond.unwrap(), role)));
         let restriction_bond = bond_domain.map(|_| bond.unwrap());
         let mut restrictions = semantic_restrictions.to_vec();
+        let entering = match candidate {
+            StructuralCandidate::Root { atom }
+            | StructuralCandidate::DotBranchRoot { atom }
+            | StructuralCandidate::DotSegmentRoot { atom } => Some((atom, 1)),
+            StructuralCandidate::BranchChild { incident }
+            | StructuralCandidate::InlineChild { incident } => Some((incident.atom(), 0)),
+            _ => None,
+        };
+        if let Some((atom, role)) = entering {
+            if let Some(variable) = self.prepared.root_variable(atom) {
+                restrictions.push((variable, Domain::singleton(role).unwrap()));
+            }
+        }
         if matches!(candidate, StructuralCandidate::BranchChild { .. } | StructuralCandidate::DotBranchRoot { .. }) {
             for attachment in self.traversal.active_attachments() {
                 for incident in attachment.incidences() {
@@ -1170,6 +1183,49 @@ mod tests {
             first.attempt_candidate(StructuralCandidate::DotBranchRoot { atom: atoms[3] }).unwrap(),
             Consistency::Contradiction
         ));
+    }
+
+    #[test]
+    fn forest_rejects_two_emitted_roots_in_one_forced_traversal_component() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let bonds = [
+            graph.add_bond(atoms[0], atoms[1]).unwrap(),
+            graph.add_bond(atoms[1], atoms[2]).unwrap(),
+            graph.add_bond(atoms[2], atoms[3]).unwrap(),
+        ];
+        let prepared = forest(graph.build());
+        let first = rooted(&prepared, atoms[0]);
+        let second = attempt(&first, StructuralCandidate::DotBranchRoot { atom: atoms[3] });
+        let restrictions = bonds.map(|bond| (bond, BondRole::Traversal.singleton_domain()));
+        assert!(matches!(
+            second.restricted_bond_domains_for_test(&restrictions).unwrap(),
+            Consistency::Contradiction
+        ));
+    }
+
+    #[test]
+    fn forest_root_selection_and_traversal_edges_prune_each_other() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let right = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let rooted = rooted(&prepared, atoms[0]);
+        let left_traversal = rooted.restricted_bond_domains_for_test(&[
+            (left, BondRole::Traversal.singleton_domain()),
+        ]).unwrap().unwrap_consistent();
+        let two_roots = attempt(&left_traversal, StructuralCandidate::DotBranchRoot { atom: atoms[2] });
+        assert_eq!(two_roots.bond_role_domain(right), BondRole::Ring.singleton_domain());
+
+        let traversal = rooted.restricted_bond_domains_for_test(&[
+            (left, BondRole::Traversal.singleton_domain()),
+            (right, BondRole::Traversal.singleton_domain()),
+        ]).unwrap().unwrap_consistent();
+        assert_eq!(
+            traversal.semantic_domain(prepared.root_variable(atoms[2]).unwrap()),
+            Domain::singleton(0).unwrap(),
+        );
     }
 
     #[test]

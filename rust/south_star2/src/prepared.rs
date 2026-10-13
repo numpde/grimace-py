@@ -123,6 +123,7 @@ pub struct PreparedMolecule {
     topology: crate::model::TraversalTopologyRequirement,
     bond_decision_variables: Arc<[VariableId]>,
     bond_role_partitions: Arc<[EdgeRolePartition]>,
+    root_variables: Arc<[VariableId]>,
 }
 
 impl PreparedMolecule {
@@ -189,6 +190,10 @@ impl PreparedMolecule {
 
     pub(crate) fn bond_role_partition(&self, bond: BondId) -> Option<EdgeRolePartition> {
         self.bond_role_partitions.get(bond.index()).copied()
+    }
+
+    pub(crate) fn root_variable(&self, atom: AtomId) -> Option<VariableId> {
+        self.root_variables.get(atom.index()).copied()
     }
 }
 
@@ -298,6 +303,13 @@ impl PreparedConstraintAssembly {
         mut self,
         topology: crate::model::TraversalTopologyRequirement,
     ) -> PreparedMolecule {
+        let root_variables = if topology == crate::model::TraversalTopologyRequirement::Forest {
+            self.graph.atom_ids().map(|_| self.builder.add_variable(Domain::from_indices([0, 1]).unwrap())
+                .expect("prepared root decisions must fit the constraint identifier space"))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         for component in self.graph.components() {
             let edges = component.bonds().iter().map(|bond_id| {
                 let bond = self
@@ -315,7 +327,8 @@ impl PreparedConstraintAssembly {
                 crate::model::TraversalTopologyRequirement::Tree => self.builder
                     .add_spanning_tree(component.atoms().iter().copied(), edges),
                 crate::model::TraversalTopologyRequirement::Forest => self.builder
-                    .add_spanning_forest(component.atoms().iter().copied(), edges),
+                    .add_rooted_spanning_forest(component.atoms().iter().copied(), edges,
+                        component.atoms().iter().copied().map(|atom| (atom, root_variables[atom.index()]))),
             }
             .expect("prepared components must define valid traversal-topology factors");
         }
@@ -325,6 +338,7 @@ impl PreparedConstraintAssembly {
             topology,
             bond_decision_variables: Arc::from(self.bond_decision_variables),
             bond_role_partitions: Arc::from(self.bond_role_partitions),
+            root_variables: Arc::from(root_variables),
         }
     }
 }

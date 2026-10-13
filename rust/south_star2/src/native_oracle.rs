@@ -325,6 +325,24 @@ fn assignment_satisfies_traversal_topology(
             }
             components.insert(a, b);
         }
+        if !factor.root_variables().is_empty() {
+            let mut selected_by_component = std::collections::BTreeSet::new();
+            for (&atom, &variable) in factor.atoms().iter().zip(factor.root_variables()) {
+                if assignment[variable.index()] == 0 {
+                    continue;
+                }
+                if assignment[variable.index()] != 1 {
+                    return false;
+                }
+                let mut root = atom;
+                while components[&root] != root {
+                    root = components[&root];
+                }
+                if !selected_by_component.insert(root) {
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
@@ -1870,5 +1888,55 @@ fn spanning_forest_matches_exhaustive_role_projection() {
                 "forest {atom_count} {endpoints:?} {restrictions:?}"
             );
         }
+    }
+}
+
+#[test]
+fn rooted_forest_assignments_have_at_most_one_root_per_traversal_component() {
+    let atoms = [AtomId::new(0), AtomId::new(1), AtomId::new(2)];
+    let endpoints = [(0_usize, 1_usize), (1, 2), (0, 2)];
+    let mut builder = ConstraintModelBuilder::new();
+    let bonds = endpoints.map(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+    let roots = atoms.map(|_| builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap());
+    let factor_id = builder.add_rooted_spanning_forest(
+        atoms,
+        endpoints.iter().enumerate().map(|(index, &(a, b))|
+            SpanningTreeEdge::new(bonds[index], atoms[a], atoms[b])),
+        atoms.into_iter().zip(roots),
+    ).unwrap();
+    let model = Arc::new(builder.build());
+    let FactorDefinition::TraversalTopology(factor) = model.factor(factor_id).unwrap() else {
+        panic!("expected rooted forest factor")
+    };
+
+    for bits in 0_u8..64 {
+        let restrictions = bonds.iter().enumerate().map(|(index, &variable)| {
+            let role = if bits & (1 << index) == 0 { BondRole::Ring } else { BondRole::Traversal };
+            (variable, role.singleton_domain())
+        }).chain(roots.iter().enumerate().map(|(index, &variable)| {
+            (variable, Domain::singleton((bits >> (index + 3)) & 1).unwrap())
+        })).collect::<Vec<_>>();
+        let mut connected = [0_usize, 1, 2];
+        let mut cycle = false;
+        for (index, &(a, b)) in endpoints.iter().enumerate() {
+            if bits & (1 << index) == 0 { continue; }
+            let a_root = connected[a];
+            let b_root = connected[b];
+            if a_root == b_root { cycle = true; break; }
+            for component in &mut connected {
+                if *component == b_root { *component = a_root; }
+            }
+        }
+        let selected_roots = (0..3).filter(|&atom| bits & (1 << (atom + 3)) != 0).collect::<Vec<_>>();
+        let expected = !cycle && selected_roots.iter().enumerate().all(|(index, &atom)|
+            selected_roots[..index].iter().all(|&prior| connected[prior] != connected[atom]));
+        let actual = matches!(NativeSolverState::initial(Arc::clone(&model)).unwrap()
+            .restricted(&restrictions).unwrap(), Consistency::Consistent(_));
+        assert_eq!(actual, expected, "rooted forest assignment {bits:06b}");
+
+        let assignment = (0..3).map(|index| if bits & (1 << index) == 0 { BondRole::Ring.value_index() } else { BondRole::Traversal.value_index() })
+            .chain((0..3).map(|index| (bits >> (index + 3)) & 1))
+            .collect::<Vec<_>>();
+        assert_eq!(assignment_satisfies_traversal_topology(factor, &assignment), expected);
     }
 }

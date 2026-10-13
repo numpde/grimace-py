@@ -1,6 +1,6 @@
 //! Solver-neutral constraint definitions prepared once per molecule.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::domain::Domain;
@@ -203,6 +203,7 @@ pub struct TraversalTopologyFactor {
     requirement: TraversalTopologyRequirement,
     atoms: Box<[AtomId]>,
     edges: Box<[SpanningTreeEdge]>,
+    root_variables: Box<[VariableId]>,
     variables: Box<[VariableId]>,
 }
 
@@ -217,6 +218,10 @@ impl TraversalTopologyFactor {
 
     pub fn edges(&self) -> &[SpanningTreeEdge] {
         &self.edges
+    }
+
+    pub fn root_variables(&self) -> &[VariableId] {
+        &self.root_variables
     }
 
     pub fn variables(&self) -> &[VariableId] {
@@ -675,7 +680,7 @@ impl ConstraintModelBuilder {
         atoms: impl IntoIterator<Item = AtomId>,
         edges: impl IntoIterator<Item = SpanningTreeEdge>,
     ) -> Result<FactorId, ConstraintModelError> {
-        self.add_traversal_topology(TraversalTopologyRequirement::Tree, atoms, edges)
+        self.add_traversal_topology(TraversalTopologyRequirement::Tree, atoms, edges, [], false)
     }
 
     pub fn add_spanning_forest(
@@ -683,7 +688,16 @@ impl ConstraintModelBuilder {
         atoms: impl IntoIterator<Item = AtomId>,
         edges: impl IntoIterator<Item = SpanningTreeEdge>,
     ) -> Result<FactorId, ConstraintModelError> {
-        self.add_traversal_topology(TraversalTopologyRequirement::Forest, atoms, edges)
+        self.add_traversal_topology(TraversalTopologyRequirement::Forest, atoms, edges, [], false)
+    }
+
+    pub fn add_rooted_spanning_forest(
+        &mut self,
+        atoms: impl IntoIterator<Item = AtomId>,
+        edges: impl IntoIterator<Item = SpanningTreeEdge>,
+        roots: impl IntoIterator<Item = (AtomId, VariableId)>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        self.add_traversal_topology(TraversalTopologyRequirement::Forest, atoms, edges, roots, true)
     }
 
     fn add_traversal_topology(
@@ -691,6 +705,8 @@ impl ConstraintModelBuilder {
         requirement: TraversalTopologyRequirement,
         atoms: impl IntoIterator<Item = AtomId>,
         edges: impl IntoIterator<Item = SpanningTreeEdge>,
+        roots: impl IntoIterator<Item = (AtomId, VariableId)>,
+        require_roots: bool,
     ) -> Result<FactorId, ConstraintModelError> {
         let mut atoms = atoms.into_iter().collect::<Vec<_>>();
         if atoms.is_empty() {
@@ -705,6 +721,27 @@ impl ConstraintModelBuilder {
         let edges = edges.into_iter().collect::<Vec<_>>();
         let mut variables = Vec::with_capacity(edges.len());
         let mut seen_variables = BTreeSet::new();
+
+        let root_pairs = roots.into_iter().collect::<Vec<_>>();
+        let root_map = root_pairs.iter().copied().collect::<BTreeMap<_, _>>();
+        if root_map.len() != root_pairs.len() ||
+            (require_roots && (requirement != TraversalTopologyRequirement::Forest ||
+                root_map.len() != atoms.len() ||
+                root_map.keys().copied().ne(atoms.iter().copied()))) ||
+            (!require_roots && !root_map.is_empty()) {
+            return Err(ConstraintModelError::InvalidTraversalTopologyRootVariables);
+        }
+        let mut root_variables = Vec::with_capacity(root_map.len());
+        for variable in root_map.values().copied() {
+            let domain = self.variables.get(variable.index())
+                .ok_or(ConstraintModelError::UnknownVariable(variable))?.initial_domain;
+            if !domain.is_subset_of(Domain::from_indices([0, 1]).unwrap()) ||
+                !seen_variables.insert(variable) {
+                return Err(ConstraintModelError::InvalidTraversalTopologyRootVariables);
+            }
+            root_variables.push(variable);
+            variables.push(variable);
+        }
 
         for edge in &edges {
             if edge.a == edge.b {
@@ -767,6 +804,7 @@ impl ConstraintModelBuilder {
                 requirement,
                 atoms: atoms.into_boxed_slice(),
                 edges: edges.into_boxed_slice(),
+                root_variables: root_variables.into_boxed_slice(),
                 variables: variables.into_boxed_slice(),
             }),
             FactorActivation::Always,
@@ -988,6 +1026,7 @@ pub enum ConstraintModelError {
     RepeatedAtomInTraversalTopology,
     TraversalTopologySelfEdge(AtomId),
     TraversalTopologyEdgeOutsideAtomSet(AtomId),
+    InvalidTraversalTopologyRootVariables,
     InvalidEdgeRolePartition(VariableId),
     ConflictingEdgeRolePartition(VariableId),
     OverlappingTraversalTopologyVariable(VariableId),
@@ -1064,6 +1103,10 @@ impl fmt::Display for ConstraintModelError {
                     "traversal-topology edge endpoint {atom:?} is outside the factor atom set"
                 )
             }
+            Self::InvalidTraversalTopologyRootVariables => write!(
+                formatter,
+                "a rooted forest needs one distinct binary root variable for each factor atom"
+            ),
             Self::InvalidEdgeRolePartition(variable) => {
                 write!(
                     formatter,
@@ -1322,6 +1365,26 @@ mod tests {
         assert_eq!(factor.atoms(), &[AtomId::new(7)]);
         assert!(factor.edges().is_empty());
         assert!(factor.variables().is_empty());
+    }
+
+    #[test]
+    fn rooted_forest_requires_one_root_variable_per_atom() {
+        let mut builder = ConstraintModelBuilder::new();
+        let atoms = [AtomId::new(0), AtomId::new(1)];
+        assert_eq!(
+            builder.add_rooted_spanning_forest(atoms, [], []),
+            Err(ConstraintModelError::InvalidTraversalTopologyRootVariables),
+        );
+        let roots = atoms.map(|_| builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap());
+        let factor = builder.add_rooted_spanning_forest(atoms, [], atoms.into_iter().zip(roots)).unwrap();
+        let model = builder.build();
+        let FactorDefinition::TraversalTopology(topology) = model.factor(factor).unwrap() else {
+            panic!("expected rooted forest factor")
+        };
+        assert_eq!(topology.root_variables(), &roots);
+        for variable in roots {
+            assert_eq!(model.potential_factors_for_variable(variable), Some(&[factor][..]));
+        }
     }
 
     #[test]

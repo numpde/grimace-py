@@ -856,6 +856,18 @@ impl<S: ConstraintSolver> WriterState<S> {
         traversal.active_local_layout_context(self.prepared.graph())
     }
 
+    pub(crate) fn prospective_dot_branch_layout_context(&self, atom: AtomId) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.begin_dot_branch(self.prepared.graph(), atom);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_dot_segment_layout_context(&self, atom: AtomId) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.begin_dot_segment(self.prepared.graph(), atom);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
     pub(crate) fn prospective_inline_child_layout_context(
         &self,
         incident: AdjacentBond,
@@ -863,6 +875,16 @@ impl<S: ConstraintSolver> WriterState<S> {
         let mut traversal = self.traversal.clone();
         traversal.commit_active_child(incident);
         traversal.enter_inline_child(self.prepared.graph(), incident);
+        traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    pub(crate) fn prospective_branch_child_layout_context(
+        &self,
+        incident: AdjacentBond,
+    ) -> LocalLayoutContext {
+        let mut traversal = self.traversal.clone();
+        traversal.commit_active_child(incident);
+        traversal.enter_branch_child(self.prepared.graph(), incident);
         traversal.active_local_layout_context(self.prepared.graph())
     }
 

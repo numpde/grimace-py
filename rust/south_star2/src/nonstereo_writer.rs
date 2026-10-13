@@ -3356,6 +3356,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<WriterState<S>>, S::Failure> {
+        let mut restrictions = restrictions.to_vec();
+        restrictions.extend(self.exhausted_ring_label_restrictions(candidate));
         if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate(candidate)
         } else if restrictions.is_empty() && activate.is_empty() {
@@ -3367,10 +3369,69 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             self.structural.attempt_candidate_with_semantic_transition(
                 candidate,
                 allowed_representations,
-                restrictions,
+                &restrictions,
                 activate,
             )
         }
+    }
+
+    fn exhausted_ring_label_restrictions(
+        &self,
+        candidate: StructuralCandidate,
+    ) -> Vec<(VariableId, Domain)> {
+        let first = match self.regime {
+            WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
+            WriterRegime::RdkitRandomNoncanonical => 1,
+        };
+        let maximum = self.labels.maximum_spelling_label();
+        let capacity = maximum.saturating_add(1).saturating_sub(first);
+        let occupied = self.labels.bonds_by_slot.keys().filter(|slot| {
+            (first..=maximum).contains(&slot.index())
+        }).count();
+        let opening = matches!(candidate, StructuralCandidate::RingOpen { .. });
+        if occupied + usize::from(opening) < capacity {
+            return Vec::new();
+        }
+        let context = match candidate {
+            StructuralCandidate::Root { atom } => {
+                self.structural.prospective_root_layout_context(atom)
+            }
+            StructuralCandidate::DotBranchRoot { atom } => {
+                self.structural.prospective_dot_branch_layout_context(atom)
+            }
+            StructuralCandidate::DotSegmentRoot { atom } => {
+                self.structural.prospective_dot_segment_layout_context(atom)
+            }
+            StructuralCandidate::BranchChild { incident } => {
+                self.structural.prospective_branch_child_layout_context(incident)
+            }
+            StructuralCandidate::InlineChild { incident } => {
+                self.structural.prospective_inline_child_layout_context(incident)
+            }
+            StructuralCandidate::RingOpen { .. } => self.structural.active_local_layout_context(),
+            StructuralCandidate::RingClose { .. }
+            | StructuralCandidate::CloseBranch
+            | StructuralCandidate::FinishSegment => return Vec::new(),
+        };
+        if !context.waiting_ring_bonds.is_empty() {
+            return Vec::new();
+        }
+        let opening_bond = match candidate {
+            StructuralCandidate::RingOpen { incident } => Some(incident.bond()),
+            _ => None,
+        };
+        context.residual_attachment_bonds.into_iter().flatten()
+            .filter(|bond| Some(*bond) != opening_bond)
+            .map(|bond| {
+                let partition = self.surface.molecule().bond_role_partition(bond)
+                    .expect("prepared bond must have a role partition");
+                (
+                    self.surface.molecule().bond_decision_variable(bond)
+                        .expect("prepared bond must have a decision variable"),
+                    partition.traversal_values(),
+                )
+            })
+            .collect()
     }
 
     fn restrict_semantics(

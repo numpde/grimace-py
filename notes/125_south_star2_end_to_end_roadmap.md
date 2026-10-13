@@ -1800,3 +1800,45 @@ of the opposite marker, and RDKit parse-back distinction for these examples.
 These establish selected semantic witnesses, not complete tetrahedral language
 coverage or RDKit random-writer support. That writer profile still has its
 separate narrow C/O admission boundary.
+
+## 2026-10-13 finite ring-label zero-budget transition
+
+The native Forest writer now intersects the prepared Traversal domains of a
+new active atom's remaining incidences with the same solver transition that
+enters it when all visible ring labels are occupied. It does the same after a
+ring opening consumes the final free label. This restriction applies only when
+the active atom has no already opened ring to close; such a closure can free a
+label before another local ring event. A child or dot branch seals its parent's
+ring phase, so releasing a label elsewhere cannot enable a later ring opening
+at that parent. The restriction preserves joint role and topology solving; it
+does not choose roles one bond at a time or search for a completed suffix.
+
+A native test with a one-label limit opens a ring in one two-carbon component,
+then checks that an unproductive triangle branch is refused before branch
+text. Its alternative dot path closes the held ring, returns to the triangle,
+and reaches acceptance. A separate test checks that a last-label opening still
+permits a required Traversal continuation. The 100-label diagnostic uses
+actual labels `0..99` across 100 open two-carbon components, then reaches the
+same forced triangle ring; it is ignored by default because its prescribed
+native event path takes about 45 seconds. Run it from the repository root with:
+
+`python3 scripts/run_bounded_tests.py --wall-seconds 90 --rss-mib 2048 --cpu-seconds 90 --address-space-mib 4096 -- env CARGO_NET_OFFLINE=true cargo test --manifest-path rust/south_star2/Cargo.toml public_ring_label_capacity_rejects_a_forced_101st_opening -- --ignored --nocapture`
+
+These tests use prepared fixed `C` atom tokens and labeled native transitions.
+They establish the zero-free-label local obligation for those selected paths,
+not public character-prefix union behavior, independent parse-back, or a
+general positive-capacity completion theorem.
+
+Qualification used the isolated `06f958af` archive before integration. The
+one-label RED test first observed the offered triangle branch ending in typed
+label exhaustion; the 100-label RED test observed `next_label: 100` beyond
+`maximum_label: 99`. After the zero-budget transition change, the one-label
+recovery, last-slot Traversal, and ignored 100-label diagnostic passed. The
+focused native ring-label selection passed 11 tests with the diagnostic
+ignored. The bounded offline release build produced wheel SHA256
+`6e0d90992bd0d18e9201c3e8297b030fabe9cd14a790b6678aba8b1adb247f18`;
+its extracted package passed 16 public prefix tests. The ignored checkout
+extension was backed up and replaced with the wheel's extension (SHA256
+`9926635e982ebca3a293149461c3c4da13a7aa0e6753fda817a58dd4b78683d9`),
+then the same 16 tests passed against the checkout. Each bounded runner
+reported verified process cleanup.

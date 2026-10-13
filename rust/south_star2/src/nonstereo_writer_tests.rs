@@ -8256,3 +8256,132 @@ fn native_work_count_probe_fixed_interior_prefix() {
         rejected_work.0, rejected_work.1, rejected_work.2, rejected_work.3,
     );
 }
+#[test]
+fn exhausted_ring_labels_reject_a_forced_new_ring_before_branch_entry() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..5).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = [(0, 1), (2, 3), (2, 4), (3, 4)]
+        .into_iter().map(|(a,b)|graph.add_bond(atoms[a], atoms[b]).unwrap()).collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..atoms.len()).map(|_|PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let (_, rooted) = only_root_atom(&state, atoms[0]);
+    let opening = rooted.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
+    ).expect("first ethane ring opens");
+    let held = opening.into_successor();
+    let (_, pending_triangle) = only_component_separator(&held, atoms[2]);
+    let (_, triangle) = only_choice(&pending_triangle, "C");
+    let branch_incident = incident(&surface, atoms[2], bonds[1]);
+    let rescue = triangle.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
+    ).expect("dot path reaches the held ethane endpoint").into_successor();
+    let (_, rescue_atom) = only_choice(&rescue, "C");
+    let released = rescue_atom.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.is_clean()
+    ).expect("closing the held ethane ring frees its visible label").into_successor();
+    let (_, restored) = only_choice(&released, ")");
+    assert!(restored.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ), "releasing a label restores the triangle branch");
+    let branch = restored.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ).unwrap().into_successor();
+    let (_, child) = only_choice(&branch, "C");
+    let ring = child.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[3])
+            && choice.successor().pending.is_none()
+    ).expect("rescued branch opens its ring").into_successor();
+    let (_, parent) = only_choice(&ring, ")");
+    let (_, pending_last) = only_choice(&parent, "-");
+    let (_, last) = only_choice(&pending_last, "C");
+    assert!(last.choices().unwrap().iter().any(|choice| choice.successor().is_accepted()));
+    assert!(!triangle.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ), "a branch child that can only demand an unavailable ring label must not be offered");
+}
+
+#[test]
+fn opening_the_last_ring_label_keeps_a_traversal_continuation() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..3).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = [(0, 1), (0, 2), (1, 2)]
+        .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
+        .collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..3).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()],
+        Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder },
+        true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let (_, rooted) = only_root_atom(&state, atoms[0]);
+    let opening = rooted.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending.is_none()
+            && choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
+    ).expect("one ring label is available").into_successor();
+    let partition = surface.molecule().bond_role_partition(bonds[1]).unwrap();
+    assert!(opening.structural.bond_decision_domain(bonds[1])
+        .is_subset_of(partition.traversal_values()));
+    assert!(opening.choices().unwrap().iter().any(|choice|
+        choice.successor().active_atom() == Some(atoms[2])
+            || choice.successor().pending == Some(PendingEmission::InlineAtom(
+                incident(&surface, atoms[0], bonds[1])
+            ))
+    ));
+}
+
+#[test]
+#[ignore = "public 100-label capacity diagnostic; run with bounded single-test command"]
+fn public_ring_label_capacity_rejects_a_forced_101st_opening() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..203).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let mut bonds = (0..100).map(|i|graph.add_bond(atoms[2*i], atoms[2*i+1]).unwrap()).collect::<Vec<_>>();
+    let triangle = [
+        graph.add_bond(atoms[200], atoms[201]).unwrap(),
+        graph.add_bond(atoms[200], atoms[202]).unwrap(),
+        graph.add_bond(atoms[201], atoms[202]).unwrap(),
+    ];
+    bonds.extend(triangle);
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        (0..atoms.len()).map(|_|PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    for i in 0..100 {
+        let rooted = if i == 0 { only_root_atom(&state, atoms[0]).1 } else {
+            let (_, pending) = only_component_separator(&state, atoms[2*i]);
+            only_choice(&pending, "C").1
+        };
+        let opening = rooted.choices().unwrap().into_iter().find(|choice|
+            choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[i])
+        ).expect("ethane ring opens");
+        state = opening.into_successor();
+        assert_eq!(state.labels.bonds_by_slot.len(), i+1);
+    }
+    let (_, pending_triangle) = only_component_separator(&state, atoms[200]);
+    let (_, triangle_root) = only_choice(&pending_triangle, "C");
+    let branch_incident = incident(&surface, atoms[200], bonds[100]);
+    let choices = triangle_root.choices().unwrap();
+    let rescue = choices.iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
+    ).expect("dot path reaches the first held ethane endpoint").successor().clone();
+    let (_, rescue_atom) = only_choice(&rescue, "C");
+    assert!(rescue_atom.choices().unwrap().iter().any(|choice|
+        choice.successor().labels.bonds_by_slot.len() == 99
+            && !choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
+    ), "closing a held ethane ring frees one visible label");
+    assert!(!triangle_root.choices().unwrap().iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+    ), "a branch child that can only demand an unavailable ring label must not be offered");
+}

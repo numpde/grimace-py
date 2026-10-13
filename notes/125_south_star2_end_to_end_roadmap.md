@@ -1200,3 +1200,62 @@ strings or consulting production parity internals. This temporary witness
 should fold into the shared fact/event/constraint/solver/renderer model.
 It qualifies these selected paths only; full Forest stereo, exact RDKit writer
 support, and complete `MAXIMAL` coverage remain open.
+
+## 2026-10-13 finite OpenSMILES completeness audit at `0a8468a6`
+
+Scope: this audits `GENERAL` against the every-and-only fact-preserving target
+in `docs/api/smiles-language.md`, for inputs actually admitted by preparation.
+`COMPACT` is a narrower spelling policy; RDKit writer parity is a separate
+contract. This ledger covers grammar alternatives and their semantic owners,
+not all candidate strings. OpenSMILES v1.0 grammar and §§3.1–3.8 are the
+syntax reference: <https://raw.githubusercontent.com/opensmiles/OpenSMILES/master/opensmiles.asciidoc>.
+An RDKit parse is evidence for selected cases, not the language authority.
+
+| Obligation | Current owner and narrow closure | Remaining precise obligation |
+| --- | --- | --- |
+| Admission and identity | `python/grimace/_south_star2/preparation.py` snapshots accepted atoms, bonds, hydrogen, aromatic and stereo facts or rejects unsupported forms. `docs/api/smiles-language.md` defines graph-isomorphism identity; atom IDs are witness labels. A source quadruple bond, for example, is outside admission, not a missing output. | Prove every accepted preparation preserves each identity fact, including graph versus non-graph H and unspecified stereo. Admission must not be inferred from one successful string. |
+| Atom spelling and numeric fields | `rust/south_star2/src/atom_spelling.rs` owns bare/bracket, isotope, H, charge, class and tetra marker phases. `Phase::Number` emits exactly `0*` followed by the fixed decimal value, including value zero, in `GENERAL` (lines 685–735). This closes lexical zero padding for represented isotope/class values under the project's explicit numeric interpretation; charge and H widths are finite grammar cases. | **Confirmed soundness counterexample:** for source `[13CH4]`, `GENERAL` accepts isotope-free `[CH4]`. `Phase::AfterOpen` offers direct element start when isotope is present (lines 377–385). Require the isotope field for a nonzero prepared isotope; audit isotope-zero equivalence against the identity contract separately. Then partition admitted element/valence/aromatic contexts to check bare eligibility and other bracket omissions. |
+| Ordinary single-bond spelling | OpenSMILES §3.5 explicitly gives `C-C` and `CC` the same meaning. Preparation maps an ordinary RDKit single bond to empty text (preparation.py lines 314–322). `nonstereo_writer.rs` fixes that bond to elided representation at lines 595–607, and `chemical_bond_specs` returns only its prepared text at lines 3140–3141. | **Confirmed coverage counterexample:** `GENERAL` accepts `CC` but rejects `C-C` for the same admitted ethane facts. Extend the bond representation decision to offer both explicit `-` and omission wherever the standard interpretation agrees; inspect traversal, branch and both ring endpoints, rather than fixing only inline bonds. Ring behavior is source-predicted here, not a live ring witness. Then show explicit/omitted alternatives do not change aromatic or directional meaning. |
+| Other bond spelling | `nonstereo_writer.rs` owns `=`, `#`, `:`, directional marks, aromatic edge modes and ring endpoint plans. Preparation excludes unsupported quadruple and dative source bonds. Existing matching constraints relate aromatic surface forms to latent integer bond orders. | Partition every admitted bond by fixed single/double/triple, aromatic matching order, carrier role, and endpoint atom spelling; establish that `chemical_bond_specs` and `ring_emission_specs` offer every and only semantically equivalent explicit/omitted symbol at every syntactic position. The ordinary-single counterexample disproves closure of this partition today. |
+| Roots, traversal, branches and dots | `traversal.rs` owns visited atoms/bonds, residual attachments, frame stack, branch return, new segment and dot branch transitions (lines 831–1044); `writer_state.rs::structural_frontier` publishes candidates. Selected forest and leading-dot paths have semantic witnesses. | Check the finite grammar constructors separately: initial/root atom, inline continuation with optional bond, `(chain)`, `(bond chain)`, `(dot chain)`, top-level dot, and branch return. For each constructor prove forward transition availability and reverse grammatical/fact-preserving interpretation. The shared induction step must show residual partition and frame completion preserve every legal sibling order and cross-dot ring obligation; selected paths do not establish that invariant. |
+| Ring events and labels | `nonstereo_writer.rs::available_ring_label_options` and `ring_label_spellings` cover the OpenSMILES numeric label space `0`–`99`, including `%00`–`%09`; `RingLabels::release` frees a matched slot for reuse and `COMPACT` chooses the smallest free label. `traversal.rs` pairs each ring event to one prepared bond. | Check ring open, ring close, and later label reuse as separate finite event cases, crossed with bond text absent/first-end/second-end/both-end. For each case prove one prepared edge and one consistent chemical order; the induction invariant must exclude unmatched or contradictory pairs at acceptance. Label enumeration alone does not close event coverage. |
+| Aromatic interpretation | The project specifies bare neutral aromatic carbon H as `3 - graph_degree` subject to feasible integer valence. `nonstereo_writer.rs::prepare_aromatic_matching` and atom/bond modes share one latent edge assignment; selected mixed uppercase/lowercase paths pass. | For each admitted aromatic atom and edge context, establish equivalence between the standard/project interpretation and the matching constraint, including mixed bare/bracket forms, omitted bonds, charges, heteroatoms and exocyclic bonds. The exact case partition is by emitted endpoint spelling and edge order/symbol; selected benzene and heteroatom examples do not discharge it. |
+| Tetrahedral and directional stereo | Prepared tetrahedral layouts and directional side/carrier factors own marker and slash placement; selected ring-segment, leading-dot tetrahedral and configured E/Z paths have independent semantic witnesses. | For every admitted configured center/double bond and every grammar-valid Forest event order, prove ligand-order parity and carrier constraints yield exactly the preserving markers. Also prove unspecified stereo never becomes configured. Ring and dot crossings require explicit cases because they change event order without changing chemical identity. |
+| Prefix soundness and completion | `prefix.rs` unions same-text labeled walker successors and defers materializing unselected ones; under deterministic replay of each labeled walker transition, this aggregation preserves their union. A small eager reference checks that behavior on selected examples. Terminal acceptance checks pending spelling, clean ring labels, and complete traversal scope/graph (`nonstereo_writer.rs::is_accepted`, lines 2113–2119); solver feasibility is a transition invariant. | Prove each offered walker choice has an accepting completion, and that every grammar-valid next event is offered by its owner before text aggregation. The confirmed `C-C` miss is a missing walker spelling choice, independent of prefix aggregation. |
+
+The concrete bond probe used RDKit 2026.03.4 and the local `_core` extension
+SHA-256 `c72671b59931760ab98b47d2f0272664cc199fce8feb98d11c0bb807915e5c49`.
+Both RDKit sources `CC` and `C-C` accepted output `CC` and rejected output
+`C-C` through `decoding.start(..., language=SmilesLanguage.GENERAL)` with a
+1,000-prefix-node cap. The 60-second, 1,024-MiB bounded runner reported
+`verified_no_live_members`; log: `/tmp/grimace-completeness-audit-bond.log`.
+The same bounded runner separately verified that source `[13CH4]` has RDKit
+isotope fact 13 and `GENERAL` accepts both `[13CH4]` and `[CH4]`; log:
+`/tmp/grimace-completeness-audit-isotope.log`. Omission of the isotope field
+changes the OpenSMILES isotope interpretation, independent of RDKit parse-back.
+The selected public-path checks can be repeated with the existing bounded
+`tests.south_star2.test_compact_language._walk_language` helper and a 1,000-node
+cap; `None` means no accepted path:
+
+```python
+from rdkit import Chem
+from grimace.decoding import SmilesLanguage
+from tests.south_star2.test_compact_language import _walk_language
+
+general = SmilesLanguage.GENERAL
+ethane = Chem.MolFromSmiles("CC")
+carbon_13 = Chem.MolFromSmiles("[13CH4]")
+assert _walk_language(ethane, "CC", general, max_nodes=1000)
+assert _walk_language(ethane, "C-C", general, max_nodes=1000) is None
+assert carbon_13.GetAtomWithIdx(0).GetIsotope() == 13
+assert _walk_language(carbon_13, "[13CH4]", general, max_nodes=1000)
+assert _walk_language(carbon_13, "[CH4]", general, max_nodes=1000)
+```
+
+That extension is the qualified `d9b3354f` build; `git diff
+d9b3354f..0a8468a6 -- python rust Cargo.toml Cargo.lock pyproject.toml` is empty,
+so its executable implementation matches this audit's HEAD. The immediate
+minimal repairs are the mandatory nonzero-isotope field and the ordinary
+single-bond spelling choice with its ring/branch placement cases, each followed
+by a focused semantic regression. This audit does not implement either repair
+or claim a universal completeness proof.

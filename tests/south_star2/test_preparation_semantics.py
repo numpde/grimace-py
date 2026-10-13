@@ -28,8 +28,8 @@ def _generic_witness_prefix(text: str, *, allow_dots: bool = True) -> bool:
     """Restrict lexical choices, preserving every matching native hidden state.
 
     This finite semantic witness uses bare C/O, short carbon tetrahedral
-    markers, and canonical lowest-free positive ring labels. Native Generic
-    traversal, bond placement, and stereo constraints remain unrestricted;
+    markers, omitted ordinary single bonds, and canonical lowest-free positive
+    ring labels. Native Generic traversal and stereo constraints remain unrestricted;
     this does not enumerate the full Generic SMILES language.
     """
     brackets = ("[C@H]", "[C@@H]", "[C@]", "[C@@]")
@@ -38,6 +38,8 @@ def _generic_witness_prefix(text: str, *, allow_dots: bool = True) -> bool:
     while index < len(text):
         char = text[index]
         if char == "." and not allow_dots:
+            return False
+        if char == "-":
             return False
         if char == "[":
             end = text.find("]", index)
@@ -86,6 +88,16 @@ def _accepted_generic_witness_strings(
         context=Chem.MolToSmiles(mol, isomericSmiles=True),
         max_nodes=max_nodes,
         max_outputs=max_outputs,
+    )
+
+
+def _accepted_compact_witness_strings(mol: Chem.Mol) -> set[str]:
+    """Collect the finite Compact traversal/stereo witness without dot segments."""
+    return _collect_writer_strings(
+        prepare_molecule(mol).build_writer(writer_regime="generic_compact"),
+        finite_generic_witness=True,
+        allow_dots=False,
+        context=Chem.MolToSmiles(mol, isomericSmiles=True),
     )
 
 
@@ -333,10 +345,12 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
             with self.subTest(smiles=smiles):
                 source = Chem.MolFromSmiles(smiles)
                 assert source is not None
-                # This existing C/O dot witness is substantially larger than the stereo cases.
-                limits = (1_500_000, 250_000) if smiles == "CC(O)CO" else (50_000, 10_000)
-                outputs = _accepted_generic_witness_strings(
-                    source, max_nodes=limits[0], max_outputs=limits[1],
+                # Larger graphs use the Compact spelling lane to keep exhaustive
+                # traversal and graph checks finite after General gained '-'.
+                outputs = (
+                    _accepted_compact_witness_strings(source)
+                    if smiles in ("CC(C)O", "CC(O)CO")
+                    else _accepted_generic_witness_strings(source)
                 )
                 self.assertTrue(outputs, "the prepared source graph must have an accepted output")
 
@@ -417,7 +431,7 @@ class SouthStar2PreparationSemanticTests(unittest.TestCase):
         source = Chem.MolFromSmiles(case.raw["input_smiles"])
         self.assertIsNotNone(source)
         assert source is not None
-        outputs = _accepted_generic_witness_strings(source, allow_dots=False)
+        outputs = _accepted_compact_witness_strings(source)
         self.assertTrue(outputs)
         for output in outputs:
             parsed = Chem.MolFromSmiles(output)

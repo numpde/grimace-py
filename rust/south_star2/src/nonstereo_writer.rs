@@ -546,7 +546,8 @@ impl PreparedNonStereo {
         compact: bool,
     ) -> Result<Self, PreparedNonStereoError> {
         Self::with_atom_tokens_and_directional_for_writer(
-            molecule, atoms, bond_tokens, directional_relations, compact, false,
+            molecule, atoms, bond_tokens, directional_relations,
+            if compact { WriterRegime::GenericCompact } else { WriterRegime::Generic { component_order: ComponentOrder::InputOrder } }, false,
         )
     }
 
@@ -555,9 +556,10 @@ impl PreparedNonStereo {
         atoms: Vec<PreparedAtomToken>,
         bond_tokens: Vec<NonStereoBondToken>,
         directional_relations: Vec<PreparedDirectionalRelation>,
-        compact: bool,
+        regime: WriterRegime,
         allow_segments: bool,
     ) -> Result<Self, PreparedNonStereoError> {
+        let compact = regime == WriterRegime::GenericCompact;
         #[cfg(test)]
         let test_atom_labels = atoms
             .iter()
@@ -600,6 +602,9 @@ impl PreparedNonStereo {
                     if bond_tokens[bond.index()] == NonStereoBondToken::Aromatic && chemical_aromatic_bonds.contains(&bond) {
                         BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
                     } else if compact && matches!(bond_tokens[bond.index()], NonStereoBondToken::Single | NonStereoBondToken::Elided) {
+                        BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
+                    } else if matches!(regime, WriterRegime::Generic { .. })
+                        && bond_tokens[bond.index()] == NonStereoBondToken::Elided {
                         BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
                     } else {
                         bond_tokens[bond.index()].representation_domain()
@@ -3138,6 +3143,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             return vec![(0, self.surface.bond_text(bond, from), Vec::new(), compact_explicit_domain())];
         }
         let Some(variable) = self.surface.bond_chemical_orders[bond.index()] else {
+            if matches!(self.regime, WriterRegime::Generic { .. })
+                && self.surface.bond_tokens[bond.index()] == NonStereoBondToken::Elided
+            {
+                return vec![
+                    (0, "", Vec::new(), BondRepresentation::elided_domain()),
+                    (0, "-", Vec::new(), BondRepresentation::explicit_domain()),
+                ];
+            }
             return vec![(0, self.surface.bond_text(bond, from), Vec::new(), self.surface.bond_tokens[bond.index()].representation_domain())];
         };
         let mut specs = Vec::new();

@@ -240,6 +240,23 @@ class GeneralLanguageNormativeRegressionTests(unittest.TestCase):
         self.assertIsNotNone(_walk_language(source, "CC", language, max_nodes=1000))
         self.assertIsNotNone(_walk_language(source, "C-C", language, max_nodes=1000))
 
+    def test_explicit_single_bond_branch_and_ring_endpoints(self) -> None:
+        language = decoding.SmilesLanguage.GENERAL
+        for source_text, aliases in (
+            ("CC", ("C(C)", "C(-C)")),
+            ("CCO", ("C-CO", "CC-O", "C-C-O")),
+            ("CC", ("C-1.C1",)),
+            ("C1CC1", ("C1CC1", "C-1CC1", "C1CC-1", "C-1CC-1")),
+            ("C/C=C/CC", ("C/C=C/C-C",)),
+        ):
+            source = _parse(source_text)
+            for alias in aliases:
+                with self.subTest(alias=alias):
+                    _assert_same_mapped_graph(self, source, _parse(alias))
+                    self.assertIsNotNone(
+                        _walk_language(source, alias, language, max_nodes=1000)
+                    )
+
     def test_nonzero_isotope_cannot_be_omitted(self) -> None:
         source = _parse("[13CH4]")
         self.assertEqual(13, source.GetAtomWithIdx(0).GetIsotope())

@@ -1269,3 +1269,31 @@ isotope assertion passes with the mandatory field repair. They specify
 OpenSMILES/fact identity rather than RDKit writer support. The
 60-second bounded focused run failed at exactly those two assertions and
 reported `verified_no_live_members`; log: `/tmp/grimace-normative-red-focused.log`.
+
+After the two repairs, both normative assertions pass. In `GENERAL`, an
+ordinary prepared single bond offers omission or `-` on traversal, branch, and
+either ring endpoint; `COMPACT` and the RDKit writer regime retain their prior
+bond spelling policy. Native ring witnesses cover all four omitted/explicit
+endpoint combinations, and the independent tree reference covers both
+spellings for each ordinary single bond. Large traversal/stereo conformance
+fixtures keep their exact assertions on a declared omitted-single spelling
+sublanguage; selected `GENERAL` explicit spellings are checked independently.
+Three expensive public parse-back fixtures use the finite `COMPACT`
+traversal/stereo lane, with explicit `GENERAL` aliases covered by the normative
+regression.
+
+The second repair's release candidate `_core` has SHA-256
+`bf9ea211c8fe631b0dd5d35943a02e3b928b985bdfcd732e2b51561b4b379132`.
+Seven relevant public modules passed 86 tests in the bounded runner
+(`/tmp/grimace-single-public-final.log`). The South Star 2 native core passed
+302 tests, with one pre-existing ignored test, when the long-running
+`prefix::support_growth_tests::bounded_support_growth` diagnostic was excluded
+(`/tmp/grimace-single-native-core-final.log`). That diagnostic separately
+completed CO, CCO, CC(C)O, and C1CO1 with one and four ring labels, then reached
+the source-declared incomplete C1CO1/all-110-label case and exceeded the
+300-second wall bound without an assertion (`/tmp/grimace-single-support-growth-standalone.log`).
+Both runs reported verified cleanup. Root Rust tests remain unverified: two
+bounded-runner attempts stopped during compilation because process accounting
+could not reconcile transient `/proc` or namespace state, each with verified
+cleanup (`/tmp/grimace-single-root-rust-final.log`,
+`/tmp/grimace-single-root-rust-final-retry.log`).

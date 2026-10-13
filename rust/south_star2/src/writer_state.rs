@@ -134,6 +134,21 @@ pub(crate) struct ObservedWriterState {
 
 impl<S: ConstraintSolver> WriterState<S> {
     #[cfg(test)]
+    pub(crate) fn restricted_bond_domains_for_test(
+        &self,
+        restrictions: &[(BondId, Domain)],
+    ) -> Result<Consistency<Self>, S::Failure> {
+        let restrictions = restrictions.iter().map(|&(bond, domain)| {
+            (decision_variable(&self.prepared, bond), domain)
+        }).collect::<Vec<_>>();
+        Ok(self.constraints.restricted(&restrictions)?.map(|constraints| {
+            let mut next = self.clone();
+            next.constraints = constraints;
+            next
+        }))
+    }
+
+    #[cfg(test)]
     pub(crate) fn initial(prepared: &PreparedMolecule) -> Result<Consistency<Self>, S::Failure> {
         Self::initial_with_component_order(prepared, ComponentOrder::AnyOrder)
     }

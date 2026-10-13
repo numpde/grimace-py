@@ -171,9 +171,9 @@ struct VisibleSuccessor {
 fn initial_assignments() -> Vec<Assignment> {
     let plan_domains = [
         vec![TRAVERSAL, RING_10, RING_01, RING_11],
-        vec![TRAVERSAL, RING_00],
-        vec![TRAVERSAL, RING_00],
-        vec![TRAVERSAL, RING_00],
+        vec![TRAVERSAL, RING_00, RING_10, RING_01, RING_11],
+        vec![TRAVERSAL, RING_00, RING_10, RING_01, RING_11],
+        vec![TRAVERSAL, RING_00, RING_10, RING_01, RING_11],
     ];
     let mut assignments = Vec::new();
     for &p0 in &plan_domains[0] {
@@ -425,7 +425,8 @@ fn opening_choices(source: &OracleState) -> Vec<VisibleSuccessor> {
     let mut choices = Vec::new();
     for bond in [CENTER_A, CENTER_B] {
         for spelling in [Spelling::Omit, Spelling::Emit] {
-            if bond == CENTER_B && matches!(spelling, Spelling::Emit) {
+            for other_endpoint_emit in [false, true] {
+            if other_endpoint_emit && !(bond == CENTER_B && matches!(spelling, Spelling::Omit)) {
                 continue;
             }
             let assignments = source
@@ -434,6 +435,8 @@ fn opening_choices(source: &OracleState) -> Vec<VisibleSuccessor> {
                 .filter(|assignment| {
                     role_is_ring(assignment, bond)
                         && endpoint_support(assignment.plans[bond], Endpoint::First, spelling)
+                        && (bond != CENTER_B || !matches!(spelling, Spelling::Omit)
+                            || assignment.plans[bond] == if other_endpoint_emit { RING_01 } else { RING_00 })
                         && order(assignment.order)
                             .starts_with(&[Ligand::Hydrogen, Ligand::Bond(bond)])
                 })
@@ -456,10 +459,12 @@ fn opening_choices(source: &OracleState) -> Vec<VisibleSuccessor> {
             choices.push(VisibleSuccessor {
                 text: match spelling {
                     Spelling::Omit => "1".to_owned(),
+                    Spelling::Emit if bond == CENTER_B => "-".to_owned(),
                     Spelling::Emit => "=".to_owned(),
                 },
                 successor: semantic(&state),
             });
+            }
         }
     }
     choices

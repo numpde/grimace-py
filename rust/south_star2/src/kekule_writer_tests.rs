@@ -22,7 +22,7 @@ fn segmented_ring(elements: &[(&str, u8, u32)]) -> PreparedNonStereo {
     let atoms = elements.iter().map(|(element, h, valence)| facts(element, true, 0, *h, Some(*valence))).collect();
     PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
         PreparedMolecule::new(graph.build()), atoms,
-        vec![NonStereoBondToken::Aromatic; ids.len()], Vec::new(), false, true,
+        vec![NonStereoBondToken::Aromatic; ids.len()], Vec::new(), WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
     ).unwrap()
 }
 

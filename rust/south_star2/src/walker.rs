@@ -61,7 +61,7 @@ impl PreparedWriter {
             atoms,
             bonds,
             directional.clone(),
-            regime == WriterRegime::GenericCompact,
+            regime,
             matches!(
                 regime,
                 WriterRegime::Generic {
@@ -413,6 +413,43 @@ mod tests {
                 reaches_text(carbon_chain(length, regime).initial().unwrap(), "", text, &mut 5000),
                 "{text} must reach an accepted state"
             );
+        }
+    }
+
+    #[test]
+    fn general_ordinary_single_bonds_admit_explicit_traversal_and_ring_endpoints() {
+        let general = WriterRegime::Generic { component_order: ComponentOrder::AnyOrder };
+        let rooted = carbon_chain(2, general).initial().unwrap().choices().unwrap()
+            .into_iter().find(|choice| choice.text == "C").unwrap().successor;
+        let branch = rooted.choices().unwrap().into_iter()
+            .find(|choice| choice.text == "(").unwrap().successor;
+        assert!(matches!(branch.0.observe_raw().pending,
+            Some(crate::nonstereo_writer::ObservedPending::BranchTraversalEmission { .. })));
+        let branch_tokens = branch.choices().unwrap().into_iter()
+            .map(|choice| choice.text).collect::<Vec<_>>();
+        assert!(branch_tokens.contains(&"C".to_owned()));
+        assert!(branch_tokens.contains(&"-".to_owned()));
+        for text in ["CC", "C-C", "C(C)", "C(-C)"] {
+            assert!(reaches_text(carbon_chain(2, general).initial().unwrap(), "", text, &mut 5000), "{text}");
+        }
+        assert!(!reaches_text(carbon_chain(2, general).initial().unwrap(), "", "C=C", &mut 5000));
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..3).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+        for index in 0..3 {
+            graph.add_bond(atoms[index], atoms[(index + 1) % 3]).unwrap();
+        }
+        let triangle = PreparedWriter::new(
+            graph.build(), vec![AtomToken::Fixed("C".into()); 3],
+            vec![BondToken::Elided; 3], Vec::new(), general,
+        ).unwrap();
+        for text in ["C1CC1", "C-1CC1", "C1CC-1", "C-1CC-1"] {
+            assert!(reaches_text(triangle.initial().unwrap(), "", text, &mut 5000), "{text}");
+        }
+        assert!(!reaches_text(triangle.initial().unwrap(), "", "C=1CC1", &mut 5000));
+
+        for regime in [WriterRegime::GenericCompact, WriterRegime::RdkitRandomNoncanonical] {
+            assert!(!reaches_text(carbon_chain(2, regime).initial().unwrap(), "", "C-C", &mut 5000));
         }
     }
 

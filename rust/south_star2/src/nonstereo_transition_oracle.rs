@@ -10,7 +10,7 @@ use super::{
     BondRepresentation, NonStereoBondToken, NonStereoWriterState, ObservedNonStereoState,
     ObservedPending, PreparedNonStereo,
 };
-use crate::ids::AtomId;
+use crate::ids::{AtomId, BondId};
 use crate::domain::Domain;
 use crate::native::NativeSolverState;
 use crate::prepared::{PreparedGraphBuilder, PreparedMolecule};
@@ -34,7 +34,11 @@ impl FixtureBondToken {
     const fn initial_plan_domain(self) -> OraclePlanDomain {
         match self {
             Self::Elided => OraclePlanDomain::from_bits(
-                OracleBondPlan::Traversal.bit() | OracleBondPlan::Ring00.bit(),
+                OracleBondPlan::Traversal.bit()
+                    | OracleBondPlan::Ring00.bit()
+                    | OracleBondPlan::Ring10.bit()
+                    | OracleBondPlan::Ring01.bit()
+                    | OracleBondPlan::Ring11.bit(),
             ),
             Self::Aromatic
             | Self::Single
@@ -537,10 +541,10 @@ enum OraclePending {
 #[derive(Copy, Clone, Debug)]
 enum OracleAction {
     Root(usize),
-    RingOpen(OracleIncidence, EndpointSpelling),
+    RingOpen(OracleIncidence, EndpointSpelling, bool),
     RingClose(OracleIncidence, EndpointSpelling),
     BranchChild(OracleIncidence),
-    InlineChild(OracleIncidence),
+    InlineChild(OracleIncidence, bool),
     CloseBranch,
 }
 
@@ -602,11 +606,15 @@ impl<'a> OracleEngine<'a> {
             return Vec::new();
         }
         if state.pending.is_some() {
-            return self
-                .apply_pending_once(state)
-                .and_then(|(token, successor)| self.publish_token(token, successor))
-                .into_iter()
-                .collect();
+            let explicit_choices = match state.pending {
+                Some(OraclePending::BranchTraversalEmission { bond, .. })
+                    if self.surface.bonds[bond].token == FixtureBondToken::Elided => &[false, true][..],
+                _ => &[false][..],
+            };
+            return explicit_choices.iter().filter_map(|&explicit| {
+                self.apply_pending_once(state, explicit)
+                    .and_then(|(token, successor)| self.publish_token(token, successor))
+            }).collect();
         }
         self.action_universe(state)
             .into_iter()
@@ -621,11 +629,18 @@ impl<'a> OracleEngine<'a> {
         if let Some(active) = state.active_atom {
             for &incidence in &self.surface.adjacency[active] {
                 for spelling in [EndpointSpelling::Omit, EndpointSpelling::Emit] {
-                    actions.push(OracleAction::RingOpen(incidence, spelling));
+                    actions.push(OracleAction::RingOpen(incidence, spelling, false));
+                    if spelling == EndpointSpelling::Omit
+                        && self.surface.bonds[incidence.bond].token == FixtureBondToken::Elided {
+                        actions.push(OracleAction::RingOpen(incidence, spelling, true));
+                    }
                     actions.push(OracleAction::RingClose(incidence, spelling));
                 }
                 actions.push(OracleAction::BranchChild(incidence));
-                actions.push(OracleAction::InlineChild(incidence));
+                actions.push(OracleAction::InlineChild(incidence, false));
+                if self.surface.bonds[incidence.bond].token == FixtureBondToken::Elided {
+                    actions.push(OracleAction::InlineChild(incidence, true));
+                }
             }
             actions.push(OracleAction::CloseBranch);
         }
@@ -646,7 +661,7 @@ impl<'a> OracleEngine<'a> {
                 && !state.visited[root])
                 .then(|| self.attempt_root(state, root))
                 .flatten(),
-            OracleAction::RingOpen(incidence, spelling) => {
+            OracleAction::RingOpen(incidence, spelling, other_endpoint_emit) => {
                 let active = state.active_atom?;
                 let attachments = self.surface.attachments(state, active);
                 let closures = self.local_closures(state, active);
@@ -658,7 +673,7 @@ impl<'a> OracleEngine<'a> {
                 (ring_phase
                     && attachment.len() > 1
                     && self.opening_is_structurally_eligible(state, attachment, incidence))
-                .then(|| self.attempt_ring_opening(state, incidence, spelling))
+                .then(|| self.attempt_ring_opening(state, incidence, spelling, other_endpoint_emit))
                 .flatten()
             }
             OracleAction::RingClose(incidence, spelling) => {
@@ -684,13 +699,13 @@ impl<'a> OracleEngine<'a> {
                 .then(|| self.attempt_branch_child(state, incidence))
                 .flatten()
             }
-            OracleAction::InlineChild(incidence) => {
+            OracleAction::InlineChild(incidence, explicit) => {
                 let active = state.active_atom?;
                 let attachments = self.surface.attachments(state, active);
                 let ring_phase = !self.local_closures(state, active).is_empty()
                     || attachments.iter().any(|attachment| attachment.len() > 1);
                 (!ring_phase && attachments.len() == 1 && attachments[0].as_slice() == [incidence])
-                    .then(|| self.attempt_inline_child(state, incidence))
+                    .then(|| self.attempt_inline_child(state, incidence, explicit))
                     .flatten()
             }
             OracleAction::CloseBranch => {
@@ -739,11 +754,20 @@ impl<'a> OracleEngine<'a> {
         source: &OracleState,
         incidence: OracleIncidence,
         spelling: EndpointSpelling,
+        other_endpoint_emit: bool,
     ) -> Option<OracleChoice> {
         let active = source.active_atom.unwrap();
         let bond = self.surface.bonds[incidence.bond];
         let endpoint = bond.fixed_endpoint(active);
-        let allowed = OraclePlanDomain::endpoint_projection(endpoint, spelling);
+        let mut allowed = OraclePlanDomain::endpoint_projection(endpoint, spelling);
+        if spelling == EndpointSpelling::Omit && bond.token == FixtureBondToken::Elided {
+            let plan = match (endpoint, other_endpoint_emit) {
+                (FixedEndpoint::A, false) | (FixedEndpoint::B, false) => OracleBondPlan::Ring00,
+                (FixedEndpoint::A, true) => OracleBondPlan::Ring01,
+                (FixedEndpoint::B, true) => OracleBondPlan::Ring10,
+            };
+            allowed = allowed.intersect(OraclePlanDomain::singleton(plan));
+        }
         let mut successor = self.restrict_and_project(source, incidence.bond, allowed)?;
         assert_eq!(
             successor.bond_progress[incidence.bond],
@@ -757,7 +781,7 @@ impl<'a> OracleEngine<'a> {
         match spelling {
             EndpointSpelling::Omit => self.publish_token(OracleToken::RingLabel(label), successor),
             EndpointSpelling::Emit => {
-                let text = bond.token.text_from(bond, active);
+                let text = if bond.token == FixtureBondToken::Elided { "-" } else { bond.token.text_from(bond, active) };
                 assert!(!text.is_empty());
                 successor.pending = Some(OraclePending::RingOpeningLabel {
                     bond: incidence.bond,
@@ -799,7 +823,7 @@ impl<'a> OracleEngine<'a> {
                 self.publish_token(OracleToken::RingLabel(label), successor)
             }
             EndpointSpelling::Emit => {
-                let text = bond.token.text_from(bond, active);
+                let text = if bond.token == FixtureBondToken::Elided { "-" } else { bond.token.text_from(bond, active) };
                 assert!(!text.is_empty());
                 successor.pending = Some(OraclePending::RingClosureLabel {
                     bond: incidence.bond,
@@ -815,6 +839,7 @@ impl<'a> OracleEngine<'a> {
         &mut self,
         source: &OracleState,
         incidence: OracleIncidence,
+        explicit: bool,
     ) -> Option<OracleChoice> {
         let parent = source.active_atom.unwrap();
         let mut successor = self.restrict_and_project(
@@ -822,9 +847,8 @@ impl<'a> OracleEngine<'a> {
             incidence.bond,
             OraclePlanDomain::singleton(OracleBondPlan::Traversal),
         )?;
-        let text = self.surface.bonds[incidence.bond]
-            .token
-            .text_from(self.surface.bonds[incidence.bond], parent);
+        let bond = self.surface.bonds[incidence.bond];
+        let text = if explicit { "-" } else { bond.token.text_from(bond, parent) };
         if text.is_empty() {
             self.enter_child(&mut successor, incidence, false);
             self.publish(self.surface.atom_texts[incidence.atom].clone(), successor)
@@ -863,7 +887,7 @@ impl<'a> OracleEngine<'a> {
         self.publish(")".to_owned(), successor)
     }
 
-    fn apply_pending_once(&mut self, source: &OracleState) -> Option<(OracleToken, OracleState)> {
+    fn apply_pending_once(&mut self, source: &OracleState, explicit: bool) -> Option<(OracleToken, OracleState)> {
         let pending = source.pending?;
         let mut successor = source.clone();
         successor.pending = None;
@@ -894,7 +918,7 @@ impl<'a> OracleEngine<'a> {
             } => {
                 assert_eq!(source.active_atom, Some(parent));
                 let oracle_bond = self.surface.bonds[bond];
-                let text = oracle_bond.token.text_from(oracle_bond, parent);
+                let text = if explicit { "-" } else { oracle_bond.token.text_from(oracle_bond, parent) };
                 if text.is_empty() {
                     self.enter_child(&mut successor, OracleIncidence { atom: child, bond }, true);
                     Some((
@@ -1046,7 +1070,7 @@ impl<'a> OracleEngine<'a> {
                 "forced lexical chain exceeded the current grammar bound"
             );
             let (token, mut successor) = self
-                .apply_pending_once(&temporary)
+                .apply_pending_once(&temporary, false)
                 .expect("a pending oracle state must have one forced transition");
             if successor.pending.is_none() {
                 self.normalize_silently(&mut successor);
@@ -1953,18 +1977,71 @@ struct ConformanceMetrics {
     witnessed_equal_text_distinct_successors: bool,
 }
 
+fn is_elided_production_mark(fixture: &FixtureSpec, choice: &super::Choice<ProductionState>) -> bool {
+    if choice.text() != "-" {
+        return false;
+    }
+    let bond = match choice.successor().observe_raw().pending {
+        Some(ObservedPending::InlineAtom { bond, .. }
+            | ObservedPending::BranchAtom { bond, .. }
+            | ObservedPending::RingOpeningLabel { bond, .. }
+            | ObservedPending::RingClosureLabel { bond, .. }) => bond,
+        other => panic!("single-bond mark must have a pending bond: {other:?}"),
+    };
+    fixture.bonds[bond.index()].token == FixtureBondToken::Elided
+}
+
+fn is_elided_oracle_mark(fixture: &FixtureSpec, choice: &OracleChoice) -> bool {
+    if choice.text != "-" {
+        return false;
+    }
+    let bond = match choice.successor.pending {
+        Some(OraclePending::InlineAtom { bond, .. }
+            | OraclePending::BranchAtom { bond, .. }
+            | OraclePending::RingOpeningLabel { bond, .. }
+            | OraclePending::RingClosureLabel { bond, .. }) => bond,
+        other => panic!("oracle single-bond mark must have a pending bond: {other:?}"),
+    };
+    fixture.bonds[bond].token == FixtureBondToken::Elided
+}
+
 fn assert_fixture_conforms(
     name: &str,
     fixture: &FixtureSpec,
     bounds: ConformanceBounds,
 ) -> ConformanceMetrics {
+    assert_fixture_conforms_with_spelling(name, fixture, bounds, false)
+}
+
+fn assert_fixture_conforms_with_spelling(
+    name: &str,
+    fixture: &FixtureSpec,
+    bounds: ConformanceBounds,
+    omitted_single_only: bool,
+) -> ConformanceMetrics {
     let production_surface = fixture.build_production_surface();
     let oracle_surface = fixture.build_oracle_surface();
-    let production = match ProductionState::initial(&production_surface).unwrap() {
+    let mut production = match ProductionState::initial(&production_surface).unwrap() {
         Consistency::Consistent(state) => state,
         Consistency::Contradiction => panic!("{name}: production preparation contradicted"),
     };
-    let oracle = oracle_surface.initial_state();
+    let mut oracle = oracle_surface.initial_state();
+    if omitted_single_only {
+        let omitted = BondRepresentation::elided_domain();
+        let restrictions = fixture.bonds.iter().enumerate().filter_map(|(index, bond)| {
+            (bond.token == FixtureBondToken::Elided)
+                .then_some((BondId::new(u32::try_from(index).unwrap()), omitted))
+        }).collect::<Vec<_>>();
+        production.structural = production.structural
+            .restricted_bond_domains_for_test(&restrictions).unwrap().unwrap_consistent();
+        for (bond, _) in restrictions {
+            oracle.plan_domains[bond.index()] = oracle.plan_domains[bond.index()]
+                .intersect(OraclePlanDomain::from_bits(
+                    OracleBondPlan::Traversal.bit() | OracleBondPlan::Ring00.bit()
+                ));
+        }
+        assert!(oracle_surface.project_exact(&mut oracle.plan_domains));
+    }
     let initial_production_snapshot = production_snapshot(&production.observe_raw());
     let initial_oracle_snapshot = oracle_snapshot(&oracle_surface, &oracle);
     assert_eq!(
@@ -2019,7 +2096,10 @@ fn assert_fixture_conforms(
             "{name}: production acceptance disagrees with its raw observation"
         );
 
-        let production_choices = match paired.production.choices().map(|choices| choices.into_iter().filter(|choice| super::tests::selected_ring_label_witness(&paired.production, choice)).collect::<Vec<_>>()) {
+        let production_choices = match paired.production.choices().map(|choices| choices.into_iter().filter(|choice| {
+            super::tests::selected_ring_label_witness(&paired.production, choice)
+                && (!omitted_single_only || !is_elided_production_mark(fixture, choice))
+        }).collect::<Vec<_>>()) {
             Ok(choices) => choices,
             Err(failure) => panic!(
                 "{name}: production choice failure {failure:?} after trace {:?}\nsource={production_before:#?}",
@@ -2033,7 +2113,9 @@ fn assert_fixture_conforms(
             paired.trace
         );
         let oracle_source_before = paired.oracle.clone();
-        let oracle_choices = engine.choices(&paired.oracle);
+        let oracle_choices = engine.choices(&paired.oracle).into_iter()
+            .filter(|choice| !omitted_single_only || !is_elided_oracle_mark(fixture, choice))
+            .collect::<Vec<_>>();
         assert_eq!(
             paired.oracle, oracle_source_before,
             "{name}: oracle choice generation mutated its source"
@@ -2321,12 +2403,12 @@ fn every_labelled_simple_graph_through_three_atoms_matches_the_oracle() {
                 &format!("n{atom_count}-mask-{mask:x}"),
                 &fixture,
                 ConformanceBounds {
-                    state_instances: 128,
-                    choice_instances: 128,
-                    states: 128,
-                    transitions: 128,
-                    queue: 32,
-                    exact_assignments_per_projection: 16,
+                    state_instances: 512,
+                    choice_instances: 512,
+                    states: 256,
+                    transitions: 256,
+                    queue: 128,
+                    exact_assignments_per_projection: 125,
                 },
             );
             graph_count += 1;
@@ -2347,12 +2429,12 @@ fn every_acyclic_or_disconnected_four_atom_graph_matches_the_oracle() {
             &format!("n4-forest-mask-{mask:02x}"),
             &fixture,
             ConformanceBounds {
-                state_instances: 256,
-                choice_instances: 256,
-                states: 128,
-                transitions: 192,
-                queue: 32,
-                exact_assignments_per_projection: 16,
+                state_instances: 4_096,
+                choice_instances: 4_096,
+                states: 4_096,
+                transitions: 4_096,
+                queue: 1_024,
+                exact_assignments_per_projection: 625,
             },
         );
         graph_count += 1;
@@ -2361,14 +2443,14 @@ fn every_acyclic_or_disconnected_four_atom_graph_matches_the_oracle() {
 }
 
 #[test]
-fn every_cyclic_four_atom_graph_matches_the_oracle() {
+fn every_cyclic_four_atom_graph_with_omitted_single_bonds_matches_the_oracle() {
     let mut graph_count = 0_usize;
     for mask in 0..simple_graph_count(4) {
         let fixture = simple_graph_fixture(4, mask);
         if !fixture_has_cycle(&fixture) {
             continue;
         }
-        assert_fixture_conforms(
+        assert_fixture_conforms_with_spelling(
             &format!("n4-cyclic-mask-{mask:02x}"),
             &fixture,
             ConformanceBounds {
@@ -2379,6 +2461,7 @@ fn every_cyclic_four_atom_graph_matches_the_oracle() {
                 queue: 256,
                 exact_assignments_per_projection: 64,
             },
+            true,
         );
         graph_count += 1;
     }
@@ -2407,12 +2490,12 @@ fn every_explicit_ring_token_and_fixed_endpoint_order_matches_the_oracle() {
             &format!("explicit-triangle-{token:?}"),
             &fixture,
             ConformanceBounds {
-                state_instances: 128,
-                choice_instances: 128,
-                states: 128,
-                transitions: 128,
-                queue: 32,
-                exact_assignments_per_projection: 16,
+                state_instances: 1_024,
+                choice_instances: 1_024,
+                states: 1_024,
+                transitions: 1_024,
+                queue: 256,
+                exact_assignments_per_projection: 125,
             },
         );
         assert!(
@@ -2447,7 +2530,7 @@ fn simultaneous_explicit_ring_plans_and_labels_match_the_oracle() {
             (2, 3, FixtureBondToken::Elided),
         ],
     );
-    let metrics = assert_fixture_conforms(
+    let metrics = assert_fixture_conforms_with_spelling(
         "two-simultaneous-explicit-rings",
         &two_ring,
         ConformanceBounds {
@@ -2458,6 +2541,7 @@ fn simultaneous_explicit_ring_plans_and_labels_match_the_oracle() {
             queue: 256,
             exact_assignments_per_projection: 128,
         },
+        true,
     );
     assert!(metrics.maximum_open_rings >= 2, "metrics: {metrics:#?}");
     assert!(
@@ -2484,7 +2568,7 @@ fn simultaneous_explicit_ring_plans_and_labels_match_the_oracle() {
             (2, 3, FixtureBondToken::Elided),
         ],
     );
-    let metrics = assert_fixture_conforms(
+    let metrics = assert_fixture_conforms_with_spelling(
         "three-simultaneous-explicit-rings",
         &k4,
         ConformanceBounds {
@@ -2495,6 +2579,7 @@ fn simultaneous_explicit_ring_plans_and_labels_match_the_oracle() {
             queue: 1_024,
             exact_assignments_per_projection: 512,
         },
+        true,
     );
     assert!(metrics.maximum_open_rings >= 3, "metrics: {metrics:#?}");
     assert!(
@@ -2516,7 +2601,7 @@ fn bridged_and_disconnected_explicit_surfaces_match_the_oracle() {
             (4, 3, FixtureBondToken::Triple),
         ],
     );
-    let metrics = assert_fixture_conforms(
+    let metrics = assert_fixture_conforms_with_spelling(
         "mixed-explicit-theta",
         &bridged,
         ConformanceBounds {
@@ -2527,6 +2612,7 @@ fn bridged_and_disconnected_explicit_surfaces_match_the_oracle() {
             queue: 512,
             exact_assignments_per_projection: 1_024,
         },
+        true,
     );
     assert!(
         metrics.witnessed_label_owner_sets.contains(&vec![2, 4]),
@@ -2544,7 +2630,7 @@ fn bridged_and_disconnected_explicit_surfaces_match_the_oracle() {
             (4, 5, FixtureBondToken::Elided),
         ],
     );
-    let metrics = assert_fixture_conforms(
+    let metrics = assert_fixture_conforms_with_spelling(
         "disconnected-explicit-cycles",
         &disconnected,
         ConformanceBounds {
@@ -2555,6 +2641,7 @@ fn bridged_and_disconnected_explicit_surfaces_match_the_oracle() {
             queue: 512,
             exact_assignments_per_projection: 64,
         },
+        true,
     );
     assert!(metrics.maximum_open_rings >= 1);
     assert!(

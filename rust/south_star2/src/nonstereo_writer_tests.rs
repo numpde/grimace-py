@@ -1649,6 +1649,13 @@ fn compact_connected_rings_reuse_label_after_closure() {
 fn reachable_terminal_states<S: ConstraintSolver>(
     state: NonStereoWriterState<S>,
 ) -> Vec<NonStereoWriterState<S>> {
+    reachable_terminal_states_with_bond_spelling(state, true)
+}
+
+fn reachable_terminal_states_with_bond_spelling<S: ConstraintSolver>(
+    state: NonStereoWriterState<S>,
+    include_explicit_single: bool,
+) -> Vec<NonStereoWriterState<S>> {
     let mut pending = vec![(state, 0_usize)];
     let mut complete = Vec::new();
     let mut explored = 0_usize;
@@ -1665,7 +1672,8 @@ fn reachable_terminal_states<S: ConstraintSolver>(
             "nonaccepted writer state has no continuation"
         );
         for choice in choices {
-            if !selected_atom_spelling_transition(&state, &choice, atom_offset)
+            if (!include_explicit_single && choice.text() == "-")
+                || !selected_atom_spelling_transition(&state, &choice, atom_offset)
                 || !selected_ring_label_witness(&state, &choice)
             {
                 continue;
@@ -1738,7 +1746,7 @@ fn surface_prepares_local_bond_representation_domains_without_binary_factors() {
 
     assert_eq!(
         initial_domain(bonds[0]),
-        BondRepresentation::elided_domain()
+        BondRepresentation::elided_domain().union(BondRepresentation::explicit_domain())
     );
     assert_eq!(
         initial_domain(bonds[1]),
@@ -2037,7 +2045,7 @@ fn entered_four_arm_center_reaches_all_six_remaining_orders() {
             .iter()
             .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
-        vec!["[C@]", "[C@@]"]
+        vec!["[C@]", "[C@@]", "[C@]", "[C@@]"]
     );
     let mut orders = BTreeSet::new();
     for (_, atom_state) in atom_choices {
@@ -2391,7 +2399,7 @@ fn adjacent_tetrahedral_centers_resolve_independent_local_orders() {
         .find(|(text, _)| text.contains('@') && !text.contains("@@"))
         .map(|(_, state)| state)
         .unwrap();
-    let terminals = reachable_terminal_states(root);
+    let terminals = reachable_terminal_states_with_bond_spelling(root, false);
 
     assert!(!terminals.is_empty());
     assert!(terminals.iter().all(|terminal| {
@@ -2931,6 +2939,9 @@ fn disconnected_ring_coupled_suffix_resolves_after_first_component() {
                 "nonaccepted disconnected ring-coupled state has no continuation"
             );
             for choice in choices {
+                if choice.text() == "-" {
+                    continue;
+                }
                 if !selected_atom_spelling_transition(&state, &choice, atom_offset) {
                     continue;
                 }
@@ -2945,7 +2956,7 @@ fn disconnected_ring_coupled_suffix_resolves_after_first_component() {
 
     let boundary = boundary.expect("first component must complete before the second root");
     assert!(boundary.labels.is_clean());
-    let terminals = reachable_terminal_states(boundary);
+    let terminals = reachable_terminal_states_with_bond_spelling(boundary, false);
     assert!(!terminals.is_empty());
     for terminal in terminals {
         assert!(terminal.is_accepted());
@@ -3318,7 +3329,7 @@ fn choices_derives_the_source_frontier_once() {
 
     let choices = rooted.choices().unwrap();
 
-    assert_eq!(choices.len(), 220);
+    assert_eq!(choices.len(), 640);
     assert_eq!(
         rooted.structural.candidate_batch_derivation_count(),
         before + 1
@@ -3430,7 +3441,7 @@ fn contradictory_candidate_is_filtered_without_suppressing_its_sibling() {
 
     let choices = rooted.choices().unwrap();
 
-    assert_eq!(choices.len(), 110);
+    assert_eq!(choices.len(), 320);
     assert!(choices.iter().all(|choice| {
         choice
             .successor()
@@ -3562,7 +3573,7 @@ fn all_candidate_spelling_exhaustion_is_typed() {
             SpellingFailure::RingLabelExhausted {
                 next_label: 1,
                 maximum_label: 0,
-                blocked_candidate_count: 2
+                blocked_candidate_count: 6
             }
         ))
     ));
@@ -3662,7 +3673,7 @@ fn viable_unspellable_candidate_outweighs_a_contradictory_sibling() {
             SpellingFailure::RingLabelExhausted {
                 next_label: 1,
                 maximum_label: 0,
-                blocked_candidate_count: 1
+                blocked_candidate_count: 3
             }
         ))
     ));
@@ -3689,7 +3700,7 @@ fn contradiction_precedes_spelling_for_each_candidate() {
     assert!(matches!(
         rooted.choices(),
         Err(ChoiceFailure::Invariant(
-            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 2 }
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 6 }
         ))
     ));
 }
@@ -3838,7 +3849,7 @@ fn elided_triangle_emits_a_complete_ring() {
     let rooted_choices = ring_witness_choices(&rooted);
     assert_eq!(
         rooted_choices.iter().map(Choice::text).collect::<Vec<_>>(),
-        vec!["1", "1"]
+        vec!["1", "1", "-", "1", "1", "-"]
     );
     assert!(rooted_choices[0]
         .successor()
@@ -3846,7 +3857,7 @@ fn elided_triangle_emits_a_complete_ring() {
         .bonds_by_slot
         .values()
         .any(|bond| *bond == left.bond()));
-    assert!(rooted_choices[1]
+    assert!(rooted_choices[3]
         .successor()
         .labels
         .bonds_by_slot
@@ -4177,15 +4188,29 @@ fn assert_ring_placement_mapping(
     expected: &[(&str, BondRepresentation)],
 ) {
     let actual = fixed_ring_placement_results_from(token, root_index);
+    let expected = expected.iter().flat_map(|&(text, plan)| {
+        let atom_positions = text.match_indices(['A', 'Q', 'R'])
+            .map(|(position, _)| position).collect::<Vec<_>>();
+        assert_eq!(atom_positions.len(), 3);
+        (0..4).map(move |spelling| {
+            let mut text = text.to_owned();
+            for edge in (0..2).rev() {
+                if spelling & (1 << edge) != 0 {
+                    text.insert(atom_positions[edge + 1], '-');
+                }
+            }
+            (text, plan)
+        })
+    }).collect::<Vec<_>>();
     assert_eq!(
         actual.len(),
         expected.len(),
         "actual ring witnesses: {actual:?}"
     );
-    for &(text, plan) in expected {
+    for (text, plan) in expected {
         assert!(
             actual.iter().any(|(actual_text, actual_plan)| {
-                actual_text == text && *actual_plan == plan.singleton_domain()
+                actual_text == &text && *actual_plan == plan.singleton_domain()
             }),
             "missing ring placement {text:?} -> {plan:?} in {actual:?}"
         );
@@ -4248,12 +4273,15 @@ fn every_prepared_ring_token_uses_endpoint_relative_placement() {
             ("R->1QA<-1", BondRepresentation::Ring11),
         ],
     );
-    assert_eq!(
-        fixed_ring_placement_results(NonStereoBondToken::Elided),
-        vec![(
-            "A1QR1".to_owned(),
-            BondRepresentation::Ring00.singleton_domain(),
-        )]
+    assert_ring_placement_mapping(
+        NonStereoBondToken::Elided,
+        0,
+        &[
+            ("A1QR1", BondRepresentation::Ring00),
+            ("A-1QR1", BondRepresentation::Ring10),
+            ("A1QR-1", BondRepresentation::Ring01),
+            ("A-1QR-1", BondRepresentation::Ring11),
+        ],
     );
 }
 
@@ -4537,14 +4565,23 @@ fn reference_tree_subtrees(
         for (index, incident) in order.iter().copied().enumerate() {
             let child_support = reference_tree_subtrees(surface, incident.atom(), Some(atom));
             let bond = surface.bond_text(incident.bond(), atom);
+            let bond_spellings: &[&str] = if surface.bond_tokens[incident.bond().index()]
+                == NonStereoBondToken::Elided
+            {
+                &["", "-"]
+            } else {
+                &[bond]
+            };
             let inline = index + 1 == order.len();
             let mut next = Vec::new();
             for prefix in &partial {
                 for child in &child_support {
-                    if inline {
-                        next.push(format!("{prefix}{bond}{child}"));
-                    } else {
-                        next.push(format!("{prefix}({bond}{child})"));
+                    for spelling in bond_spellings {
+                        if inline {
+                            next.push(format!("{prefix}{spelling}{child}"));
+                        } else {
+                            next.push(format!("{prefix}({spelling}{child})"));
+                        }
                     }
                 }
             }
@@ -4765,10 +4802,23 @@ fn cyclic_components_close_and_reuse_ring_label_one() {
         .is_singleton()));
 
     let terminal_paths = reachable_declared_witness_paths(&surface);
-    assert_eq!(terminal_paths.len(), 72);
+    assert_eq!(terminal_paths.len(), 72 * (1 << 8));
+    let triangle_spellings = ["", "-"].into_iter().flat_map(|opening| {
+        ["", "-"].into_iter().flat_map(move |first| {
+            ["", "-"].into_iter().flat_map(move |second| {
+                ["", "-"].into_iter().map(move |closing| {
+                    format!("C{opening}1{first}C{second}C{closing}1")
+                })
+            })
+        })
+    }).collect::<BTreeSet<_>>();
+    let expected = triangle_spellings.iter().flat_map(|first| {
+        triangle_spellings.iter().map(move |second| format!("{first}.{second}"))
+    }).collect::<BTreeSet<_>>();
+    assert_eq!(expected.len(), 1 << 8);
     assert_eq!(
         terminal_paths.into_iter().collect::<BTreeSet<_>>(),
-        BTreeSet::from(["C1CC1.C1CC1".to_owned()])
+        expected
     );
 }
 
@@ -4826,7 +4876,15 @@ fn connected_triangle_support_is_writer_shaped() {
 
     assert_eq!(
         reachable_strings(&surface),
-        BTreeSet::from(["C1CC1".to_owned()])
+        ["", "-"].into_iter().flat_map(|opening| {
+            ["", "-"].into_iter().flat_map(move |first| {
+                ["", "-"].into_iter().flat_map(move |second| {
+                    ["", "-"].into_iter().map(move |closing| {
+                        format!("C{opening}1{first}C{second}C{closing}1")
+                    })
+                })
+            })
+        }).collect::<BTreeSet<_>>()
     );
 }
 
@@ -5920,8 +5978,7 @@ fn explicit_plain_directional_ring_plans_render_at_either_or_both_endpoints() {
                         let ring_glyph_count = text
                             .match_indices(&format!("{glyph}1"))
                             .filter(|(index, _)| text[index + 2..].chars().next() != Some(']'))
-                            .count()
-                            + text.match_indices(&format!("1{glyph}")).count();
+                            .count();
                         assert_eq!(ring_glyph_count, expected_count, "ring output: {text:?}");
                         observed.insert(candidate.value_index());
                     }
@@ -7000,7 +7057,7 @@ fn contradictory_incomplete_ring_candidate_does_not_suppress_valid_siblings() {
     let choices = ring_witness_choices(&rooted);
 
     assert!(!choices.is_empty());
-    assert!(choices.iter().all(|choice| choice.text() == "1"));
+    assert!(choices.iter().all(|choice| matches!(choice.text(), "1" | "-")));
 }
 
 #[test]

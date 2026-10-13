@@ -245,6 +245,19 @@ impl PreparedConstraintAssembly {
             .expect("prepared atom must define a valid ring-count factor")
     }
 
+    pub(crate) fn add_latent_ordered_ring_phase(
+        &mut self,
+        bonds: impl IntoIterator<Item = (crate::ids::BondId, SpanningTreeEdge)>,
+        reference_order: [crate::tetrahedral::TetrahedralLigand; 4],
+        order_variable: VariableId,
+        waiting_mask_variable: VariableId,
+        free_bits: impl IntoIterator<Item = VariableId>,
+    ) -> FactorId {
+        self.builder.add_latent_ordered_ring_phase(
+            bonds, reference_order, order_variable, waiting_mask_variable, free_bits,
+        )
+    }
+
     pub(crate) fn add_aromatic_matching(
         &mut self,
         atom_variables: impl IntoIterator<Item = VariableId>,

@@ -1903,3 +1903,76 @@ passed all 16 public-prefix tests. The extracted and checkout extension
 SHA256 was `38d04e269971fe578b092dd4efdda386b064518f20dd5cd78ad0d457043c825e`;
 the prior checkout extension was backed up. The build and both public runs
 reported verified process cleanup.
+
+## End-state roadmap: shared productive witness
+
+MAXIMAL should expose every and only standard-valid serialization of admitted
+labelled molecular facts, with every published prefix extendible to an accepted
+string. The walker owns traversal events and live labels. The incremental
+constraint engine owns unresolved topology, spelling, stereo, and resource
+relations jointly; the renderer publishes choices already compatible with
+those relations. Writer profiles restrict productions. Neither runtime suffix
+enumeration, output filtering, nor a continuation DAG supplies feasibility.
+
+The proof target is one shared satisfying witness through each transition:
+every valid complete string induces its facts, event sequence, and assignment
+(completeness); every published choice preserves an assignment with a finite
+accepted continuation (productivity); every accepted string realizes exactly
+the admitted facts (soundness). Constructor coverage must show that every
+admitted fact has the required semantic variables and rows, including valid
+ring/stereo/resource combinations. Lexical lifting must show that each
+compatible abstract event has exactly its permitted token spellings and that
+token prefixes preserve the same witness. The current selected witnesses and
+count bound alone establish none of these universal claims. Test principled
+semantic coverage independently of exact RDKit writer support; keep pinned
+RDKit parity as a separate profile obligation. Output-proportional cost remains
+unproved and needs measurement or a bound after correctness.
+
+The next concrete milestone is exact local ring-phase feasibility at atom
+entry, composed with the existing tetrahedral order authority. For each
+assigned order, enumerate the remaining ring incidences in that order. An
+incidence whose bond is already open closes and releases one label; any other
+Ring incidence opens and consumes one. Every prefix of this local sequence
+must fit the actual free-label count. The unordered necessary bound
+`total Ring <= free + 2 * waiting closures` is insufficient: even when the
+bound is at least degree, an opening before a needed closure can fail. Keep
+one ring-resource owner, sharing the established order variable and layout
+rows; do not clamp quotas, cap admitted degree, or add an interpreter.
+
+Before implementation, write finite independent relation tests over role
+patterns, tetra orders, waiting masks, and free-label budgets, comparing the
+relation's projected domains with explicit prefix-capacity arithmetic. Include
+degree four, two waiting closures, one free label, where count is vacuous but
+order binds. First demonstrate a red failure in the current model, review the
+factor design and test, then change runtime code.
+
+### Local ring-phase milestone in the isolated archive
+
+The ordered resource relation for a configured tetrahedral center now shares
+its prepared order variable and physical bond mapping with the existing layout
+factor. At entry, the waiting mask and actual free-label bits are fixed and
+both factors activate in the same solver transition before text publication.
+Other atoms retain the unordered ring-count relation. Native and exhaustive
+projection agree on selected joint topology/layout/resource cases and on
+unfixed waiting/free domains; a finite reference matrix checks three- and
+four-incidence role, order, waiting, and budget partitions. A reachable
+one-label oxirane-like path previously offered both tetrahedral markers, one
+immediately exhausting labels; it now offers only the marker with an accepted
+close-first continuation. This closes that local ring-phase obligation for
+the current tetrahedral model. Global continuation, constructor and lexical
+composition, principled semantic coverage, exact RDKit writer parity, and
+output-proportional cost remain unproved.
+
+Focused bounded native tests passed in the archive. A broad native attempt was
+interrupted by the CPU limit and is not a suite pass; its process-tree cleanup
+was verified. Independent focused review found no remaining actionable issue.
+The integrated bounded offline release build produced wheel SHA-256
+`407246d09b5fb78cf6f1ebb1bbeb48bf4a98a59e30bfd4d41eddc12d794dd0fa`.
+Its extracted extension SHA-256 is
+`2f4d56596792c6404bdf3350512dbb12b2b0e14e95170f3b6094746862fef9b9`.
+The extracted wheel and refreshed checkout extension each passed all 16 public
+prefix tests. The previous ignored checkout extension was backed up at
+`/tmp/grimace-ring-phase-checkout-core-before.so` before replacement. The
+build and both public runs reported verified process-tree cleanup. Focused
+tetrahedral, finite relation, joint native/exhaustive, and existing ordinary
+capacity tests passed under bounded runs.

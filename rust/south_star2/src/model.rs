@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::domain::Domain;
-use crate::ids::{AtomId, FactorId, VariableId};
+use crate::ids::{AtomId, BondId, FactorId, VariableId};
+use crate::tetrahedral::{order_for_value, TetrahedralLigand};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -284,6 +285,44 @@ impl RingCountAtMostFactor {
     pub fn variables(&self) -> &[VariableId] { &self.variables }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrderedRingPhaseFactor {
+    bonds: Box<[(BondId, SpanningTreeEdge)]>,
+    reference_order: [TetrahedralLigand; 4],
+    order_variable: VariableId,
+    waiting_mask_variable: VariableId,
+    free_bits: Box<[VariableId]>,
+    variables: Box<[VariableId]>,
+}
+
+impl OrderedRingPhaseFactor {
+    pub fn bonds(&self) -> &[(BondId, SpanningTreeEdge)] { &self.bonds }
+    pub fn order_variable(&self) -> VariableId { self.order_variable }
+    pub fn waiting_mask_variable(&self) -> VariableId { self.waiting_mask_variable }
+    pub fn free_bits(&self) -> &[VariableId] { &self.free_bits }
+    pub fn variables(&self) -> &[VariableId] { &self.variables }
+
+    pub fn permits(&self, order_value: u8, waiting_mask: u8, free: usize,
+                   mut ring_for: impl FnMut(usize) -> bool) -> bool {
+        let Some(order) = order_for_value(&self.reference_order, order_value) else { return false; };
+        let rings = (0..self.bonds.len()).map(&mut ring_for).collect::<Vec<_>>();
+        if (0..self.bonds.len()).any(|position| waiting_mask & (1 << position) != 0 && !rings[position]) {
+            return false;
+        }
+        let mut available = free;
+        for ligand in order {
+            let TetrahedralLigand::Bond(bond) = ligand else { continue; };
+            let position = self.bonds.iter().position(|(candidate, _)| *candidate == bond)
+                .expect("prepared tetrahedral order must name a factor incidence");
+            if !rings[position] { continue; }
+            if waiting_mask & (1 << position) != 0 { available += 1; }
+            else if available == 0 { return false; }
+            else { available -= 1; }
+        }
+        true
+    }
+}
+
 impl TetrahedralLayoutFactor {
     pub const fn order_variable(&self) -> VariableId {
         self.order_variable
@@ -369,6 +408,7 @@ pub enum FactorDefinition {
     TraversalTopology(TraversalTopologyFactor),
     TetrahedralLayout(TetrahedralLayoutFactor),
     RingCountAtMost(RingCountAtMostFactor),
+    OrderedRingPhase(OrderedRingPhaseFactor),
 }
 
 impl FactorDefinition {
@@ -380,6 +420,7 @@ impl FactorDefinition {
             Self::TraversalTopology(factor) => factor.variables(),
             Self::TetrahedralLayout(factor) => factor.variables(),
             Self::RingCountAtMost(factor) => factor.variables(),
+            Self::OrderedRingPhase(factor) => factor.variables(),
         }
     }
 }
@@ -530,6 +571,43 @@ impl ConstraintModelBuilder {
             bonds: bonds.into_boxed_slice(), budget_bits: budget_bits.into_boxed_slice(),
             variables: variables.into_boxed_slice(),
         }), FactorActivation::Latent)
+    }
+
+    pub(crate) fn add_latent_ordered_ring_phase(
+        &mut self,
+        bonds: impl IntoIterator<Item = (BondId, SpanningTreeEdge)>,
+        reference_order: [TetrahedralLigand; 4],
+        order_variable: VariableId,
+        waiting_mask_variable: VariableId,
+        free_bits: impl IntoIterator<Item = VariableId>,
+    ) -> FactorId {
+        let bonds = bonds.into_iter().collect::<Vec<_>>();
+        let free_bits = free_bits.into_iter().collect::<Vec<_>>();
+        assert!((3..=4).contains(&bonds.len()));
+        assert!(free_bits.len() <= usize::BITS as usize);
+        assert_eq!(bonds.iter().map(|(bond, _)| *bond).collect::<BTreeSet<_>>().len(), bonds.len());
+        assert_eq!(reference_order.iter().filter_map(|ligand| match ligand {
+            TetrahedralLigand::Bond(bond) => Some(*bond),
+            TetrahedralLigand::VirtualHydrogen => None,
+        }).collect::<BTreeSet<_>>().len(), bonds.len());
+        assert!(reference_order.iter().all(|ligand| match ligand {
+            TetrahedralLigand::Bond(bond) => bonds.iter().any(|(candidate, _)| candidate == bond),
+            TetrahedralLigand::VirtualHydrogen => true,
+        }));
+        let mask_domain = self.variables[waiting_mask_variable.index()].initial_domain();
+        assert!(mask_domain.is_subset_of(Domain::from_bits((1_u64 << (1 << bonds.len())) - 1)));
+        for &variable in &free_bits {
+            assert!(self.variables[variable.index()].initial_domain().is_subset_of(Domain::from_bits(3)));
+        }
+        let variables = bonds.iter().map(|(_, edge)| edge.decision_variable())
+            .chain([order_variable, waiting_mask_variable])
+            .chain(free_bits.iter().copied()).collect::<Vec<_>>();
+        assert_eq!(variables.iter().copied().collect::<BTreeSet<_>>().len(), variables.len());
+        self.push_factor(FactorDefinition::OrderedRingPhase(OrderedRingPhaseFactor {
+            bonds: bonds.into_boxed_slice(), reference_order, order_variable,
+            waiting_mask_variable, free_bits: free_bits.into_boxed_slice(),
+            variables: variables.into_boxed_slice(),
+        }), FactorActivation::Latent).expect("prepared ordered ring phase must have valid variables")
     }
 
     pub fn add_aromatic_matching(
@@ -1053,6 +1131,7 @@ impl ConstraintModelBuilder {
                 | FactorDefinition::BinaryRelation(_)
                 | FactorDefinition::DirectionalRingPlacement(_)
                 | FactorDefinition::RingCountAtMost(_) => None,
+                FactorDefinition::OrderedRingPhase(_) => None,
                 FactorDefinition::TraversalTopology(spanning) => spanning
                     .edges()
                     .iter()

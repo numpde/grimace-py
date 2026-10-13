@@ -286,6 +286,20 @@ fn assignment_satisfies(
                         .contains(assignment[bond.decision_variable().index()])
                 }).count() <= budget
             }
+            FactorDefinition::OrderedRingPhase(phase) => {
+                let free = phase.free_bits().iter().enumerate().fold(0_usize, |value, (bit, variable)| {
+                    value | (usize::from(assignment[variable.index()]) << bit)
+                });
+                phase.permits(
+                    assignment[phase.order_variable().index()],
+                    assignment[phase.waiting_mask_variable().index()], free,
+                    |position| {
+                        let edge = &phase.bonds()[position].1;
+                        edge.role_partition().ring_values()
+                            .contains(assignment[edge.decision_variable().index()])
+                    },
+                )
+            }
         }
     })
 }

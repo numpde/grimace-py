@@ -388,6 +388,9 @@ impl NativeSolverState {
                 FactorDefinition::RingCountAtMost(count) => {
                     revise_ring_count_at_most(count, &mut self.domains)?
                 }
+                FactorDefinition::OrderedRingPhase(phase) => {
+                    revise_ordered_ring_phase(phase, &mut self.domains)?
+                }
             };
 
             for variable in reductions {
@@ -475,11 +478,11 @@ impl NativeSolverState {
                 self.factor_is_active(*factor) == Some(true)
             })
             .collect::<Vec<_>>();
-        let active_counts = component.potential_count_factors.iter().copied()
+        let active_resources = component.potential_resource_factors.iter().copied()
             .filter(|factor| self.factor_is_active(*factor) == Some(true))
             .collect::<Vec<_>>();
         if component.always_core_variables.is_empty() && active_layouts.is_empty()
-            && active_counts.is_empty() {
+            && active_resources.is_empty() {
             return Ok(Vec::new());
         }
         let mut core_variables = component.always_core_variables.to_vec();
@@ -498,13 +501,19 @@ impl NativeSolverState {
                 core_variables.push(variable);
             }
         }
-        for factor in &active_counts {
-            let FactorDefinition::RingCountAtMost(count) = self.model.factor(*factor)
-                .expect("active count factor must exist") else {
-                unreachable!("potential count IDs must retain their factor kind");
-            };
-            core_variables.extend(count.budget_bits().iter().copied());
-            core_variables.extend(count.bonds().iter().map(|bond| bond.decision_variable()));
+        for factor in &active_resources {
+            match self.model.factor(*factor).expect("active resource factor must exist") {
+                FactorDefinition::RingCountAtMost(count) => {
+                    core_variables.extend(count.budget_bits().iter().copied());
+                    core_variables.extend(count.bonds().iter().map(|bond| bond.decision_variable()));
+                }
+                FactorDefinition::OrderedRingPhase(phase) => {
+                    core_variables.extend(phase.free_bits().iter().copied());
+                    core_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
+                    core_variables.extend(phase.bonds().iter().map(|(_, edge)| edge.decision_variable()));
+                }
+                _ => unreachable!("potential resource IDs must retain their factor kind"),
+            }
         }
         core_variables.sort_unstable();
         core_variables.dedup();
@@ -515,7 +524,7 @@ impl NativeSolverState {
         if component.always_core_variables.is_empty()
             && !active_layout_cores_overlap
             && !structural_role_is_ambiguous
-            && active_counts.is_empty()
+            && active_resources.is_empty()
         {
             return Ok(Vec::new());
         }
@@ -551,12 +560,15 @@ impl NativeSolverState {
             };
             projected_variables.extend([layout.order_variable(), layout.role_pattern_variable()]);
         }
-        for factor in active_counts {
-            let FactorDefinition::RingCountAtMost(count) = self.model.factor(factor)
-                .expect("active count factor must exist") else {
-                unreachable!("potential count IDs must retain their factor kind");
-            };
-            projected_variables.extend(count.budget_bits().iter().copied());
+        for factor in active_resources {
+            match self.model.factor(factor).expect("active resource factor must exist") {
+                FactorDefinition::RingCountAtMost(count) => projected_variables.extend(count.budget_bits().iter().copied()),
+                FactorDefinition::OrderedRingPhase(phase) => {
+                    projected_variables.extend(phase.free_bits().iter().copied());
+                    projected_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
+                }
+                _ => unreachable!("potential resource IDs must retain their factor kind"),
+            }
         }
         projected_variables.sort_unstable();
         projected_variables.dedup();
@@ -678,7 +690,7 @@ impl NativeExactPlan {
 
             let mut binary_factors = BTreeSet::new();
             let mut potential_layout_factors = BTreeSet::new();
-            let mut potential_count_factors = BTreeSet::new();
+            let mut potential_resource_factors = BTreeSet::new();
             let mut always_core_variables = BTreeSet::new();
             let mut potential_core_variables = BTreeSet::new();
             let mut structural_factors = BTreeSet::new();
@@ -721,7 +733,7 @@ impl NativeExactPlan {
                     }
                     FactorDefinition::RingCountAtMost(count) => {
                         visited_semantic[factor_id.index()] = true;
-                        potential_count_factors.insert(factor_id);
+                        potential_resource_factors.insert(factor_id);
                         potential_core_variables.extend(count.budget_bits().iter().copied());
                         for bond in count.bonds() {
                             structural_partitions
@@ -730,6 +742,19 @@ impl NativeExactPlan {
                                 .or_insert(bond.role_partition());
                         }
                         count.variables()
+                    }
+                    FactorDefinition::OrderedRingPhase(phase) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_resource_factors.insert(factor_id);
+                        potential_core_variables.extend(phase.free_bits().iter().copied());
+                        potential_core_variables.extend([phase.order_variable(), phase.waiting_mask_variable()]);
+                        for (_, bond) in phase.bonds() {
+                            structural_partitions
+                                .entry(bond.decision_variable())
+                                .and_modify(|existing| assert_eq!(*existing, bond.role_partition()))
+                                .or_insert(bond.role_partition());
+                        }
+                        phase.variables()
                     }
                     FactorDefinition::AromaticMatching(_) => {
                         unreachable!(
@@ -752,7 +777,8 @@ impl NativeExactPlan {
                         match model.factor(neighbour).expect("adjacent factor must exist") {
                             FactorDefinition::BinaryRelation(_)
                             | FactorDefinition::TetrahedralLayout(_)
-                            | FactorDefinition::RingCountAtMost(_) => {
+                            | FactorDefinition::RingCountAtMost(_)
+                            | FactorDefinition::OrderedRingPhase(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
                                 }
@@ -785,6 +811,7 @@ impl NativeExactPlan {
                                             FactorDefinition::BinaryRelation(_)
                                                 | FactorDefinition::TetrahedralLayout(_)
                                                 | FactorDefinition::RingCountAtMost(_)
+                                                | FactorDefinition::OrderedRingPhase(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
                                             pending.push_back(candidate);
@@ -801,7 +828,7 @@ impl NativeExactPlan {
             let potential_layout_factors = potential_layout_factors.into_iter().collect::<Vec<_>>();
             let component =
                 if structural_partitions.is_empty() && potential_layout_factors.is_empty()
-                    && potential_count_factors.is_empty() {
+                    && potential_resource_factors.is_empty() {
                     // Arc consistency is exact on an acyclic binary incidence
                     // graph, so only cyclic pure-binary components need search.
                     (binary_factors.len() >= always_core_variables.len()).then(|| {
@@ -826,7 +853,7 @@ impl NativeExactPlan {
                     Some(ExactComponent::Mixed(MixedExactComponent {
                         always_core_variables: always_core_variables.into_boxed_slice(),
                         potential_layout_factors: potential_layout_factors.into_boxed_slice(),
-                        potential_count_factors: potential_count_factors.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                        potential_resource_factors: potential_resource_factors.into_iter().collect::<Vec<_>>().into_boxed_slice(),
                         structural_variables: structural_variables.into_boxed_slice(),
                         projected_variables: projected_variables
                             .into_iter()
@@ -883,7 +910,7 @@ impl ExactComponent {
 struct MixedExactComponent {
     always_core_variables: Box<[VariableId]>,
     potential_layout_factors: Box<[FactorId]>,
-    potential_count_factors: Box<[FactorId]>,
+    potential_resource_factors: Box<[FactorId]>,
     structural_variables: Box<[StructuralProjection]>,
     projected_variables: Box<[VariableId]>,
 }
@@ -1163,6 +1190,68 @@ fn revise_ring_count_at_most(
     for (variable, traversal) in ambiguous {
         domains[variable.index()] = domains[variable.index()].intersect(traversal);
         reductions.push(variable);
+    }
+    Ok(reductions)
+}
+
+fn revise_ordered_ring_phase(
+    factor: &crate::model::OrderedRingPhaseFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<Vec<VariableId>, NativeSolverError> {
+    let mut free = 0_usize;
+    for (bit, &variable) in factor.free_bits().iter().enumerate() {
+        let domain = domains[variable.index()];
+        if !domain.is_singleton() { return Ok(Vec::new()); }
+        free |= usize::from(domain.iter().next().unwrap()) << bit;
+    }
+    let orders = domains[factor.order_variable().index()];
+    let masks = domains[factor.waiting_mask_variable().index()];
+    let mut supported_orders = Domain::empty();
+    let mut supported_masks = Domain::empty();
+    let mut supported_roles = vec![Domain::empty(); factor.bonds().len()];
+    for mask in masks.iter() {
+        for order in orders.iter() {
+            for pattern in 0..(1_u8 << factor.bonds().len()) {
+                let roles_compatible = factor.bonds().iter().enumerate().all(|(position, (_, edge))| {
+                    let role = if pattern & (1 << position) != 0 {
+                        edge.role_partition().ring_values()
+                    } else {
+                        edge.role_partition().traversal_values()
+                    };
+                    !domains[edge.decision_variable().index()].intersect(role).is_empty()
+                });
+                if !roles_compatible || !factor.permits(order, mask, free,
+                    |position| pattern & (1 << position) != 0) { continue; }
+                supported_orders = supported_orders.union(Domain::singleton(order).unwrap());
+                supported_masks = supported_masks.union(Domain::singleton(mask).unwrap());
+                for (position, (_, edge)) in factor.bonds().iter().enumerate() {
+                    let role = if pattern & (1 << position) != 0 {
+                        edge.role_partition().ring_values()
+                    } else {
+                        edge.role_partition().traversal_values()
+                    };
+                    supported_roles[position] = supported_roles[position].union(role);
+                }
+            }
+        }
+    }
+    if supported_orders.is_empty() { return Err(NativeSolverError::Contradiction); }
+    let mut reductions = Vec::new();
+    for (variable, supported) in [(factor.order_variable(), supported_orders),
+        (factor.waiting_mask_variable(), supported_masks)] {
+        let narrowed = domains[variable.index()].intersect(supported);
+        if narrowed != domains[variable.index()] {
+            domains[variable.index()] = narrowed;
+            reductions.push(variable);
+        }
+    }
+    for (position, (_, edge)) in factor.bonds().iter().enumerate() {
+        let variable = edge.decision_variable();
+        let narrowed = domains[variable.index()].intersect(supported_roles[position]);
+        if narrowed != domains[variable.index()] {
+            domains[variable.index()] = narrowed;
+            reductions.push(variable);
+        }
     }
     Ok(reductions)
 }

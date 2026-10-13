@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::domain::Domain;
 use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingPolicy, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
-use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, SpanningTreeEdge, TetrahedralLayoutBond};
+use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefinition, SpanningTreeEdge, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
@@ -381,6 +381,7 @@ pub(crate) struct PreparedNonStereo {
     directional_bonds: Arc<[PreparedDirectionalBondStatus]>,
     directional_sides: Arc<[PreparedDirectionalSide]>,
     ring_count_factors: Arc<[Option<(FactorId, Box<[VariableId]>)>]>,
+    ordered_ring_factors: Arc<[Option<(FactorId, VariableId, Box<[VariableId]>)>]>,
     #[cfg(test)]
     test_atom_labels: Arc<[String]>,
     #[cfg(test)]
@@ -627,7 +628,17 @@ impl PreparedNonStereo {
             .collect::<Vec<_>>();
         let mut assembly =
             PreparedMolecule::constraint_assembly(&molecule, &decision_domains, &role_partitions);
-        let ring_count_factors = graph.atom_ids().map(|atom| {
+        let ring_count_factors = graph.atom_ids().zip(&atoms).map(|(atom, prepared)| {
+            let is_tetrahedral = match prepared {
+                PreparedAtomToken::Facts { tetrahedral_reference_order, .. } => tetrahedral_reference_order.is_some(),
+                #[cfg(test)]
+                PreparedAtomToken::Tetrahedral { .. } => true,
+                #[cfg(test)]
+                PreparedAtomToken::Fixed(_) => false,
+            };
+            if is_tetrahedral {
+                return None;
+            }
             let adjacent = graph.neighbors(atom).expect("prepared atom must have adjacency");
             if adjacent.is_empty() { return None; }
             let max_bound = adjacent.len().min(2 * (MAX_RING_LABEL_INDEX + 1));
@@ -696,6 +707,32 @@ impl PreparedNonStereo {
                 }
             })
             .collect::<Vec<_>>();
+        let ordered_ring_factors = graph.atom_ids().map(|atom| {
+            let center = match &atoms[atom.index()] {
+                PreparedAtom::Facts { tetrahedral: Some(center), .. } => center,
+                _ => return None,
+            };
+            let adjacent = graph.neighbors(atom).expect("prepared atom must have adjacency");
+            let bonds = adjacent.iter().map(|incident| {
+                let id = incident.bond();
+                let bond = graph.bond(id).expect("adjacent bond must exist");
+                (id, SpanningTreeEdge::with_role_partition(
+                    assembly.bond_decision_variable(id), bond.a(), bond.b(),
+                    assembly.bond_role_partition(id),
+                ))
+            }).collect::<Vec<_>>();
+            let mask = assembly.add_isolated_variable(
+                Domain::from_indices(0..(1_u8 << adjacent.len())).unwrap(),
+            );
+            let max_free = adjacent.len().min(MAX_RING_LABEL_INDEX + 1);
+            let width = (usize::BITS - max_free.leading_zeros()) as usize;
+            let bits = (0..width).map(|_| assembly.add_isolated_variable(Domain::from_bits(3)))
+                .collect::<Vec<_>>();
+            let factor = assembly.add_latent_ordered_ring_phase(
+                bonds, center.reference_order, center.order_variable, mask, bits.iter().copied(),
+            );
+            Some((factor, mask, bits.into_boxed_slice()))
+        }).collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
         let segment_topology = allow_segments;
@@ -714,6 +751,7 @@ impl PreparedNonStereo {
             directional_bonds: Arc::from(directional_bonds.into_boxed_slice()),
             directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             ring_count_factors: Arc::from(ring_count_factors.into_boxed_slice()),
+            ordered_ring_factors: Arc::from(ordered_ring_factors.into_boxed_slice()),
             #[cfg(test)]
             test_atom_labels: Arc::from(test_atom_labels.into_boxed_slice()),
             #[cfg(test)]
@@ -3379,9 +3417,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     ) -> Result<Consistency<WriterState<S>>, S::Failure> {
         let mut restrictions = restrictions.to_vec();
         let mut activate = activate.to_vec();
-        if let Some((budget, factor)) = self.ring_count_entry_constraint(candidate) {
+        if let Some((budget, factors)) = self.ring_resource_entry_constraint(candidate) {
             restrictions.extend(budget);
-            activate.push(factor);
+            activate.extend(factors);
         }
         if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate(candidate)
@@ -3400,10 +3438,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
     }
 
-    fn ring_count_entry_constraint(
+    fn ring_resource_entry_constraint(
         &self,
         candidate: StructuralCandidate,
-    ) -> Option<(Vec<(VariableId, Domain)>, FactorId)> {
+    ) -> Option<(Vec<(VariableId, Domain)>, Vec<FactorId>)> {
         let target = match candidate {
             StructuralCandidate::Root { atom }
             | StructuralCandidate::DotBranchRoot { atom }
@@ -3426,7 +3464,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let occupied = self.labels.bonds_by_slot.keys().filter(|slot| {
             (first..=maximum).contains(&slot.index())
         }).count();
-        if capacity.saturating_sub(occupied) >= degree { return None; }
+        let free = capacity.saturating_sub(occupied);
+        if free >= degree { return None; }
         let context = match candidate {
             StructuralCandidate::Root { atom } => {
                 self.structural.prospective_root_layout_context(atom)
@@ -3449,14 +3488,32 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             | StructuralCandidate::FinishSegment => unreachable!("non-entry candidate returned before context construction"),
         };
         assert_eq!(context.order.atom, target);
+        if let Some((factor, mask_variable, bits)) = &self.surface.ordered_ring_factors[target.index()] {
+            let model_factor = self.surface.molecule().constraint_model().factor(*factor)
+                .expect("prepared ordered ring resource factor must exist");
+            let FactorDefinition::OrderedRingPhase(ordered) = model_factor else {
+                unreachable!("tetrahedral ring resource must use the ordered relation")
+            };
+            let waiting = context.waiting_ring_bonds.iter().copied().collect::<BTreeSet<_>>();
+            let mask = ordered.bonds().iter().enumerate().fold(0_u8, |mask, (position, (bond, _))| {
+                mask | (u8::from(waiting.contains(bond)) << position)
+            });
+            let mut restrictions = vec![(*mask_variable, Domain::singleton(mask).unwrap())];
+            restrictions.extend(bits.iter().enumerate().map(|(bit, &variable)| {
+                (variable, Domain::singleton(((free >> bit) & 1) as u8).unwrap())
+            }));
+            let center = self.surface.tetrahedral_center(target)
+                .expect("ordered ring resource must belong to a prepared tetrahedral center");
+            return Some((restrictions, vec![*factor, center.layout_factor(context.order.entry_bond)]));
+        }
         let (factor, bits) = self.surface.ring_count_factors[target.index()].as_ref()?;
-        let bound = capacity.saturating_sub(occupied)
+        let bound = free
             .saturating_add(2 * context.waiting_ring_bonds.len());
         if bound >= degree { return None; }
         let budget = bits.iter().enumerate().map(|(bit, &variable)| {
             (variable, Domain::singleton(((bound >> bit) & 1) as u8).unwrap())
         }).collect();
-        Some((budget, *factor))
+        Some((budget, vec![*factor]))
     }
 
     fn restrict_semantics(

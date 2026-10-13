@@ -1785,11 +1785,20 @@ fn surface_prepares_one_latent_layout_context_per_tetrahedral_entry() {
     .unwrap();
     let model = surface.molecule().constraint_model();
     let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let (resource, mask, free_bits) = surface.ordered_ring_factors[atoms[0].index()].as_ref().unwrap();
+    assert!(surface.ring_count_factors[atoms[0].index()].is_none());
+    let Some(FactorDefinition::OrderedRingPhase(phase)) = model.factor(*resource) else {
+        panic!("tetrahedral center must own one ordered ring resource");
+    };
+    assert_eq!(phase.order_variable(), center.order_variable);
+    assert_eq!(phase.waiting_mask_variable(), *mask);
+    assert_eq!(phase.free_bits(), free_bits.as_ref());
 
     assert_eq!(model.variable_count(), bonds.len() + 2
-        + surface.ring_count_factors.iter().flatten().map(|(_, bits)| bits.len()).sum::<usize>());
+        + surface.ring_count_factors.iter().flatten().map(|(_, bits)| bits.len()).sum::<usize>()
+        + 1 + free_bits.len());
     assert_eq!(model.factor_count(), 1 + bonds.len() + 1
-        + surface.ring_count_factors.iter().flatten().count());
+        + surface.ring_count_factors.iter().flatten().count() + 1);
     assert_eq!(
         model.potential_factors_for_variable(center.order_variable),
         Some(
@@ -1799,6 +1808,7 @@ fn surface_prepares_one_latent_layout_context_per_tetrahedral_entry() {
                 center.entry_layout_factors[1].1,
                 center.entry_layout_factors[2].1,
                 center.entry_layout_factors[3].1,
+                *resource,
             ][..]
         )
     );
@@ -3154,6 +3164,353 @@ fn selected_tetrahedral_ring_order_controls_open_and_close_choices() {
     }
     assert_eq!(saw_first, BTreeSet::from([bonds[2], bonds[3]]));
     assert!(completed_local_orders >= 2);
+}
+
+fn independent_ring_phase_feasible(order: &[usize], ring_mask: u8, waiting_mask: u8, free: usize) -> bool {
+    let mut available = free;
+    for &incidence in order {
+        if ring_mask & (1 << incidence) == 0 { continue; }
+        if waiting_mask & (1 << incidence) != 0 {
+            available += 1;
+        } else if available == 0 {
+            return false;
+        } else {
+            available -= 1;
+        }
+    }
+    true
+}
+
+#[test]
+fn finite_ring_phase_reference_matrix_distinguishes_order_from_count() {
+    let mut checked = 0;
+    let mut count_only_false_positives = 0;
+    for degree in [3_usize, 4] {
+        let permutations = (0..24).map(|value| {
+            let reference = [0_usize, 1, 2, 3];
+            independent_tetrahedral_order(&reference.map(|index| TetrahedralLigand::Bond(BondId::new(index as u32))), value)
+                .map(|ligand| match ligand { TetrahedralLigand::Bond(bond) => bond.index(), _ => unreachable!() })
+        }).map(|order| order.into_iter().filter(|incidence| *incidence < degree).collect::<Vec<_>>())
+            .collect::<BTreeSet<_>>();
+        for order in permutations {
+            for ring_mask in 0..(1_u8 << degree) {
+                for waiting_mask in 0..(1_u8 << degree) {
+                    if waiting_mask & !ring_mask != 0 { continue; }
+                    for free in 0..=degree {
+                        let feasible = independent_ring_phase_feasible(&order, ring_mask, waiting_mask, free);
+                        let count_bound = free + 2 * waiting_mask.count_ones() as usize;
+                        let count_allows = ring_mask.count_ones() as usize <= count_bound;
+                        assert!(!feasible || count_allows, "count remains necessary");
+                        count_only_false_positives += usize::from(count_allows && !feasible);
+                        checked += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(checked > 1000);
+    assert!(count_only_false_positives > 0);
+    assert!(!independent_ring_phase_feasible(&[2, 3, 0, 1], 0b1111, 0b0011, 1));
+    assert!(independent_ring_phase_feasible(&[0, 2, 3, 1], 0b1111, 0b0011, 1));
+    assert!(4 <= 1 + 2 * 2, "degree-four count bound is vacuous in this case");
+}
+
+#[test]
+fn ordered_ring_phase_native_projection_matches_independent_finite_relation() {
+    use crate::model::{ConstraintModelBuilder, TetrahedralLayoutBond};
+    for degree in [3_usize, 4] {
+        let mut builder = ConstraintModelBuilder::new();
+        let bond_ids = (0..degree).map(|index| BondId::new(index as u32)).collect::<Vec<_>>();
+        let roles = (0..degree).map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let mut reference = bond_ids.iter().copied().map(TetrahedralLigand::Bond).collect::<Vec<_>>();
+        if degree == 3 { reference.push(TetrahedralLigand::VirtualHydrogen); }
+        let reference: [TetrahedralLigand; 4] = reference.try_into().unwrap();
+        let order = builder.add_variable(full_order_domain()).unwrap();
+        let pattern = builder.add_variable(full_role_pattern_domain(degree)).unwrap();
+        let waiting = builder.add_variable(Domain::from_indices(0..(1_u8 << degree)).unwrap()).unwrap();
+        let free_bits = (0..3).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+            .collect::<Vec<_>>();
+        let bond_bits = bond_ids.iter().copied().enumerate().map(|(bit, bond)| (bond, bit as u8))
+            .collect::<Vec<_>>();
+        let prefix = if degree == 3 { vec![TetrahedralLigand::VirtualHydrogen] } else { vec![] };
+        let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+        let layout = builder.add_latent_tetrahedral_layout(order, pattern,
+            roles.iter().copied().enumerate().map(|(bit, variable)|
+                TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),
+            rows.iter().copied()).unwrap();
+        let resource = builder.add_latent_ordered_ring_phase(
+            bond_ids.iter().copied().zip(roles.iter().copied()).map(|(bond, variable)|
+                (bond, SpanningTreeEdge::new(variable, AtomId::new(0), AtomId::new(bond.index() as u32 + 1)))),
+            reference, order, waiting, free_bits.iter().copied());
+        let solver = <NativeSolverState as ConstraintSolver>::initial(Arc::new(builder.build()))
+            .unwrap().unwrap_consistent();
+        for role_pattern in 0..(1_u8 << degree) {
+            for waiting_mask in 0..(1_u8 << degree) {
+                if waiting_mask & !role_pattern != 0 { continue; }
+                for free in 0..=degree {
+                    for parity in TetrahedralParity::ALL {
+                        let mut restrictions = vec![
+                            (pattern, Domain::singleton(role_pattern).unwrap()),
+                            (waiting, Domain::singleton(waiting_mask).unwrap()),
+                            (order, parity_domain(parity)),
+                        ];
+                        restrictions.extend(roles.iter().copied().enumerate().map(|(bit, variable)|
+                            (variable, if role_pattern & (1 << bit) != 0 {
+                                BondRole::Ring.singleton_domain()
+                            } else { BondRole::Traversal.singleton_domain() })));
+                        restrictions.extend(free_bits.iter().copied().enumerate().map(|(bit, variable)|
+                            (variable, Domain::singleton(((free >> bit) & 1) as u8).unwrap())));
+                        let expected = Domain::from_indices(rows[role_pattern as usize]
+                            .intersect(parity_domain(parity)).iter().filter(|value| {
+                                let ligand_order = independent_tetrahedral_order(&reference, *value);
+                                let incidence_order = ligand_order.iter().filter_map(|ligand| match ligand {
+                                    TetrahedralLigand::Bond(bond) => Some(bond.index()),
+                                    TetrahedralLigand::VirtualHydrogen => None,
+                                }).collect::<Vec<_>>();
+                                independent_ring_phase_feasible(&incidence_order, role_pattern, waiting_mask, free)
+                            })).unwrap();
+                        let actual = solver.transitioned(&restrictions, &[layout, resource]).unwrap();
+                        if expected.is_empty() {
+                            assert!(matches!(actual, Consistency::Contradiction),
+                                "degree={degree} roles={role_pattern} waiting={waiting_mask} free={free} parity={parity:?}");
+                        } else {
+                            assert_eq!(actual.unwrap_consistent().domain(order), Some(expected),
+                                "degree={degree} roles={role_pattern} waiting={waiting_mask} free={free} parity={parity:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn ordered_ring_phase_joint_layout_projection_matches_exhaustive_and_literal_balance() {
+    use crate::model::{ConstraintModelBuilder, TetrahedralLayoutBond};
+    for (degree, waiting_mask, free, parity) in [
+        (3_usize, 0b010_u8, 0_usize, TetrahedralParity::Even),
+        (3, 0b010, 0, TetrahedralParity::Odd),
+        (4, 0b0011, 1, TetrahedralParity::Even),
+        (4, 0b0011, 1, TetrahedralParity::Odd),
+    ] {
+        let mut builder = ConstraintModelBuilder::new();
+        let ids = (0..degree).map(|index| BondId::new(index as u32)).collect::<Vec<_>>();
+        let roles = (0..degree).map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let mut reference = ids.iter().copied().map(TetrahedralLigand::Bond).collect::<Vec<_>>();
+        if degree == 3 { reference.push(TetrahedralLigand::VirtualHydrogen); }
+        let reference: [TetrahedralLigand; 4] = reference.try_into().unwrap();
+        let order = builder.add_variable(full_order_domain()).unwrap();
+        let pattern = builder.add_variable(full_role_pattern_domain(degree)).unwrap();
+        let waiting = builder.add_variable(Domain::singleton(waiting_mask).unwrap()).unwrap();
+        let free_bits = (0..3).map(|bit| builder.add_variable(
+            Domain::singleton(((free >> bit) & 1) as u8).unwrap()).unwrap()).collect::<Vec<_>>();
+        let bond_bits = ids.iter().copied().enumerate().map(|(bit, bond)| (bond, bit as u8))
+            .collect::<Vec<_>>();
+        let prefix = if degree == 3 { vec![TetrahedralLigand::VirtualHydrogen] } else { vec![] };
+        let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+        let layout = builder.add_latent_tetrahedral_layout(order, pattern,
+            roles.iter().copied().enumerate().map(|(bit, variable)|
+                TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),
+            rows.iter().copied()).unwrap();
+        let resource = builder.add_latent_ordered_ring_phase(
+            ids.iter().copied().zip(roles.iter().copied()).map(|(bond, variable)|
+                (bond, SpanningTreeEdge::new(variable, AtomId::new(0), AtomId::new(bond.index() as u32 + 1)))),
+            reference, order, waiting, free_bits);
+        if degree == 3 {
+            let cross = builder.add_variable(BondRole::role_domain()).unwrap();
+            builder.add_spanning_tree((0..=degree).map(|index| AtomId::new(index as u32)),
+                roles.iter().copied().enumerate().map(|(index, variable)|
+                    SpanningTreeEdge::new(variable, AtomId::new(0), AtomId::new(index as u32 + 1)))
+                    .chain([SpanningTreeEdge::new(cross, AtomId::new(1), AtomId::new(2))])).unwrap();
+        }
+        let model = Arc::new(builder.build());
+        let native = <NativeSolverState as ConstraintSolver>::initial(model.clone()).unwrap().unwrap_consistent();
+        let oracle = <ExhaustiveSolverState as ConstraintSolver>::initial(model).unwrap().unwrap_consistent();
+        let restrictions = [(order, parity_domain(parity))];
+        let native = native.transitioned(&restrictions, &[layout, resource]).unwrap();
+        let oracle = oracle.transitioned(&restrictions, &[layout, resource]).unwrap();
+        let mut expected_pairs = BTreeSet::new();
+        for role_pattern in 0..(1_u8 << degree) {
+            if waiting_mask & !role_pattern != 0 { continue; }
+            // The degree-three graph is a center star plus the 1-2 cross edge.
+            // With bond 1 waiting, its tree has exactly that center bond as Ring.
+            if degree == 3 && role_pattern != 0b010 { continue; }
+            for value in rows[role_pattern as usize].intersect(parity_domain(parity)).iter() {
+                let ligand_order = independent_tetrahedral_order(&reference, value);
+                let incidence_order = ligand_order.iter().filter_map(|ligand| match ligand {
+                    TetrahedralLigand::Bond(bond) => Some(bond.index()),
+                    TetrahedralLigand::VirtualHydrogen => None,
+                }).collect::<Vec<_>>();
+                if independent_ring_phase_feasible(&incidence_order, role_pattern, waiting_mask, free) {
+                    expected_pairs.insert((value, role_pattern));
+                }
+            }
+        }
+        assert!(!expected_pairs.is_empty());
+        let native = native.unwrap_consistent();
+        let oracle = oracle.unwrap_consistent();
+        let expected_orders = Domain::from_indices(expected_pairs.iter().map(|(value, _)| *value)).unwrap();
+        let expected_patterns = Domain::from_indices(expected_pairs.iter().map(|(_, value)| *value)).unwrap();
+        let native_domain = |variable| native.domain(variable);
+        let oracle_domain = |variable| oracle.domain(variable);
+        for domain in [&native_domain as &dyn Fn(VariableId) -> Option<Domain>, &oracle_domain] {
+            assert_eq!(domain(order), Some(expected_orders));
+            assert_eq!(domain(pattern), Some(expected_patterns));
+            for (bit, variable) in roles.iter().copied().enumerate() {
+                let expected = Domain::from_indices(expected_pairs.iter().map(|(_, pattern)|
+                    u8::from(pattern & (1 << bit) != 0))).unwrap();
+                assert_eq!(domain(variable), Some(expected));
+            }
+        }
+        for value in 0..24 {
+            for role_pattern in 0..(1_u8 << degree) {
+                let pair = [(order, Domain::singleton(value).unwrap()),
+                    (pattern, Domain::singleton(role_pattern).unwrap())];
+                let actual = native.restricted(&pair).unwrap();
+                assert_eq!(matches!(actual, Consistency::Consistent(_)),
+                    expected_pairs.contains(&(value, role_pattern)),
+                    "degree={degree} waiting={waiting_mask} free={free} parity={parity:?} order={value} pattern={role_pattern}");
+            }
+        }
+    }
+}
+
+#[test]
+fn ordered_ring_phase_projects_unfixed_waiting_and_free_domains() {
+    use crate::model::{ConstraintModelBuilder, TetrahedralLayoutBond};
+    let mut builder = ConstraintModelBuilder::new();
+    let ids = [BondId::new(0), BondId::new(1), BondId::new(2)];
+    let roles = std::array::from_fn::<_, 3, _>(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+    let reference = [TetrahedralLigand::Bond(ids[0]), TetrahedralLigand::Bond(ids[1]),
+        TetrahedralLigand::Bond(ids[2]), TetrahedralLigand::VirtualHydrogen];
+    let order = builder.add_variable(full_order_domain()).unwrap();
+    let pattern = builder.add_variable(full_role_pattern_domain(3)).unwrap();
+    let waiting = builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap();
+    let free = builder.add_variable(Domain::from_bits(3)).unwrap();
+    let bits = [(ids[0], 0_u8), (ids[1], 1), (ids[2], 2)];
+    let rows = layout_order_rows(&reference, &[TetrahedralLigand::VirtualHydrogen], &bits);
+    let layout = builder.add_latent_tetrahedral_layout(order, pattern,
+        roles.iter().copied().enumerate().map(|(bit, variable)|
+            TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),
+        rows.iter().copied()).unwrap();
+    let resource = builder.add_latent_ordered_ring_phase(
+        ids.into_iter().zip(roles).map(|(bond, variable)|
+            (bond, SpanningTreeEdge::new(variable, AtomId::new(0), AtomId::new(bond.index() as u32 + 1)))),
+        reference, order, waiting, [free]);
+    let model = Arc::new(builder.build());
+    let native = <NativeSolverState as ConstraintSolver>::initial(model.clone()).unwrap().unwrap_consistent();
+    let oracle = <ExhaustiveSolverState as ConstraintSolver>::initial(model).unwrap().unwrap_consistent();
+    let mut restrictions = vec![(pattern, Domain::singleton(0b111).unwrap())];
+    restrictions.extend(roles.map(|variable| (variable, BondRole::Ring.singleton_domain())));
+    let native = native.transitioned(&restrictions, &[layout, resource]).unwrap().unwrap_consistent();
+    let oracle = oracle.transitioned(&restrictions, &[layout, resource]).unwrap().unwrap_consistent();
+    let expected = (0..24).flat_map(|value| (0..=1).flat_map(move |mask| (0..=1).map(move |budget|
+        (value, mask, budget as u8)))).filter(|(value, mask, budget)| {
+        let ligand_order = independent_tetrahedral_order(&reference, *value);
+        let indices = ligand_order.iter().filter_map(|ligand| match ligand {
+            TetrahedralLigand::Bond(bond) => Some(bond.index()),
+            TetrahedralLigand::VirtualHydrogen => None,
+        }).collect::<Vec<_>>();
+        rows[7].contains(*value) && independent_ring_phase_feasible(&indices, 0b111, *mask, usize::from(*budget))
+    }).collect::<BTreeSet<_>>();
+    assert!(!expected.is_empty());
+    let expected_order = Domain::from_indices(expected.iter().map(|(value, _, _)| *value)).unwrap();
+    let expected_waiting = Domain::from_indices(expected.iter().map(|(_, mask, _)| *mask)).unwrap();
+    let expected_free = Domain::from_indices(expected.iter().map(|(_, _, free)| *free)).unwrap();
+    for (variable, projected) in [(order, expected_order), (waiting, expected_waiting), (free, expected_free)] {
+        assert_eq!(native.domain(variable), Some(projected));
+        assert_eq!(oracle.domain(variable), Some(projected));
+    }
+    for value in 0..24 {
+        for mask in 0..=1 {
+            for budget in 0..=1 {
+                let tuple = [(order, Domain::singleton(value).unwrap()),
+                    (waiting, Domain::singleton(mask).unwrap()),
+                    (free, Domain::singleton(budget).unwrap())];
+                let permitted = expected.contains(&(value, mask, budget));
+                assert_eq!(matches!(native.restricted(&tuple).unwrap(), Consistency::Consistent(_)), permitted);
+                assert_eq!(matches!(oracle.restricted(&tuple).unwrap(), Consistency::Consistent(_)), permitted);
+            }
+        }
+    }
+}
+
+#[test]
+fn zero_free_label_prunes_tetra_marker_that_opens_before_waiting_closure() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds = [
+        graph.add_bond(atoms[0], atoms[1]).unwrap(),
+        graph.add_bond(atoms[1], atoms[2]).unwrap(),
+        graph.add_bond(atoms[0], atoms[2]).unwrap(),
+        graph.add_bond(atoms[2], atoms[3]).unwrap(),
+    ];
+    let reference = [
+        TetrahedralLigand::Bond(bonds[1]),
+        TetrahedralLigand::Bond(bonds[2]),
+        TetrahedralLigand::Bond(bonds[3]),
+        TetrahedralLigand::VirtualHydrogen,
+    ];
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Fixed("O".to_owned()),
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: reference,
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("F".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut start = initial(&surface);
+    start.labels.maximum_spelling_label = Some(0);
+    let (_, rooted) = only_root_atom(&start, atoms[0]);
+    let opened = rooted.choices().unwrap().into_iter().find(|choice| {
+        choice.text() == "0" && matches!(choice.successor().observe_raw().structural.traversal.bond_progress[bonds[2].index()],
+            ObservedBondProgress::RingOpen { first_endpoint } if first_endpoint == atoms[0])
+    }).expect("A-C can open the only label").into_successor();
+    let (_, at_b) = only_choice(&opened, "C");
+    let entered = completed_atom_witnesses(&at_b, atoms[2]);
+    assert_eq!(opened.labels.bonds_by_slot.len(), 1);
+    assert_eq!(opened.labels.bonds_by_slot.values().copied().collect::<Vec<_>>(), vec![bonds[2]]);
+    assert!(entered.iter().all(|(_, state)| state.structural.active_local_layout_context().waiting_ring_bonds == vec![bonds[2]]));
+    let close_first = [reference[0], reference[3], reference[1], reference[2]];
+    let expected_marker = if independent_tetrahedral_order_is_even(&reference,
+        (0..24).find(|value| independent_tetrahedral_order(&reference, *value) == close_first).unwrap()) {
+        "[C@H]"
+    } else {
+        "[C@@H]"
+    };
+    let close_first_state = entered.iter().find(|(marker, _)| marker == expected_marker)
+        .expect("close-first marker must be available before pruning").1.clone();
+    let center = surface.tetrahedral_center(atoms[2]).unwrap();
+    let selected = Domain::from_indices((0..24).filter(|value|
+        independent_tetrahedral_order(&reference, *value) == close_first)).unwrap();
+    assert_eq!(close_first_state.structural.semantic_domain(center.order_variable), selected);
+    assert!(close_first_state.choices().unwrap().iter().any(|choice| {
+        matches!(choice.successor().observe_raw().structural.traversal.bond_progress[bonds[2].index()],
+            ObservedBondProgress::RingClosed { .. })
+    }), "the surviving marker can close its waiting ring first");
+    let mut frontier = vec![close_first_state];
+    let mut visited = 0;
+    let mut accepted = false;
+    while let Some(state) = frontier.pop() {
+        visited += 1;
+        assert!(visited <= 5000, "close-first completion exceeded finite test budget");
+        if state.is_accepted() { accepted = true; break; }
+        if let Ok(choices) = state.choices() {
+            frontier.extend(choices.into_iter().map(Choice::into_successor));
+        }
+    }
+    assert!(accepted, "close-first marker must have an accepted continuation");
+    assert_eq!(entered.iter().map(|(marker, _)| marker.as_str()).collect::<BTreeSet<_>>(),
+        BTreeSet::from([expected_marker]),
+        "with no free label, closing A-C must precede opening C-F at atom entry");
 }
 
 #[test]

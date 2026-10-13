@@ -387,12 +387,10 @@ def prepare_molecule(mol: object) -> PreparedMolecule:
         )
         if tetrahedral:
             incident_bonds = tuple(bond.GetIdx() for bond in atom.GetBonds())
-            if atom.GetAtomicNum() != 6 or (
-                len(incident_bonds), non_graph_hydrogens
-            ) not in ((3, 1), (4, 0)):
+            if (len(incident_bonds), non_graph_hydrogens) not in ((3, 1), (4, 0)):
                 raise ValueError(
-                    f"Cannot prepare tetrahedral atom {index}: expected carbon with three graph "
-                    "bonds and one non-graph hydrogen, or four graph bonds and none"
+                    f"Cannot prepare tetrahedral atom {index}: a configured center requires "
+                    "three graph bonds and one non-graph hydrogen, or four graph bonds and none"
                 )
             # RDKit's tetrahedral tag is relative to its incident-bond order;
             # a non-graph hydrogen occupies the final reference position.

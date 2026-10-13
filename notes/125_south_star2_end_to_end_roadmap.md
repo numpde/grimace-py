@@ -1781,3 +1781,22 @@ tests passed against its extracted package. A public MAXIMAL prefix witness
 accepted `c1ccccc1-c1ccccc1` and rejected the omitted-bridge spelling
 `c1ccccc1c1ccccc1`; the same witness passed against the refreshed checkout
 extension. Each bounded run reported verified process cleanup.
+
+## 2026-10-13 noncarbon tetrahedral admission
+
+Preparation now admits an RDKit configured tetrahedral tag when its four
+represented ligand slots are either four incident graph bonds with no non-graph
+hydrogen or three incident graph bonds with exactly one non-graph hydrogen.
+Element is not part of this gate. The incident-bond order and virtual-H slot
+continue to define the prepared parity reference. Other atom, charge, valence,
+and spelling checks remain at their existing boundaries. A configured
+three-bond center with no hydrogen still has no fourth modeled ligand and is
+rejected; supporting a lone pair would require an explicit fact and order
+model rather than treating the vacancy as hydrogen.
+
+Guided public paths for `[Si@H](F)(Cl)Br` and `[N@+](C)(F)(Cl)Br` now check
+acceptance in MAXIMAL and COMPACT from original and renumbered input, rejection
+of the opposite marker, and RDKit parse-back distinction for these examples.
+These establish selected semantic witnesses, not complete tetrahedral language
+coverage or RDKit random-writer support. That writer profile still has its
+separate narrow C/O admission boundary.

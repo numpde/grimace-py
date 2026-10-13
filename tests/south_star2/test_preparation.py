@@ -205,10 +205,35 @@ class SouthStar2PreparationTests(unittest.TestCase):
         self.assertTrue(ccw_fact.at_for_even_parity)
         self.assertFalse(cw_fact.at_for_even_parity)
 
-    def test_rejects_tetrahedral_stereo_outside_the_supported_carbon_scope(self) -> None:
+    def test_prepares_noncarbon_tetrahedral_four_graph_ligands(self) -> None:
         mol = Chem.MolFromSmiles("[N@+](C)(F)(Cl)Br")
         assert mol is not None
-        with self.assertRaisesRegex(ValueError, "expected carbon with three graph bonds"):
+        center = mol.GetAtomWithIdx(0)
+        tetrahedral = prepare_molecule(mol).atoms[0]
+        self.assertIsInstance(tetrahedral, TetrahedralAtom)
+        assert isinstance(tetrahedral, TetrahedralAtom)
+        self.assertEqual(tetrahedral.facts.element, "N")
+        self.assertEqual(tetrahedral.facts.formal_charge, 1)
+        self.assertEqual(tetrahedral.reference_order, tuple(bond.GetIdx() for bond in center.GetBonds()))
+
+    def test_prepares_noncarbon_tetrahedral_one_hydrogen(self) -> None:
+        mol = Chem.MolFromSmiles("[Si@H](F)(Cl)Br")
+        assert mol is not None
+        center = mol.GetAtomWithIdx(0)
+        tetrahedral = prepare_molecule(mol).atoms[0]
+        self.assertIsInstance(tetrahedral, TetrahedralAtom)
+        assert isinstance(tetrahedral, TetrahedralAtom)
+        self.assertEqual(tetrahedral.facts.element, "Si")
+        self.assertEqual(tetrahedral.facts.non_graph_hydrogens, 1)
+        self.assertEqual(tetrahedral.reference_order, (
+            *tuple(bond.GetIdx() for bond in center.GetBonds()), VirtualHydrogen.INSTANCE,
+        ))
+
+    def test_rejects_configured_tetrahedral_center_without_four_ligands(self) -> None:
+        mol = Chem.MolFromSmiles("N(F)(Cl)Br")
+        assert mol is not None
+        mol.GetAtomWithIdx(0).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
+        with self.assertRaisesRegex(ValueError, "three graph bonds and one non-graph hydrogen, or four graph bonds and none"):
             prepare_molecule(mol)
 
     def test_prepares_four_bond_tetrahedral_carbon_without_hydrogen(self) -> None:

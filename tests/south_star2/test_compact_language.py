@@ -93,6 +93,20 @@ class CompactLanguageTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixture = json.loads(FIXTURE.read_text())
 
+    def test_noncarbon_tetrahedral_four_ligand_shapes(self) -> None:
+        for source_smiles, opposite in (
+            ("[Si@H](F)(Cl)Br", "[Si@@H](F)(Cl)Br"),
+            ("[N@+](C)(F)(Cl)Br", "[N@@+](C)(F)(Cl)Br"),
+        ):
+            source = _parse(source_smiles)
+            renumbered = Chem.RenumberAtoms(source, list(reversed(range(source.GetNumAtoms()))))
+            for language in (decoding.SmilesLanguage.MAXIMAL, LANGUAGE):
+                with self.subTest(source=source_smiles, language=language):
+                    self.assertIsNotNone(_walk_language(source, source_smiles, language))
+                    self.assertIsNotNone(_walk_language(renumbered, source_smiles, language))
+                    self.assertIsNone(_walk_language(source, opposite, language))
+                    self.assertNotEqual(_canonical_semantics(source_smiles), _canonical_semantics(opposite))
+
     def test_configured_alkene_carrier_crosses_dot_as_ring(self) -> None:
         for source_smiles, ring_mark, wrong_mark in (
             ("F/C=C/Cl", "/", "\\"),

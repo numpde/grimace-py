@@ -119,7 +119,7 @@ that property.
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
 | Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `MAXIMAL` and `COMPACT`; selected tetrahedral ring-segment and leading-dot branch witnesses also pass in both languages | Extend qualification to other leading-dot stereo paths and unqualified syntax |
 | Aromaticity | Aromatic, Kekule, and selected mixed bare or bracket spellings in `MAXIMAL` and `COMPACT` | Qualify remaining mixed spellings, bond omissions, and aromatic semantic cases |
-| Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
+| Stereo | Configured tetrahedral centers with three graph bonds and one non-graph hydrogen, or four graph bonds and none, are admitted independent of element; selected noncarbon and E/Z cases have semantic checks, and selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level and branch-local dot segments,
 including leading-dot branches, with ring obligations crossing segment

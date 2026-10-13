@@ -98,6 +98,7 @@ pub(crate) struct ObservedFrame {
     pub(crate) entry_bond: Option<BondId>,
     pub(crate) emitted_bonds: Vec<BondId>,
     pub(crate) ring_occurrence_count: usize,
+    pub(crate) branch_started: bool,
     pub(crate) attachment_groups: Vec<Vec<AdjacentBond>>,
 }
 
@@ -780,6 +781,7 @@ impl TraversalState {
             entry_bond: frame.entry_bond,
             emitted_bonds: frame.emitted_bonds.clone(),
             ring_occurrence_count: frame.ring_occurrence_count,
+            branch_started: frame.branch_started,
             attachment_groups: frame
                 .attachments
                 .iter()

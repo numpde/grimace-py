@@ -964,7 +964,7 @@ mod tests {
     use crate::model::EdgeRolePartition;
     use crate::native::NativeSolverState;
     use crate::prepared::PreparedGraphBuilder;
-    use crate::traversal::ObservedBondProgress;
+    use crate::traversal::{ObservedBondProgress, ObservedTraversalState};
 
     #[derive(Clone)]
     struct MissingDomainSolver;
@@ -1118,6 +1118,106 @@ mod tests {
             .finish_with_topology(crate::model::TraversalTopologyRequirement::Forest)
     }
 
+    // A ring opened at a visited atom must still have a place to write its
+    // second occurrence once the other endpoint has been visited.
+    fn check_named_ring_endpoints(
+        graph: &crate::prepared::PreparedGraph,
+        raw: &ObservedTraversalState,
+    ) -> Result<(), &'static str> {
+        for bond in graph.bond_ids() {
+            let edge = graph.bond(bond).unwrap();
+            let a_visited = raw.visited_atoms.contains(&edge.a());
+            let b_visited = raw.visited_atoms.contains(&edge.b());
+            match raw.bond_progress[bond.index()] {
+                ObservedBondProgress::Unrepresented if a_visited && b_visited => {
+                    return Err("unrepresented bond has two visited endpoints");
+                }
+                ObservedBondProgress::RingOpen { first_endpoint } => {
+                    let other = edge.other(first_endpoint).expect("named ring endpoint belongs to bond");
+                    if !raw.visited_atoms.contains(&first_endpoint) {
+                        return Err("ring first endpoint is unvisited");
+                    }
+                    if raw.visited_atoms.contains(&other) {
+                        let Some(active) = &raw.active_frame else {
+                            return Err("visited ring second endpoint has no active frame");
+                        };
+                        if active.atom != other || active.branch_started
+                            || active.ring_occurrence_count != active.emitted_bonds.len()
+                        {
+                            return Err("visited ring second endpoint cannot emit its occurrence");
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn named_ring_endpoint_remains_writable_across_stable_frame_transitions() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let cross = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let child = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let graph = prepared.graph();
+        let state = rooted(&prepared, atoms[0]);
+        check_named_ring_endpoints(graph, &state.observe_raw().traversal).unwrap();
+        let mut prematurely_visited = state.observe_raw().traversal;
+        prematurely_visited.visited_atoms.push(atoms[1]);
+        assert_eq!(
+            check_named_ring_endpoints(graph, &prematurely_visited),
+            Err("unrepresented bond has two visited endpoints")
+        );
+        let state = offered_step(&state, StructuralCandidate::RingOpen {
+            incident: incident(&prepared, atoms[0], cross),
+        });
+        check_named_ring_endpoints(graph, &state.observe_raw().traversal).unwrap();
+        let state = offered_step(&state, StructuralCandidate::DotSegmentRoot { atom: atoms[2] });
+        let raw = state.observe_raw().traversal;
+        check_named_ring_endpoints(graph, &raw).unwrap();
+
+        let entry = incident(&prepared, atoms[2], child);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
+            .enter_committed_inline_child(entry);
+        let ready_to_close = state.observe_raw().traversal;
+        check_named_ring_endpoints(graph, &ready_to_close).unwrap();
+
+        // Both bonds already have valid progress. Each mutation below makes
+        // only the named second ring occurrence unavailable.
+        let mut no_active = ready_to_close.clone();
+        no_active.active_frame = None;
+        assert_eq!(
+            check_named_ring_endpoints(graph, &no_active),
+            Err("visited ring second endpoint has no active frame")
+        );
+        let mut sealed = ready_to_close.clone();
+        sealed.active_frame.as_mut().unwrap().branch_started = true;
+        assert_eq!(
+            check_named_ring_endpoints(graph, &sealed),
+            Err("visited ring second endpoint cannot emit its occurrence")
+        );
+        let mut past_ring_phase = ready_to_close.clone();
+        past_ring_phase.active_frame.as_mut().unwrap().ring_occurrence_count = 1;
+        assert_eq!(
+            check_named_ring_endpoints(graph, &past_ring_phase),
+            Err("visited ring second endpoint cannot emit its occurrence")
+        );
+        let mut unvisited_first = ready_to_close.clone();
+        unvisited_first.visited_atoms.retain(|atom| *atom != atoms[0]);
+        assert_eq!(
+            check_named_ring_endpoints(graph, &unvisited_first),
+            Err("ring first endpoint is unvisited")
+        );
+
+        let state = offered_step(&state, StructuralCandidate::RingClose {
+            incident: incident(&prepared, atoms[1], cross),
+            first_endpoint: atoms[0],
+        });
+        check_named_ring_endpoints(graph, &state.observe_raw().traversal).unwrap();
+    }
+
     #[test]
     fn forest_parent_retains_a_sibling_after_branching_into_one_chemical_attachment() {
         let mut graph = PreparedGraphBuilder::new();
@@ -1207,9 +1307,12 @@ mod tests {
         let cross = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let prepared = forest(graph.build());
         let state = rooted(&prepared, atoms[0]);
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let state = offered_step(&state, StructuralCandidate::DotBranchRoot { atom: atoms[2] });
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let opening = incident(&prepared, atoms[2], cross);
         let state = offered_step(&state, StructuralCandidate::RingOpen { incident: opening });
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let raw = state.observe_raw().traversal;
         assert_eq!(raw.visited_atoms, vec![atoms[0], atoms[2]]);
         assert_eq!(raw.branch_returns.len(), 1);
@@ -1217,6 +1320,7 @@ mod tests {
             first_endpoint: atoms[2],
         });
         let state = offered_step(&state, StructuralCandidate::CloseBranch);
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let raw = state.observe_raw().traversal;
         assert_eq!(raw.active_frame.unwrap().atom, atoms[0]);
         assert!(raw.branch_returns.is_empty());
@@ -1226,11 +1330,13 @@ mod tests {
         let entry = incident(&prepared, atoms[0], parent);
         let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
             .enter_committed_inline_child(entry);
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let closing = incident(&prepared, atoms[1], cross);
         let state = offered_step(&state, StructuralCandidate::RingClose {
             incident: closing,
             first_endpoint: atoms[2],
         });
+        check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let raw = state.observe_raw().traversal;
         assert_eq!(raw.visited_atoms, atoms);
         assert_eq!(raw.bond_progress[parent.index()], ObservedBondProgress::Traversed {

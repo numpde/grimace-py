@@ -1468,3 +1468,39 @@ correspondence proof still needs to show that every valid structural schedule
 projects to an offered candidate at each prefix and that every offered
 structural state retains some completing schedule under the prepared factor
 domains.
+
+The next named-endpoint check makes one necessary condition explicit at stable
+constructor boundaries. For an open ring, its named first endpoint must be an actual
+visited endpoint of its bond. If its other endpoint has already been visited,
+that endpoint must be the active frame and its ring phase must still be open.
+A suspended or finished endpoint cannot acquire a later ring occurrence. The
+native test reconstructs this fact from the prepared bond's endpoints, visited
+atoms, bond progress, and the observed active frame; it also
+rejects an unrepresented bond whose endpoints are both visited. Malformed
+observations from a valid closing state remove the active frame or seal its
+ring phase while retaining represented bond progress; each isolates the
+missing ring condition. This is a prefix invariant, not
+an observed public failure or a completion theorem.
+
+For a constructive structural extension argument, a total role assignment
+must partition *all* bonds into Traversal and Ring, and assign each atom a
+root role, compatibly with all current bond and root restrictions and
+applicable structural factors. Represented Traversal edges on visited atoms
+must form trees, each with exactly one emitted segment root. A further frame
+premise must account for the active atom, every suspended branch parent,
+permanently finished atoms, and the ordinary branch return or dot-segment
+boundary; the current named-endpoint check does not establish that premise.
+
+Given those premises, acyclicity and the rooted-Forest law give at most one
+visited Traversal attachment into a rootless unvisited Traversal component.
+To turn that graph fact into a child-entry step, first emit every outstanding
+Ring incidence at the active atom. A suspended frame must have only Traversal
+incidences remaining, and a finished atom must have none. If the proposed
+child then had a second unrepresented edge to a visited atom, that edge would
+also have to be Traversal, contradicting the one-attachment graph fact. A
+component with no visited Traversal attachment instead needs a separate
+root-domain and frontier availability argument. The graph fact, preservation
+of its premises through transitions, and publication of each abstract event
+as a candidate are distinct obligations; the latter two remain unproved.
+Ring-label capacity, chemistry, profile restrictions, and later factor
+activation remain separate obligations.

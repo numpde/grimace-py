@@ -23,6 +23,7 @@ class _SouthStar2PreparedWriter:
         writer_regime: Literal[
             "generic_any_order",
             "generic_input_order",
+            "generic_compact",
             "rdkit_random_noncanonical",
         ],
         directional: tuple[tuple[int, int, int, int, int, bool], ...] = (),

@@ -1297,3 +1297,19 @@ bounded-runner attempts stopped during compilation because process accounting
 could not reconcile transient `/proc` or namespace state, each with verified
 cleanup (`/tmp/grimace-single-root-rust-final.log`,
 `/tmp/grimace-single-root-rust-final-retry.log`).
+
+## 2026-10-13 MAXIMAL contract naming
+
+The public `SmilesLanguage.MAXIMAL` (`"maximal"`) is the normative every-and-only
+OpenSMILES language for admitted molecular facts described in
+`docs/api/smiles-language.md`; it is the default. This name denotes the target
+contract, not completion. `COMPACT` remains a distinct restricted spelling
+policy, and RDKit writer parity remains a separate contract. The earlier
+`GENERAL` terminology in this dated roadmap records historical snapshots.
+
+The current MAXIMAL implementation has known defects against that contract
+and incomplete qualification of traversal, aromatic, stereo, and lexical
+coverage. The prior ordinary-single-bond and isotope counterexamples were
+repaired; their passing checks are focused evidence, not a completeness proof.
+Audit against the normative contract and record further counterexamples as
+defects rather than renaming or narrowing the policy.

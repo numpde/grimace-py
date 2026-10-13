@@ -1,7 +1,8 @@
 """Immutable prefixes for a bounded OpenSMILES atom-and-writer language.
 
 RDKit supplies molecular facts once; Rust owns spelling and online traversal.
-The default is an implemented language subset, not a complete SMILES grammar.
+MAXIMAL names the every-and-only OpenSMILES contract for admitted facts.
+The implementation has known coverage defects against that contract.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 class SmilesLanguage(Enum):
     """Supported SMILES languages for immutable prefix decoding."""
 
-    GENERAL = "general"
+    MAXIMAL = "maximal"
     COMPACT = "compact"
     RDKIT_RANDOM_NONCANONICAL = "rdkit_random_noncanonical"
 
@@ -57,12 +58,13 @@ class Prefix:
 def start(
     mol: Chem.Mol,
     *,
-    language: SmilesLanguage = SmilesLanguage.GENERAL,
+    language: SmilesLanguage = SmilesLanguage.MAXIMAL,
 ) -> Prefix:
     """Prepare an RDKit molecule and return its initial immutable prefix.
 
     Preparation snapshots supported molecular and stereo facts from the
-    installed RDKit. ``SmilesLanguage.GENERAL`` exposes the implemented OpenSMILES subset;
+    installed RDKit. ``SmilesLanguage.MAXIMAL`` targets every fact-preserving OpenSMILES spelling;
+    current implementation gaps are defects against that contract.
     ``SmilesLanguage.COMPACT`` removes verbose atom and redundant bond spellings.
     Because a bare wildcard is not aromatic, compact spells its aromatic bonds
     with ``:``; a fixed single bond to a wildcard remains unmarked. Compact
@@ -76,8 +78,9 @@ def start(
 
     if not isinstance(language, SmilesLanguage):
         raise TypeError("language must be a SmilesLanguage member")
+    # Native Generic AnyOrder enables Forest topology for the public MAXIMAL policy.
     writer_regime = {
-        SmilesLanguage.GENERAL: "generic_any_order",
+        SmilesLanguage.MAXIMAL: "generic_any_order",
         SmilesLanguage.COMPACT: "generic_compact",
         SmilesLanguage.RDKIT_RANDOM_NONCANONICAL: "rdkit_random_noncanonical",
     }[language]

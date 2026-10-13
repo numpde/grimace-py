@@ -3014,7 +3014,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     activate.push(center.layout_factor(entry_bond));
                 }
                 let source_context = self.surface.atom_source_context(atom);
-                let policy = if self.regime == WriterRegime::GenericCompact { AtomSpellingPolicy::Compact } else { AtomSpellingPolicy::General };
+                let policy = if self.regime == WriterRegime::GenericCompact { AtomSpellingPolicy::Compact } else { AtomSpellingPolicy::Maximal };
                 specs.push((AtomSpellingStart::Grammar { atom, state: AtomSpellingState::initial_with_policy(facts, spelling_context, policy, source_context.atom_class_property_present) }, restrictions, activate));
             }
         }

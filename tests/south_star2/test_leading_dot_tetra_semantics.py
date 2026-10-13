@@ -44,7 +44,7 @@ class LeadingDotTetraSemanticTests(unittest.TestCase):
             assert source is not None
             expected = tetra_signature(source_text)
             for language, field in (
-                (SmilesLanguage.GENERAL, "general_witnesses"),
+                (SmilesLanguage.MAXIMAL, "maximal_witnesses"),
                 (SmilesLanguage.COMPACT, "compact_witnesses"),
             ):
                 witnesses = case[field]

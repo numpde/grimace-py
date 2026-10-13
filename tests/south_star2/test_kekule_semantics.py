@@ -156,12 +156,12 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
             with self.subTest(source=source_text):
                 source = _parse(source_text)
                 _assert_same_graph(self, source, _parse(witness))
-                general = decoding.start(source, language=decoding.SmilesLanguage.GENERAL)
+                general = decoding.start(source, language=decoding.SmilesLanguage.MAXIMAL)
                 self.assertTrue(_accepts(general, witness, max_nodes=20_000))
                 self.assertFalse(_accepts(general, witness.replace("[cH]", "[cH2]", 1), max_nodes=20_000))
                 compact = decoding.start(source, language=decoding.SmilesLanguage.COMPACT)
                 self.assertFalse(_accepts(compact, witness.translate(str.maketrans("12", "01")), max_nodes=20_000))
-        benzene = decoding.start(_parse("c1ccccc1"), language=decoding.SmilesLanguage.GENERAL)
+        benzene = decoding.start(_parse("c1ccccc1"), language=decoding.SmilesLanguage.MAXIMAL)
         self.assertFalse(_accepts(benzene, "[cH]1:[CH]-[CH]=[CH]-[CH]=[CH]-1", max_nodes=20_000))
 
     def test_mixed_bare_carbon_paths_follow_explicit_h_interpretation(self) -> None:
@@ -169,11 +169,11 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
         for spelling in ("c1=cc=cc=c1", "c1=c-c=c-c=c-1"):
             with self.subTest(spelling=spelling):
                 self.assertTrue(_temporary_witness_mixed_bare_benzene(spelling))
-                for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+                for language in (decoding.SmilesLanguage.MAXIMAL, decoding.SmilesLanguage.COMPACT):
                     rendered = spelling.replace("1", "0") if language == decoding.SmilesLanguage.COMPACT else spelling
                     self.assertTrue(_accepts(decoding.start(source, language=language), rendered, max_nodes=20_000))
         self.assertFalse(_temporary_witness_mixed_bare_benzene("c1=cc=cc-c1"))
-        for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+        for language in (decoding.SmilesLanguage.MAXIMAL, decoding.SmilesLanguage.COMPACT):
             rendered = "c0=cc=cc-c0" if language == decoding.SmilesLanguage.COMPACT else "c1=cc=cc-c1"
             self.assertFalse(_accepts(decoding.start(source, language=language), rendered, max_nodes=20_000))
 
@@ -187,7 +187,7 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
         self.assertEqual(3, source.GetAtomWithIdx(1).GetDegree())
         self.assertEqual(0, source.GetAtomWithIdx(1).GetNumImplicitHs())
         for language, witness in (
-            (decoding.SmilesLanguage.GENERAL, "[H]c1=cc=cc=c1"),
+            (decoding.SmilesLanguage.MAXIMAL, "[H]c1=cc=cc=c1"),
             (decoding.SmilesLanguage.COMPACT, "[H]c0=cc=cc=c0"),
         ):
             with self.subTest(language=language):
@@ -202,7 +202,7 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
         )
         for source_text, witnesses in cases:
             source = _parse(source_text)
-            for language in (decoding.SmilesLanguage.GENERAL, decoding.SmilesLanguage.COMPACT):
+            for language in (decoding.SmilesLanguage.MAXIMAL, decoding.SmilesLanguage.COMPACT):
                 initial = decoding.start(source, language=language)
                 for witness in witnesses:
                     emitted = witness.translate(str.maketrans("12", "01")) if language == decoding.SmilesLanguage.COMPACT else witness
@@ -214,7 +214,7 @@ class KekuleRepresentationSemanticsTests(unittest.TestCase):
         # RDKit sanitizes this text, but it conflicts with the prepared atom demands.
         pyrrole = _parse("[nH]1cccc1")
         for language, prefix, impossible in (
-            (decoding.SmilesLanguage.GENERAL, "N1C=C2.C", "N1C=C2.C=2C1"),
+            (decoding.SmilesLanguage.MAXIMAL, "N1C=C2.C", "N1C=C2.C=2C1"),
             (decoding.SmilesLanguage.COMPACT, "N0C=C1.C", "N0C=C1.C=1C0"),
         ):
             initial = decoding.start(pyrrole, language=language)

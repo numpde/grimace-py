@@ -31,7 +31,7 @@ Current top-level exports:
 
 ## Additive South Star prefix API
 
-The source tree also provides `grimace.decoding.start(mol, *, language=SmilesLanguage.GENERAL)`. This is an
+The source tree also provides `grimace.decoding.start(mol, *, language=SmilesLanguage.MAXIMAL)`. This is an
 unreleased repository interface; current published `grimace-py` distributions
 do not provide it. To try the checkout, install the repository's declared
 dependencies and build the local package in the same environment:
@@ -64,12 +64,14 @@ The molecule is prepared once by Python, and subsequent choices use the owned
 Rust prefix state without RDKit or the older support enumerators.
 
 Pass a `SmilesLanguage` enum member; strings and `None` are rejected. The former
-`style` keyword is removed. The supported members are `GENERAL`, `COMPACT`, and
-`RDKIT_RANDOM_NONCANONICAL`; the default is `SmilesLanguage.GENERAL`.
+`style` keyword is removed. The supported members are `MAXIMAL`, `COMPACT`, and
+`RDKIT_RANDOM_NONCANONICAL`; the default is `SmilesLanguage.MAXIMAL`.
 
-With `language=SmilesLanguage.GENERAL`, the prefix explores an implemented OpenSMILES
-subset. `GENERAL` is a provisional name for that partial implementation, not a
-claim of complete standard-language coverage.
+`SmilesLanguage.MAXIMAL` is the every-and-only fact-preserving OpenSMILES
+contract for admitted inputs. The current implementation covers a subset;
+missing qualified spellings and accepted strings that change facts are defects
+against that contract. See [the language contract](smiles-language.md) for
+the exact admission and interpretation rules and remaining audit gaps.
 `language=SmilesLanguage.COMPACT` keeps its traversal, stereo, aromatic,
 and whole-component Kekule choices while using compact spelling: bare atoms
 when source facts permit, unpadded numeric fields, omitted default H and charge
@@ -85,7 +87,7 @@ for the installed version. Leading-zero numeric fields make the default
 language unbounded, so exhaustive finite writer-support walks select the named
 language.
 
-With `language=SmilesLanguage.GENERAL`, supported aromatic inputs also offer aromatic and Kekule
+With `language=SmilesLanguage.MAXIMAL`, supported aromatic inputs also offer aromatic and Kekule
 spellings, with all source-valence-preserving single/double bond assignments.
 Each connected aromatic-bond component chooses one representation; separate
 components can choose independently. This does not cover every valid mixture

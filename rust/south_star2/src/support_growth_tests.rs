@@ -1,6 +1,6 @@
-//! Complete walks of declared finite Generic lexical witnesses, not writer-parity support.
+//! Complete walks of declared finite MAXIMAL lexical witnesses, not writer-parity support.
 //! All bonds are elided single bonds; this comparison does not widen bond text.
-//! Unrestricted Generic atom spellings have unbounded numeric leading-zero prefixes.
+//! Unrestricted MAXIMAL atom spellings have unbounded numeric leading-zero prefixes.
 
 use super::*;
 use crate::{

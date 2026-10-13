@@ -29,8 +29,8 @@ def _generic_witness_prefix(text: str, *, allow_dots: bool = True) -> bool:
 
     This finite semantic witness uses bare C/O, short carbon tetrahedral
     markers, omitted ordinary single bonds, and canonical lowest-free positive
-    ring labels. Native Generic traversal and stereo constraints remain unrestricted;
-    this does not enumerate the full Generic SMILES language.
+    ring labels. Native MAXIMAL traversal and stereo constraints remain unrestricted;
+    this does not enumerate the full MAXIMAL SMILES language.
     """
     brackets = ("[C@H]", "[C@@H]", "[C@]", "[C@@]")
     open_labels: set[int] = set()
@@ -133,7 +133,7 @@ def _prefix_strings(
     mol: Chem.Mol, *, writer_regime: str, allow_dots: bool = True,
     max_nodes: int = 50_000, max_outputs: int = 10_000,
 ) -> tuple[list[str], list[str]]:
-    """Collect writer parity, or the declared finite Generic lexical witness."""
+    """Collect writer parity, or the declared finite MAXIMAL lexical witness."""
     prefix = prepare_molecule(mol).build_writer(writer_regime=writer_regime).initial_prefix()
     pending = [(prefix, "")]
     accepted: list[str] = []
@@ -271,7 +271,7 @@ class SouthStar2PreparationWriterParityTests(unittest.TestCase):
 
 
 class SouthStar2PreparationSemanticTests(unittest.TestCase):
-    """Check the finite Generic lexical witness, independently from writer parity."""
+    """Check the finite MAXIMAL lexical witness, independently from writer parity."""
 
     def test_tetrahedral_forest_ring_segments_preserve_chirality(self) -> None:
         cases = load_pinned_rdkit_fixture_cases(

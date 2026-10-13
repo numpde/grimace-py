@@ -99,7 +99,7 @@ class CompactLanguageTests(unittest.TestCase):
             ("F/C=C\\Cl", "\\", "/"),
         ):
             source = _parse(source_smiles)
-            for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+            for language in (decoding.SmilesLanguage.MAXIMAL, LANGUAGE):
                 with self.subTest(source=source_smiles, language=language):
                     label = "0" if language == LANGUAGE else "1"
                     spelling = f"F{ring_mark}{label}.C{label}=C/Cl"
@@ -118,7 +118,7 @@ class CompactLanguageTests(unittest.TestCase):
         ):
             source = _parse(source_smiles)
             wrong_parity = alternate_smiles.replace("@]", "@@]") if "@@]" not in alternate_smiles else alternate_smiles.replace("@@]", "@]")
-            for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+            for language in (decoding.SmilesLanguage.MAXIMAL, LANGUAGE):
                 with self.subTest(smiles=source_smiles, language=language):
                     spelling = alternate_smiles.replace("1", "0") if language == LANGUAGE else alternate_smiles
                     wrong_spelling = wrong_parity.replace("1", "0") if language == LANGUAGE else wrong_parity
@@ -142,16 +142,16 @@ class CompactLanguageTests(unittest.TestCase):
                         f"graph, hydrogen, or stereo differs: {spelling!r}",
                     )
 
-    def test_default_is_general_and_compact_is_a_distinct_public_language(self) -> None:
+    def test_default_is_maximal_and_compact_is_a_distinct_public_language(self) -> None:
         carbon = _parse("C")
         self.assertEqual(
             tuple(text for text, _ in decoding.start(carbon).choices()),
-            tuple(text for text, _ in decoding.start(carbon, language=decoding.SmilesLanguage.GENERAL).choices()),
+            tuple(text for text, _ in decoding.start(carbon, language=decoding.SmilesLanguage.MAXIMAL).choices()),
         )
         self.assertEqual(("C",), tuple(text for text, _ in decoding.start(carbon, language=LANGUAGE).choices()))
         self.assertEqual(
             ("[", "C"),
-            tuple(text for text, _ in decoding.start(carbon, language=decoding.SmilesLanguage.GENERAL).choices()),
+            tuple(text for text, _ in decoding.start(carbon, language=decoding.SmilesLanguage.MAXIMAL).choices()),
         )
 
     def test_complete_small_support_and_graph_semantics(self) -> None:
@@ -243,8 +243,8 @@ class CompactLanguageTests(unittest.TestCase):
         # Ring labels can join atoms across top-level segments; these are
         # semantic witnesses, not claims about RDKit writer support.
         examples = (
-            ("CC", "C1.C1", decoding.SmilesLanguage.GENERAL),
-            ("CCC", "C1.C12.C2", decoding.SmilesLanguage.GENERAL),
+            ("CC", "C1.C1", decoding.SmilesLanguage.MAXIMAL),
+            ("CCC", "C1.C12.C2", decoding.SmilesLanguage.MAXIMAL),
             ("CC", "C0.C0", LANGUAGE),
             ("CCCC", "C0.C0C0.C0", LANGUAGE),
         )
@@ -262,14 +262,14 @@ class CompactLanguageTests(unittest.TestCase):
         ):
             with self.subTest(source=source_text, candidate=candidate):
                 source = _parse(source_text)
-                for language in (decoding.SmilesLanguage.GENERAL, LANGUAGE):
+                for language in (decoding.SmilesLanguage.MAXIMAL, LANGUAGE):
                     self.assertIsNotNone(_walk_language(source, candidate, language))
                 self.assertEqual(_canonical_semantics(source_text), _canonical_semantics(candidate))
 
     def test_top_level_dot_segments_require_completed_bonds(self) -> None:
         source = _parse("CC")
         for language, incomplete in (
-            (decoding.SmilesLanguage.GENERAL, "C1"),
+            (decoding.SmilesLanguage.MAXIMAL, "C1"),
             (LANGUAGE, "C0"),
         ):
             with self.subTest(language=language, incomplete=incomplete):
@@ -284,13 +284,13 @@ class CompactLanguageTests(unittest.TestCase):
         for text in ("C0=CCC0", "C0CCC=0"):
             with self.subTest(text=text):
                 self.assertIsNotNone(
-                    _walk_language(source, text, decoding.SmilesLanguage.GENERAL)
+                    _walk_language(source, text, decoding.SmilesLanguage.MAXIMAL)
                 )
                 self.assertIsNotNone(_walk(source, text))
         for text in ("C0=CCC=0", "C0#CCC=0"):
             with self.subTest(rejected=text):
                 self.assertIsNone(
-                    _walk_language(source, text, decoding.SmilesLanguage.GENERAL)
+                    _walk_language(source, text, decoding.SmilesLanguage.MAXIMAL)
                 )
 
         triple = _parse("C1CCCCCCC#1")
@@ -298,7 +298,7 @@ class CompactLanguageTests(unittest.TestCase):
             self.assertIsNotNone(_walk(triple, text), text)
         self.assertIsNone(_walk(triple, "C#0CCCCCCC#0"))
 
-    def test_wildcard_aromatic_fixture_witnesses_in_general_and_compact(self) -> None:
+    def test_wildcard_aromatic_fixture_witnesses_in_maximal_and_compact(self) -> None:
         fixture = json.loads(
             (FIXTURE.parents[0] / "kekule_representations.json").read_text()
         )
@@ -306,9 +306,9 @@ class CompactLanguageTests(unittest.TestCase):
         source = _parse(case["source_smiles"])
         witnesses = ("*0ccccc0", "*0=CC=CC=C0")
         for text in witnesses:
-            with self.subTest(general=text):
+            with self.subTest(maximal=text):
                 self.assertIsNotNone(
-                    _walk_language(source, text, decoding.SmilesLanguage.GENERAL)
+                    _walk_language(source, text, decoding.SmilesLanguage.MAXIMAL)
                 )
         self.assertIsNone(_walk(source, "*0ccccc0"))
         self.assertIsNotNone(_walk(source, "*0:ccccc:0"))
@@ -317,11 +317,11 @@ class CompactLanguageTests(unittest.TestCase):
         bridge = _parse("c1ccccc1*1ccccc1")
         self.assertIsNotNone(_walk(bridge, "c0ccccc0*0:ccccc:0"))
 
-    def test_general_retains_verbose_spellings_and_rdkit_language_is_separate(self) -> None:
+    def test_maximal_retains_verbose_spellings_and_rdkit_language_is_separate(self) -> None:
         carbon = _parse("C")
-        general = decoding.start(carbon, language=decoding.SmilesLanguage.GENERAL)
+        maximal = decoding.start(carbon, language=decoding.SmilesLanguage.MAXIMAL)
         rdkit = decoding.start(carbon, language=decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL)
-        self.assertIn("[", _choices(general))
+        self.assertIn("[", _choices(maximal))
         self.assertNotIn("[", _choices(decoding.start(carbon, language=LANGUAGE)))
         self.assertEqual(("C",), tuple(_choices(rdkit)))
 

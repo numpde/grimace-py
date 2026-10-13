@@ -258,7 +258,7 @@ pub enum AtomSpellingField {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AtomSpellingPolicy {
     #[default]
-    General,
+    Maximal,
     Compact,
 }
 
@@ -317,7 +317,7 @@ enum NumberKind {
 
 impl AtomSpellingState {
     pub fn initial(facts: AtomFacts, context: AtomSpellingContext) -> Self {
-        Self::initial_with_policy(facts, context, AtomSpellingPolicy::General, false)
+        Self::initial_with_policy(facts, context, AtomSpellingPolicy::Maximal, false)
     }
 
     /// Source map-property presence distinguishes absent class zero from `:0`.
@@ -354,14 +354,14 @@ impl AtomSpellingState {
         match &self.phase {
             Phase::Start => {
                 let bare = self.facts.bare_spelling(self.context);
-                if self.policy == AtomSpellingPolicy::General
+                if self.policy == AtomSpellingPolicy::Maximal
                     || self.atom_class_present
                     || bare.is_none()
                 {
                     push!(AtomSpellingField::OpenBracket, '[', Phase::AfterOpen);
                 }
                 if let Some(bare) = bare.filter(|_| {
-                    self.policy == AtomSpellingPolicy::General || !self.atom_class_present
+                    self.policy == AtomSpellingPolicy::Maximal || !self.atom_class_present
                 }) {
                     push_text_first(
                         bare,
@@ -420,7 +420,7 @@ impl AtomSpellingState {
             Phase::AfterAt => match self.context.tetrahedral_marker {
                 Some(TetrahedralMarker::At) => {
                     push_after_marker(&mut choices, self);
-                    if self.policy == AtomSpellingPolicy::General {
+                    if self.policy == AtomSpellingPolicy::Maximal {
                         push!(
                             AtomSpellingField::TetrahedralMarker,
                             'T',
@@ -437,7 +437,7 @@ impl AtomSpellingState {
                         '@',
                         Phase::AfterMarker,
                     );
-                    if self.policy == AtomSpellingPolicy::General {
+                    if self.policy == AtomSpellingPolicy::Maximal {
                         push!(
                             AtomSpellingField::TetrahedralMarker,
                             'T',
@@ -468,7 +468,7 @@ impl AtomSpellingState {
                 if self.facts.non_graph_hydrogens == 1 {
                     // H without a digit and H1 have the same meaning.
                     push_after_hydrogen(&mut choices, self);
-                    if self.policy == AtomSpellingPolicy::General {
+                    if self.policy == AtomSpellingPolicy::Maximal {
                         push!(AtomSpellingField::HydrogenCount, '1', Phase::ChargeStart);
                     }
                 } else {
@@ -483,7 +483,7 @@ impl AtomSpellingState {
             Phase::ChargeStart => {
                 if self.facts.formal_charge == 0 {
                     push_class_start(&mut choices, self);
-                    if self.policy == AtomSpellingPolicy::General {
+                    if self.policy == AtomSpellingPolicy::Maximal {
                         push!(AtomSpellingField::Charge, '+', Phase::ChargeAfterSign);
                         push!(AtomSpellingField::Charge, '-', Phase::ChargeAfterSign);
                     }
@@ -498,7 +498,7 @@ impl AtomSpellingState {
             Phase::ChargeAfterSign => {
                 let magnitude = self.facts.formal_charge.unsigned_abs();
                 let sign = charge_sign(self.facts);
-                if magnitude == 2 && self.policy == AtomSpellingPolicy::General {
+                if magnitude == 2 && self.policy == AtomSpellingPolicy::Maximal {
                     push!(AtomSpellingField::Charge, sign, Phase::ClassStart);
                 }
                 if magnitude == 1 {
@@ -512,7 +512,7 @@ impl AtomSpellingState {
                             digits.chars().next().unwrap(),
                             Phase::ClassStart
                         );
-                        if self.policy == AtomSpellingPolicy::General {
+                        if self.policy == AtomSpellingPolicy::Maximal {
                             push!(
                                 AtomSpellingField::Charge,
                                 '0',
@@ -553,11 +553,11 @@ impl AtomSpellingState {
             }
             Phase::ClassStart => {
                 if self.facts.atom_class == 0
-                    && (self.policy == AtomSpellingPolicy::General || !self.atom_class_present)
+                    && (self.policy == AtomSpellingPolicy::Maximal || !self.atom_class_present)
                 {
                     push!(AtomSpellingField::CloseBracket, ']', Phase::Complete);
                 }
-                if self.policy == AtomSpellingPolicy::General
+                if self.policy == AtomSpellingPolicy::Maximal
                     || self.facts.atom_class != 0
                     || self.atom_class_present
                 {
@@ -596,7 +596,7 @@ fn push_after_marker(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpelling
     } else {
         push_after_hydrogen(choices, state);
         // H0 has the same non-graph hydrogen count as an omitted H field.
-        if state.policy == AtomSpellingPolicy::General {
+        if state.policy == AtomSpellingPolicy::Maximal {
             push_choice(
                 choices,
                 state,
@@ -620,7 +620,7 @@ fn push_after_hydrogen(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpelli
         );
     } else {
         push_class_start(choices, state);
-        if state.policy == AtomSpellingPolicy::General {
+        if state.policy == AtomSpellingPolicy::Maximal {
             push_choice(
                 choices,
                 state,
@@ -642,7 +642,7 @@ fn push_after_hydrogen(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpelli
 fn push_class_start(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpellingState) {
     let facts = state.facts;
     if facts.atom_class == 0
-        && (state.policy == AtomSpellingPolicy::General || !state.atom_class_present)
+        && (state.policy == AtomSpellingPolicy::Maximal || !state.atom_class_present)
     {
         push_choice(
             choices,
@@ -666,7 +666,7 @@ fn push_class_start(choices: &mut Vec<AtomSpellingChoice>, state: &AtomSpellingS
         );
     }
     if facts.atom_class == 0
-        && (state.policy == AtomSpellingPolicy::General || state.atom_class_present)
+        && (state.policy == AtomSpellingPolicy::Maximal || state.atom_class_present)
     {
         push_choice(
             choices,
@@ -715,7 +715,7 @@ fn push_number_choices(
     };
     push_choice(choices, state, number_field(field.kind), target, next);
     // Only a prefix zero is padding; internal zeros belong to the fixed value.
-    if state.policy == AtomSpellingPolicy::General && field.offset == 0 {
+    if state.policy == AtomSpellingPolicy::Maximal && field.offset == 0 {
         push_choice(
             choices,
             state,

@@ -2,8 +2,8 @@
 
 This is the target for a semantic prefix language over an admitted molecular
 fact set, using [OpenSMILES v1.0 (2016-05-15)](https://opensmiles.org/opensmiles.html)
-as its syntax and interpretation reference. It is a target contract, not a
-claim that the current `GENERAL` implementation is complete. The separately
+as its syntax and interpretation reference. `SmilesLanguage.MAXIMAL` names this normative every-and-only contract.
+Current implementation gaps are defects against it, not a weaker policy. The separately
 named RDKit language retains exact, version-qualified writer support as its
 own contract.
 
@@ -103,25 +103,25 @@ fact/event/constraint model; it is not a runtime fallback.
 `COMPACT` is a restricted spelling policy applied to otherwise valid paths:
 bare atoms where possible, unpadded numbers, omitted default fields, and the
 smallest available ring label. It cannot repair missing traversal or dot-event
-coverage. A future permissive lexical policy, whatever its public name, can
-relax spelling only; it cannot stand in for the structural contract.
+coverage. `MAXIMAL` must cover valid lexical and structural alternatives alike;
+lexical breadth cannot stand in for missing traversal or dot-event coverage.
 
 ## Current production coverage
 
 | Area | Current state | Remaining target obligation |
 | --- | --- | --- |
-| Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `GENERAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
+| Atom and bond spellings | Implemented subset, including broad numeric atom spelling in `MAXIMAL` and compact spelling in `COMPACT` | Prove all admitted standard alternatives and fact-preserving equivalences |
 | Ring labels | Labels `0`–`99` and compact smallest-free choice | Pair-consistent bond alternatives and complete ring-event coverage |
 | Roots, branches, traversal | Connected traversal choices, terminal branches, and sibling branches within one residual component on admitted forest inputs, including supported aromatic graphs and tetrahedral witnesses | Map all standard serialization events both ways |
-| Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `GENERAL` and `COMPACT`; selected tetrahedral ring-segment and leading-dot branch witnesses also pass in both languages | Extend qualification to other leading-dot stereo paths and unqualified syntax |
-| Aromaticity | Aromatic, Kekule, and selected mixed bare or bracket spellings in `GENERAL` and `COMPACT` | Qualify remaining mixed spellings, bond omissions, and aromatic semantic cases |
+| Dot segments | Top-level and branch-local dots, including leading-dot branches, qualified for admitted stereo-free graphs in `MAXIMAL` and `COMPACT`; selected tetrahedral ring-segment and leading-dot branch witnesses also pass in both languages | Extend qualification to other leading-dot stereo paths and unqualified syntax |
+| Aromaticity | Aromatic, Kekule, and selected mixed bare or bracket spellings in `MAXIMAL` and `COMPACT` | Qualify remaining mixed spellings, bond omissions, and aromatic semantic cases |
 | Stereo | Supported three-bond carbon with one hydrogen and four-bond carbon without hydrogen, plus selected E/Z cases, have semantic checks; selected tetrahedral and directional Forest segments preserve their configured stereo in both languages | Define and cover every admitted configuration and preserve unspecified stereo |
 
 The native forest path now admits top-level and branch-local dot segments,
 including leading-dot branches, with ring obligations crossing segment
 boundaries on admitted stereo-free graphs, including supported aromatic graphs.
 Selected tetrahedral Forest paths also admit ring-separated ligands, including
-`F1.[C@@H]1(Cl)Br` in `GENERAL` and `F0.[C@@H]0(Cl)Br` in `COMPACT` for
+`F1.[C@@H]1(Cl)Br` in `MAXIMAL` and `F0.[C@@H]0(Cl)Br` in `COMPACT` for
 `F[C@H](Cl)Br`. These are semantic parse-back witnesses, not RDKit writer
 support claims. Selected configured E/Z Forest paths now reach acceptance with carrier marks
 across dot/ring boundaries in both languages and parse back to the source
@@ -135,13 +135,13 @@ parser or an RDKit writer-support claim. Other directional Forest paths and
 leading-dot stereo paths remain unqualified.
 The aromatic source spelling, Kekule alternatives, and selected
 mixed spellings retain one matching constraint across segments.
-`GENERAL` accepts checked benzene, pyrrole, charged pyridinium, and
+`MAXIMAL` accepts checked benzene, pyrrole, charged pyridinium, and
 naphthalene mixed bracket witnesses with sanitized graph and atom-fact parse-back.
-Both `GENERAL` and `COMPACT` accept selected mixed bare-carbon benzene paths
+Both `MAXIMAL` and `COMPACT` accept selected mixed bare-carbon benzene paths
 under the explicit hydrogen interpretation above. The remaining mixed
 spellings and bond omissions have not been qualified. The path also admits
 terminal branches such as `C(C)`, `C(C(C))`, and `C(C)(C)` for those inputs in
-`GENERAL` and `COMPACT`. It also admits branched ring paths such as
+`MAXIMAL` and `COMPACT`. It also admits branched ring paths such as
 `C(CC1)CCC1` for cyclohexane. These examples establish specific supported
 paths, not completeness of the Forest grammar or liveness of every prefix.
 Public semantic witnesses include `C1.C1` for `CC` and `C1.C12.C2` for `CCC`;
@@ -150,5 +150,5 @@ qualified subset of the target grammar: other stereo Forest paths, remaining
 mixed aromatic spellings within a component, and other
 unqualified syntax remain open. A fixed-budget diagnostic may report that its
 enumeration is incomplete; bounded results do not establish global exhaustive
-support or prefix liveness. The current `GENERAL` name is provisional; naming
-can follow a demonstrated contract.
+support or prefix liveness. The `MAXIMAL` contract is normative; the listed gaps remain implementation
+defects until independently qualified or repaired.

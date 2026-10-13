@@ -231,17 +231,17 @@ class PublicSupportOfOpenSmilesExamplesTests(unittest.TestCase):
         self.assertTrue(all(_public_prefix_accepts(source, alias) for alias in aliases))
 
 
-class GeneralLanguageNormativeRegressionTests(unittest.TestCase):
-    """Check selected OpenSMILES semantics in GENERAL, outside RDKit writer parity."""
+class MaximalLanguageNormativeRegressionTests(unittest.TestCase):
+    """Check selected OpenSMILES semantics in MAXIMAL, outside RDKit writer parity."""
 
     def test_explicit_ordinary_single_bond_is_accepted(self) -> None:
         source = _parse("CC")
-        language = decoding.SmilesLanguage.GENERAL
+        language = decoding.SmilesLanguage.MAXIMAL
         self.assertIsNotNone(_walk_language(source, "CC", language, max_nodes=1000))
         self.assertIsNotNone(_walk_language(source, "C-C", language, max_nodes=1000))
 
     def test_explicit_single_bond_branch_and_ring_endpoints(self) -> None:
-        language = decoding.SmilesLanguage.GENERAL
+        language = decoding.SmilesLanguage.MAXIMAL
         for source_text, aliases in (
             ("CC", ("C(C)", "C(-C)")),
             ("CCO", ("C-CO", "CC-O", "C-C-O")),
@@ -260,7 +260,7 @@ class GeneralLanguageNormativeRegressionTests(unittest.TestCase):
     def test_nonzero_isotope_cannot_be_omitted(self) -> None:
         source = _parse("[13CH4]")
         self.assertEqual(13, source.GetAtomWithIdx(0).GetIsotope())
-        language = decoding.SmilesLanguage.GENERAL
+        language = decoding.SmilesLanguage.MAXIMAL
         self.assertIsNotNone(_walk_language(source, "[13CH4]", language, max_nodes=1000))
         self.assertIsNone(_walk_language(source, "[CH4]", language, max_nodes=1000))
 

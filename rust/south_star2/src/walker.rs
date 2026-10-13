@@ -25,6 +25,8 @@ pub enum ComponentOrder {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// These are native configurations, not public language contracts. Generic
+// InputOrder retains the restricted Tree topology used by diagnostics.
 pub enum WriterRegime {
     Generic { component_order: ComponentOrder },
     GenericCompact,

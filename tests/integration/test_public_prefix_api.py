@@ -309,20 +309,21 @@ class PublicPrefixBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'style'"):
             decoding.start(mol, style="rdkit_random_noncanonical")
 
-    def test_explicit_general_matches_default_and_rdkit_restricts_spellings(self) -> None:
+    def test_explicit_maximal_matches_default_and_rdkit_restricts_spellings(self) -> None:
         from grimace import decoding
 
         mol = Chem.MolFromSmiles("C")
         assert mol is not None
-        general = decoding.start(mol, language=decoding.SmilesLanguage.GENERAL)
-        self.assertEqual(_immediate_signature(decoding.start(mol)), _immediate_signature(general))
-        self.assertEqual(("[", "C"), _immediate_signature(general)[1])
+        maximal = decoding.start(mol, language=decoding.SmilesLanguage.MAXIMAL)
+        self.assertEqual(_immediate_signature(decoding.start(mol)), _immediate_signature(maximal))
+        self.assertEqual(("[", "C"), _immediate_signature(maximal)[1])
         rdkit = decoding.start(mol, language=decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL)
         self.assertEqual(("C",), _immediate_signature(rdkit)[1])
-        self.assertEqual("general", decoding.SmilesLanguage.GENERAL.value)
+        self.assertFalse(hasattr(decoding.SmilesLanguage, "GENERAL"))
+        self.assertEqual("maximal", decoding.SmilesLanguage.MAXIMAL.value)
         self.assertEqual("compact", decoding.SmilesLanguage.COMPACT.value)
         self.assertEqual("rdkit_random_noncanonical", decoding.SmilesLanguage.RDKIT_RANDOM_NONCANONICAL.value)
-        self.assertNotIsInstance(decoding.SmilesLanguage.GENERAL, str)
+        self.assertNotIsInstance(decoding.SmilesLanguage.MAXIMAL, str)
 
     def test_compact_uses_compact_native_atom_spelling(self) -> None:
         from grimace import decoding
@@ -412,7 +413,7 @@ class PublicPrefixSemanticTests(unittest.TestCase):
         # independently permits the single-digit or percent-prefixed alias.
         for target in ("C0CC%00", "C1CC%01", "C%01CC1", "C%99CC%99"):
             with self.subTest(target=target):
-                prefix = decoding.start(source, language=decoding.SmilesLanguage.GENERAL)
+                prefix = decoding.start(source, language=decoding.SmilesLanguage.MAXIMAL)
                 text = ""
                 while text != target:
                     self.assertFalse(prefix.is_accepted, text)

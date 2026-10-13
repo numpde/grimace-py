@@ -1550,9 +1550,129 @@ finished atom to an unvisited atom. These root-availability observations use
 ordinary preparation, no explicit restrictions on unvisited root variables,
 and the current rooted-Forest factor; once all scopes finish, an unvisited
 component without a forced Traversal path to an emitted root retains a root
-choice. Additional profile root restrictions can remove that choice. One
-remaining operational bridge is to show that `ResidualPartition::attachments`
-equals all unrepresented frame-to-unvisited incidences through residual splits,
-inline parent discard,
-and dot-segment transitions under an outer branch. That equality is needed to
-lift the graph lemma through every frame completion and root publication.
+choice. Additional profile root restrictions can remove that choice. The
+attachment equality follows conditionally from the partition induction above.
+The constructor induction below addresses preservation of its partition and
+bond-progress premises through residual splits, inline parent discard, and a
+dot segment inside an outer branch.
+
+## Conditional structural correspondence for the topology-only Forest
+
+The correspondence argument is restricted to the Forest writer in `AnyOrder` with ordinary
+prepared root variables, unconstrained Traversal/Ring role choices except the
+rooted-Forest topology factor, simple graphs, unlimited ring labels, and stable
+boundaries after child entry. Atom and bond spellings, stereo, chemistry,
+representation factors, RDKit scheduling, and the public finite label supply
+are outside the claim. Its state boundaries are after a completed child entry,
+not the intermediate state after a child candidate commits its bond and before
+its atom is entered.
+
+At such a boundary the induction invariant is: every bond has its named
+unrepresented, Traversal, Ring-open, or Ring-closed progress; no unrepresented
+bond has two visited endpoints. Every unresolved incidence at a visited atom
+belongs to the active or a suspended frame; a permanently finished atom has
+none. Every suspended frame is sealed, so its remaining incidences are forced
+Traversal. If a Ring-open bond's second endpoint is visited, that endpoint is
+active in its open ring phase. The residual partition is exactly the connected
+components of unvisited atoms, and the **active** attachment list is exactly
+its unrepresented incidences to unvisited atoms. A suspended frame's cached
+attachments may be stale while a child runs; restoration recomputes them.
+Represented Traversal edges on visited atoms are rooted trees with one emitted
+root each, and the live return stack records their nested branch scopes.
+Visited atoms have their ordinary root variables committed to one for segment
+entry and zero for child entry. For an unvisited atom, root one is removed only
+by a forced Traversal path to an emitted root; that path persists under later
+restrictions. This root-domain statement uses only ordinary preparation,
+entry restrictions, and the rooted-Forest projector.
+
+The empty prefix supplies the base case: no visited atoms, no represented
+bonds or frames, both root values initially available, and prepared residual
+components equal the graph's components. For the empty graph, these claims
+are a vacuous structural-machine base; this does not assert that an empty
+SMILES is admitted. The
+transition step is the following finite case split over **successful**
+structural commits; child commits and their atom entries form one macrostep.
+Raw frontier proposals alone are not induction transitions.
+
+| Constructor | Preservation and availability step |
+| --- | --- |
+| Initial `Root` | `can_enter_atom(root, None)` checks every earlier visited incidence (none at the base). The atomic root-one restriction and Forest projector accept a compatible root; `begin_segment` removes that atom from the residual partition and creates its frame. |
+| `RingOpen` | The active incidence is unrepresented and leads to an unvisited atom. Restricting it to Ring and recording its named first endpoint removes that incidence from the active attachment list while the ring phase remains open. |
+| `RingClose` | Its named first endpoint and active other endpoint are checked; the active frame is still in its ring phase. Closing the second occurrence changes no residual component. |
+| `BranchChild` plus entry | For any successful branch, `can_enter_atom(child, bond)` excludes another unrepresented edge from the child to a visited atom, and waiting Ring closures block departure from the parent. The commit atomically selects Traversal and child-root zero and forces remaining parent incidences to Traversal. It then seals/suspends the parent; entry removes the child from the partition and creates its frame, and the return stack gains that parent. The unique-attachment lemma is used separately to choose an available child in the forward extension. |
+| `InlineChild` plus entry | The sole remaining active incidence is Traversal. Waiting Ring closures block departure; consuming that incidence empties the discarded parent's work. The child receives root zero and a new active frame; any outer return stack is unchanged. |
+| `DotBranchRoot` | Ring closures at the active atom must be discharged first. The event seals its remaining incidences as Traversal and suspends it, while the root-one restriction and `can_enter_atom(root, None)` admit a fresh compatible root. |
+| `DotSegmentRoot` | The active frame has no attachments or waiting closure. Discarding only that frame leaves any outer return stack intact; root selection and residual removal establish the new segment frame. |
+| `CloseBranch` | The exhausted child frame is discarded and its suspended parent restored. `ResidualPartition::attachments` recomputes the parent's exact current list; its seal remains in force. No waiting Ring closure can newly appear at that parent because a visited second endpoint would have had to be active before suspension. |
+| `FinishSegment` | An exhausted top-level frame has no outer parent. The candidate is suppressed while a compatible `DotSegmentRoot` is available, so a forward extension selects that root before discarding the frame; final finish occurs only when no atom remains. |
+
+The partition induction is local to `ResidualPartition::remove_atom`: deleting
+an atom either removes an isolated component, retains one connected
+remainder, or splits it by reachability from its remaining neighbors.
+`attachments` scans all incident unrepresented edges to unvisited atoms, so
+the active list equality follows after each entry and restoration. Ring
+events only alter bond progress and the active list, and frame completion
+uses the recomputation just described. This addresses the earlier
+transition-preservation gap for this restricted structural machine; the
+finite graph tests check the implementation at its stated bound rather than
+serving as the induction proof.
+
+For a forward extension, fix a total structural witness: preserve each
+represented bond and selected root, take every currently forced Traversal
+bond as Traversal, and take every other unresolved bond as Ring. Give no
+additional root to a Traversal component already containing an emitted root.
+Give each rootless Traversal component one future root; its ordinary prepared
+root domain still permits this choice when no forced Traversal path joins it
+to an emitted root. Under this restricted preparation, the rooted-Forest
+projector excludes a second emitted root in a forced Traversal component.
+Acyclicity and root uniqueness give at most one visited Traversal attachment to each unvisited
+Traversal component. At the active atom, close any waiting Ring occurrence
+and open every remaining Ring incidence before leaving its ring phase. Each
+Ring bond is opened at its first visited endpoint and closed when the other
+endpoint becomes active. Its earlier occurrence makes a later atom entry safe:
+any additional unrepresented edge to a visited atom would have to be
+Traversal, contradicting the unique-attachment fact. The exact residual
+attachment list then offers the forced Traversal children. Take a branch
+while another child remains, leaving those other incidences forced Traversal;
+take inline only for the last child. An empty branch frame returns to its
+suspended parent. When a top-level frame is exhausted and unvisited atoms
+remain, select a root in a component without a visited Traversal attachment
+and take `DotSegmentRoot` before discarding that frame. `FinishSegment` is
+offered only after no unvisited atom remains. For this fixed complete Ring
+assignment, count both endpoint emissions of an unopened Ring bond and the
+remaining endpoint of an open Ring bond. Each Ring event decreases that count.
+Atom entries decrease unvisited atoms, including entries that add a frame;
+frame completion decreases the number of pending frames, including the active
+frame. Thus the lexicographic measure of unvisited atoms, remaining Ring
+endpoint emissions, and pending frames terminates the construction.
+
+For the reverse direction, take the total roles and roots from a target
+serialization itself. Each emitted ring occurrence belongs to its Ring bond
+and each child entry to its Traversal bond. A branch start commits every
+remaining parent incidence to Traversal. The target assignment satisfies
+that restriction because the grammar forbids a later Ring occurrence at the
+sealed parent, leaving those remaining incidences as future child entries.
+Each root or child entry also commits that atom's root role exactly as in the
+target schedule, so its assignment satisfies those root restrictions and
+bond-role domains at every prefix. A target cannot write a later Ring occurrence
+at a sealed parent. Its inline child discards that parent only after all
+other incidences there are represented. A new root whose Ring edge reaches an
+earlier visited atom requires that earlier endpoint to have opened the ring.
+These grammar facts and the same attachment partition make each target event
+one of the frontier constructors: initial root, Ring open/close, branch or
+inline child, dot branch/segment root, branch return, or final segment finish.
+The current source owns these at `WriterState::structural_frontier`,
+`TraversalState::can_enter_atom`, `can_close_parent_ring_phase`, and
+`ResidualPartition::attachments`. The focused live tests check the otherwise
+easy-to-miss completion precedence: an available dot-segment root suppresses
+`FinishSegment`, whereas an outer branch returns with `CloseBranch`.
+
+The result is correspondence for the restricted structural machine's stable,
+successful constructor transitions: such states have a completing structural
+schedule, and each valid target schedule has the corresponding constructor
+sequence. The case split supplies the arbitrary-size transition induction
+under the stated ownership and root-domain conditions; the bounded tests
+check implementations of those conditions. It does not establish that every
+raw proposed candidate succeeds, that every public token prefix is productive,
+or that finite ring labels, chemistry, spellings, stereo, representation
+factors, profile restrictions, and RDKit scheduling preserve this result.

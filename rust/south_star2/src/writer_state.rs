@@ -1429,6 +1429,8 @@ mod tests {
         assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingOpen {
             first_endpoint: atoms[2],
         });
+        assert!(state.derive_candidates().candidates().contains(&StructuralCandidate::CloseBranch));
+        assert!(!state.derive_candidates().candidates().contains(&StructuralCandidate::FinishSegment));
         let state = offered_step(&state, StructuralCandidate::CloseBranch);
         check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let raw = state.observe_raw().traversal;
@@ -1472,6 +1474,10 @@ mod tests {
         let state = rooted(&prepared, atoms[0]);
         let opening = incident(&prepared, atoms[0], cross);
         let state = offered_step(&state, StructuralCandidate::RingOpen { incident: opening });
+        assert!(state.derive_candidates().candidates().contains(
+            &StructuralCandidate::DotSegmentRoot { atom: atoms[2] }
+        ));
+        assert!(!state.derive_candidates().candidates().contains(&StructuralCandidate::FinishSegment));
         let raw = state.observe_raw().traversal;
         assert_eq!(raw.visited_atoms, vec![atoms[0]]);
         assert_eq!(raw.bond_progress[cross.index()], ObservedBondProgress::RingOpen {
@@ -1508,6 +1514,7 @@ mod tests {
             first_endpoint: atoms[0],
             second_endpoint: atoms[1],
         });
+        assert!(state.derive_candidates().candidates().contains(&StructuralCandidate::FinishSegment));
         assert!(offered_step(&state, StructuralCandidate::FinishSegment).scope_is_complete());
     }
 

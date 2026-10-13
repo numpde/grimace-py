@@ -105,6 +105,10 @@ bare atoms where possible, unpadded numbers, omitted default fields, and the
 smallest available ring label. It cannot repair missing traversal or dot-event
 coverage. `MAXIMAL` must cover valid lexical and structural alternatives alike;
 lexical breadth cannot stand in for missing traversal or dot-event coverage.
+Each restriction selects complete productions at the atom, bond, or ring owner
+before emission. It must preserve a valid continuation for every published
+prefix; filtering finished strings or arbitrary characters would not establish
+that property.
 
 ## Current production coverage
 

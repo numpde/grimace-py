@@ -1313,3 +1313,25 @@ coverage. The prior ordinary-single-bond and isotope counterexamples were
 repaired; their passing checks are focused evidence, not a completeness proof.
 Audit against the normative contract and record further counterexamples as
 defects rather than renaming or narrowing the policy.
+
+## Bounded bracket-production closure slice
+
+For a fixed admitted atom fact and caller-selected aromatic/tetrahedral context,
+`atom_spelling.rs` follows the OpenSMILES bracket field order: optional isotope,
+symbol, optional tetrahedral marker, H count, charge, and class. Native tests
+compare the complete finite H/charge suffix set from `AtomSpellingState` with
+an independently constructed grammar and numeric interpretation for H 0–9,
+charge −99–99, and both spelling policies. A fixed caller marker is checked for
+its two `MAXIMAL` tetrahedral forms (`@`/`@TH1` or `@@`/`@TH2`) and one
+`COMPACT` form. Separate cases check field order, hydrogen-atom exclusion,
+isotope zero versus absence, and class-zero behavior. The isotope and
+class `NUMBER` states retain a zero-padding loop; induction on the number of
+prefix zeros covers every finite padding length for a fixed represented value.
+Every chosen field phase has a path to the next field, so this local spelling
+argument does not require enumerating unbounded suffixes.
+
+This establishes only a local production argument. Bare-atom eligibility in
+aromatic contexts, caller stereo facts, admission, and global walker completion
+remain separate obligations. The element table deliberately includes four
+post-2016 symbols; strict OpenSMILES v1.0 lexical treatment of those symbols
+remains an explicit contract decision.

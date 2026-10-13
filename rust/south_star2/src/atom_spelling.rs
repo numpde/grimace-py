@@ -958,6 +958,266 @@ mod tests {
         complete
     }
 
+    fn accepts_with_policy(
+        facts: AtomFacts,
+        context: AtomSpellingContext,
+        policy: AtomSpellingPolicy,
+        map_present: bool,
+        text: &str,
+    ) -> bool {
+        let mut states = vec![AtomSpellingState::initial_with_policy(
+            facts,
+            context,
+            policy,
+            map_present,
+        )];
+        for ch in text.chars() {
+            states = states
+                .into_iter()
+                .flat_map(|state| state.choices())
+                .filter(|choice| choice.text == ch)
+                .map(|choice| choice.successor)
+                .collect();
+        }
+        states.iter().any(AtomSpellingState::is_complete)
+    }
+
+    fn finite_bracket_suffixes(
+        atom: AtomFacts,
+        context: AtomSpellingContext,
+        policy: AtomSpellingPolicy,
+    ) -> std::collections::BTreeSet<String> {
+        let mut states = vec![AtomSpellingState::initial_with_policy(
+            atom, context, policy, false,
+        )];
+        for ch in "[13C".chars() {
+            states = states
+                .into_iter()
+                .flat_map(|state| state.choices())
+                .filter(|choice| choice.text == ch)
+                .map(|choice| choice.successor)
+                .collect();
+            assert!(
+                !states.is_empty(),
+                "fixed isotope and element prefix must exist"
+            );
+        }
+        let mut pending = states
+            .into_iter()
+            .map(|state| (String::new(), state))
+            .collect::<Vec<_>>();
+        let mut complete = std::collections::BTreeSet::new();
+        while let Some((suffix, state)) = pending.pop() {
+            assert!(
+                suffix.len() <= 12,
+                "finite H/charge/marker suffix exceeded grammar width"
+            );
+            if state.is_complete() {
+                complete.insert(suffix);
+                continue;
+            }
+            // Class zero is optional here. Exclude its entire production at its entry.
+            let choices = state
+                .choices()
+                .into_iter()
+                .filter(|choice| choice.field != AtomSpellingField::AtomClass)
+                .collect::<Vec<_>>();
+            assert!(
+                !choices.is_empty(),
+                "published finite prefix has no completion"
+            );
+            for choice in choices {
+                pending.push((format!("{suffix}{}", choice.text), choice.successor));
+            }
+        }
+        complete
+    }
+
+    fn grammar_charge_spellings(value: i8) -> std::collections::BTreeSet<String> {
+        let mut spellings = std::collections::BTreeSet::new();
+        if value == 0 {
+            spellings.insert(String::new());
+        }
+        for (sign, polarity) in [('+', 1_i16), ('-', -1_i16)] {
+            if i16::from(value) == polarity {
+                spellings.insert(sign.to_string());
+            }
+            if i16::from(value) == 2 * polarity {
+                spellings.insert(format!("{sign}{sign}"));
+            }
+            for magnitude in 0..=99 {
+                if i16::from(value) != polarity * magnitude {
+                    continue;
+                }
+                spellings.insert(format!("{sign}{magnitude}"));
+                if magnitude < 10 {
+                    spellings.insert(format!("{sign}0{magnitude}"));
+                }
+            }
+        }
+        spellings
+    }
+
+    #[test]
+    fn bracket_hydrogen_and_charge_productions_match_complete_finite_language() {
+        for h in 0..=9 {
+            let hydrogens = match h {
+                0 => vec![String::new(), "H0".into()],
+                1 => vec!["H".into(), "H1".into()],
+                _ => vec![format!("H{h}")],
+            };
+            for charge in -99..=99 {
+                let mut atom = facts("C", false, h, 0, None);
+                atom.isotope = Some(13); // Fixes bracket form in both profiles.
+                atom.formal_charge = charge;
+                let expected = hydrogens
+                    .iter()
+                    .flat_map(|hydrogen| {
+                        grammar_charge_spellings(charge)
+                            .into_iter()
+                            .map(move |charge_text| format!("{hydrogen}{charge_text}]"))
+                    })
+                    .collect::<std::collections::BTreeSet<_>>();
+                assert_eq!(
+                    finite_bracket_suffixes(
+                        atom,
+                        AtomSpellingContext::default(),
+                        AtomSpellingPolicy::Maximal
+                    ),
+                    expected,
+                    "H={h}, charge={charge}"
+                );
+
+                let short_h = if h == 0 {
+                    String::new()
+                } else if h == 1 {
+                    "H".into()
+                } else {
+                    format!("H{h}")
+                };
+                let short_charge = if charge == 0 {
+                    String::new()
+                } else if charge == 1 {
+                    "+".into()
+                } else if charge == -1 {
+                    "-".into()
+                } else {
+                    format!("{:+}", charge)
+                };
+                let compact = [format!("{short_h}{short_charge}]")].into_iter().collect();
+                assert_eq!(
+                    finite_bracket_suffixes(
+                        atom,
+                        AtomSpellingContext::default(),
+                        AtomSpellingPolicy::Compact
+                    ),
+                    compact,
+                    "compact H={h}, charge={charge}"
+                );
+            }
+        }
+        let hydrogen = facts("H", false, 0, 0, None);
+        for invalid in ["[HH]", "[HH0]", "[HH1]"] {
+            assert!(!accepts_with_policy(
+                hydrogen,
+                AtomSpellingContext::default(),
+                AtomSpellingPolicy::Maximal,
+                false,
+                invalid
+            ));
+        }
+        let mut isotope_carbon = facts("C", false, 0, 0, None);
+        isotope_carbon.isotope = Some(13);
+        for noncompact in ["[013C]", "[13CH0]", "[13C+0]", "[13C:0]"] {
+            assert!(!accepts_with_policy(
+                isotope_carbon,
+                AtomSpellingContext::default(),
+                AtomSpellingPolicy::Compact,
+                false,
+                noncompact
+            ));
+        }
+    }
+
+    #[test]
+    fn bracket_tetrahedral_and_optional_field_order_is_fixed() {
+        let mut finite_atom = facts("C", false, 1, 0, None);
+        finite_atom.isotope = Some(13);
+        finite_atom.formal_charge = 2;
+        for (marker, spellings) in [
+            (TetrahedralMarker::At, ["@", "@TH1"]),
+            (TetrahedralMarker::AtAt, ["@@", "@TH2"]),
+        ] {
+            let context = AtomSpellingContext {
+                tetrahedral_marker: Some(marker),
+                ..AtomSpellingContext::default()
+            };
+            let expected = spellings
+                .into_iter()
+                .flat_map(|spelling| {
+                    ["H", "H1"].into_iter().flat_map(move |hydrogen| {
+                        grammar_charge_spellings(2)
+                            .into_iter()
+                            .map(move |charge| format!("{spelling}{hydrogen}{charge}]"))
+                    })
+                })
+                .collect();
+            assert_eq!(
+                finite_bracket_suffixes(finite_atom, context, AtomSpellingPolicy::Maximal),
+                expected
+            );
+            let compact = [format!("{}H+2]", spellings[0])].into_iter().collect();
+            assert_eq!(
+                finite_bracket_suffixes(finite_atom, context, AtomSpellingPolicy::Compact),
+                compact
+            );
+        }
+        let mut atom = facts("C", false, 1, 5, None);
+        atom.isotope = Some(13);
+        atom.formal_charge = 2;
+        for (marker, short, long) in [
+            (TetrahedralMarker::At, "@", "@TH1"),
+            (TetrahedralMarker::AtAt, "@@", "@TH2"),
+        ] {
+            let context = AtomSpellingContext {
+                tetrahedral_marker: Some(marker),
+                ..AtomSpellingContext::default()
+            };
+            for spelling in [short, long] {
+                let text = format!("[0013C{spelling}H1+02:005]");
+                assert!(
+                    accepts_with_policy(atom, context, AtomSpellingPolicy::Maximal, false, &text),
+                    "missing {text}"
+                );
+            }
+            let compact = format!("[13C{short}H+2:5]");
+            assert!(accepts_with_policy(
+                atom,
+                context,
+                AtomSpellingPolicy::Compact,
+                true,
+                &compact
+            ));
+            for invalid in [
+                format!("[0013CH1{short}+02:005]"),
+                format!("[0013C{short}+02H1:005]"),
+                format!("[0013C{short}H1:005+02]"),
+                format!("[0013C{short}{short}H1+02:005]"),
+            ] {
+                assert!(
+                    !accepts_with_policy(
+                        atom,
+                        context,
+                        AtomSpellingPolicy::Maximal,
+                        false,
+                        &invalid
+                    ),
+                    "admitted {invalid}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn compact_complete_atom_support_preserves_metadata_and_internal_zeros() {
         let mut atom = facts("C", false, 4, 0, None);
@@ -1302,6 +1562,14 @@ mod tests {
             &long_isotope
         ));
         assert!(!supports(isotope_zero, AtomSpellingContext::default(), "[H]"));
+        let isotope_absent = AtomFacts { isotope: None, ..isotope_zero };
+        assert!(supports(isotope_absent, AtomSpellingContext::default(), "[H]"));
+        assert!(!supports(isotope_absent, AtomSpellingContext::default(), "[0H]"));
+        assert!(!supports(
+            isotope_absent,
+            AtomSpellingContext::default(),
+            &long_isotope
+        ));
 
         let class_zero = facts("C", false, 4, 0, None);
         let long_class = format!("[CH4:{}0]", "0".repeat(128));
@@ -1310,6 +1578,7 @@ mod tests {
             AtomSpellingContext::default(),
             &long_class
         ));
+        assert!(supports(class_zero, AtomSpellingContext::default(), "[CH4]"));
     }
 
     #[test]

@@ -1259,3 +1259,12 @@ minimal repairs are the mandatory nonzero-isotope field and the ordinary
 single-bond spelling choice with its ring/branch placement cases, each followed
 by a focused semantic regression. This audit does not implement either repair
 or claim a universal completeness proof.
+
+`tests.south_star2.test_standard_smiles_semantics.GeneralLanguageNormativeRegressionTests`
+now records both selected obligations in default discovery: `C-C` must be
+accepted for admitted ethane, and isotope-free `[CH4]` must be rejected for
+admitted `[13CH4]`. The corresponding `CC` and `[13CH4]` controls pass. These
+two regression assertions are intentionally red until their runtime repairs;
+they specify OpenSMILES/fact identity rather than RDKit writer support. The
+60-second bounded focused run failed at exactly those two assertions and
+reported `verified_no_live_members`; log: `/tmp/grimace-normative-red-focused.log`.

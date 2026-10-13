@@ -11,6 +11,7 @@ from rdkit import Chem, rdBase
 from grimace import decoding
 from tests.helpers.fixture_paths import checked_in_fixture_path
 from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
+from tests.south_star2.test_compact_language import _walk_language
 
 
 FIXTURE_PATH = checked_in_fixture_path("opensmiles_examples", "representational_aliases.json")
@@ -228,6 +229,23 @@ class PublicSupportOfOpenSmilesExamplesTests(unittest.TestCase):
         aliases = tuple(case["example_smiles"])
         source = _parse(aliases[0])
         self.assertTrue(all(_public_prefix_accepts(source, alias) for alias in aliases))
+
+
+class GeneralLanguageNormativeRegressionTests(unittest.TestCase):
+    """Check selected OpenSMILES semantics in GENERAL, outside RDKit writer parity."""
+
+    def test_explicit_ordinary_single_bond_is_accepted(self) -> None:
+        source = _parse("CC")
+        language = decoding.SmilesLanguage.GENERAL
+        self.assertIsNotNone(_walk_language(source, "CC", language, max_nodes=1000))
+        self.assertIsNotNone(_walk_language(source, "C-C", language, max_nodes=1000))
+
+    def test_nonzero_isotope_cannot_be_omitted(self) -> None:
+        source = _parse("[13CH4]")
+        self.assertEqual(13, source.GetAtomWithIdx(0).GetIsotope())
+        language = decoding.SmilesLanguage.GENERAL
+        self.assertIsNotNone(_walk_language(source, "[13CH4]", language, max_nodes=1000))
+        self.assertIsNone(_walk_language(source, "[CH4]", language, max_nodes=1000))
 
 
 class PublicOutputGraphSemanticsTests(unittest.TestCase):

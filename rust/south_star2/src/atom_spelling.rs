@@ -377,7 +377,7 @@ impl AtomSpellingState {
                 if let Some(isotope) = self.facts.isotope {
                     push_number_start(&mut choices, self, isotope as u64, NumberKind::Isotope);
                 }
-                if self.policy == AtomSpellingPolicy::General || self.facts.isotope.is_none() {
+                if self.facts.isotope.is_none() {
                     push_element_start(&mut choices, self, true);
                 }
             }
@@ -1301,6 +1301,7 @@ mod tests {
             AtomSpellingContext::default(),
             &long_isotope
         ));
+        assert!(!supports(isotope_zero, AtomSpellingContext::default(), "[H]"));
 
         let class_zero = facts("C", false, 4, 0, None);
         let long_class = format!("[CH4:{}0]", "0".repeat(128));
@@ -1309,6 +1310,21 @@ mod tests {
             AtomSpellingContext::default(),
             &long_class
         ));
+    }
+
+    #[test]
+    fn bracket_spelling_preserves_nonzero_isotope() {
+        let isotope_carbon = AtomFacts::new(
+            ElementSymbol::new("C").unwrap(), false, Some(13), 0, 4, 0, None,
+        ).unwrap();
+        let context = AtomSpellingContext::default();
+        assert!(supports(isotope_carbon, context, "[13CH4]"));
+        assert!(supports(isotope_carbon, context, "[0013CH4]"));
+        assert!(!supports(isotope_carbon, context, "[CH4]"));
+
+        let ordinary_carbon = AtomFacts { isotope: None, ..isotope_carbon };
+        assert!(supports(ordinary_carbon, context, "[CH4]"));
+        assert!(!supports(ordinary_carbon, context, "[13CH4]"));
     }
 
     #[test]

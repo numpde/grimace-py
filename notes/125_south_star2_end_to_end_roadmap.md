@@ -1335,3 +1335,31 @@ aromatic contexts, caller stereo facts, admission, and global walker completion
 remain separate obligations. The element table deliberately includes four
 post-2016 symbols; strict OpenSMILES v1.0 lexical treatment of those symbols
 remains an explicit contract decision.
+
+## Structural grammar constructors and local phase invariant
+
+OpenSMILES v1.0 grammar (§2) gives `branched_atom ::= atom ringbond* branch*`;
+`chain` continues with an atom, bond plus atom, or dot plus atom. Each branch
+contains a nonempty chain, optionally preceded by a bond or dot. The current
+event correspondence is:
+
+| Grammar constructor | Event owner and focused evidence |
+| --- | --- |
+| Initial atom or a dot-segment root | `WriterState::structural_frontier` offers a root; `TraversalState::begin_segment` visits it. The native root/segment test distinguishes branch return from segment finish. |
+| Ring occurrence before a branch | The frontier offers ring open/close while `active_can_emit_ring`; `WriterFrame::commit_ring` records a prefix of local bond occurrences. The native triangle test covers opening, traversal, and closure. |
+| `(chain)` and `(bond chain)` | `BranchChild` commits an incident bond, enters a nonempty child frame, and `CloseBranch` restores its parent. Bond spelling belongs to `nonstereo_writer.rs`; native star and parent-sibling tests cover return and remaining attachments. |
+| `(.chain)` | `DotBranchRoot` begins a new segment with a suspended parent; the public compact graph witness covers a selected leading-dot branch. |
+| Inline atom and bond plus atom | `InlineChild` consumes the last active attachment; bond spelling is selected before the new atom. The native star and triangle tests cover this transition. |
+| Dot plus atom in a chain | `DotSegmentRoot` begins another segment; selected public dot tests show open ring obligations crossing segments. |
+| Matched ring label and later reuse | `RingLabels` allocates on first endpoint and releases on second; native label tests cover free-slot reuse and the public compact test covers a connected example. |
+
+Locally, a frame's ring occurrences occupy a prefix of its emitted bonds.
+Starting a branch closes that frame's ring phase, including after a branch
+return. The frontier excludes ring candidates after this boundary and forces
+waiting ring closures before it; the ring-plus-substituent native test checks
+the crossing while a later atom may still close an earlier label. The same
+structural grammar governs `MAXIMAL` and `COMPACT`; each profile restricts
+whole event or spelling productions at their owners. RDKit writer scheduling
+is a separate policy. These local phase facts do not prove that every offered
+prefix has a completed graph, that every grammatical event order is offered,
+or that all bond and stereo interpretations preserve the admitted facts.

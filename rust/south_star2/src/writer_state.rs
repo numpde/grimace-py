@@ -1487,7 +1487,7 @@ mod tests {
         let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
         let right = graph.add_bond(atoms[0], atoms[2]).unwrap();
-        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let between = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let substituent = graph.add_bond(atoms[0], atoms[3]).unwrap();
         let prepared = PreparedMolecule::new(graph.build());
         let rooted = rooted(&prepared, atoms[0]);
@@ -1514,6 +1514,51 @@ mod tests {
                 incident(&prepared, atoms[0], right),
                 incident(&prepared, atoms[0], substituent),
             ]
+        );
+        let branch_incident = incident(&prepared, atoms[0], substituent);
+        let branch = attempt(
+            &opened,
+            StructuralCandidate::BranchChild {
+                incident: branch_incident,
+            },
+        )
+        .enter_committed_branch_child(branch_incident);
+        assert_eq!(
+            branch.structural_frontier().path_completion(),
+            Some(PathCompletion::CloseBranch)
+        );
+        let restored = attempt(&branch, StructuralCandidate::CloseBranch);
+        let remaining = incident(&prepared, atoms[0], right);
+        assert!(restored.structural_frontier().ring_openings().is_empty());
+        assert!(restored.structural_frontier().ring_closures().is_empty());
+        assert_eq!(
+            restored.structural_frontier().inline_children(),
+            &[remaining]
+        );
+
+        let walked = attempt(
+            &restored,
+            StructuralCandidate::InlineChild {
+                incident: remaining,
+            },
+        )
+        .enter_committed_inline_child(remaining);
+        let next = incident(&prepared, atoms[2], between);
+        let walked = attempt(&walked, StructuralCandidate::InlineChild { incident: next })
+            .enter_committed_inline_child(next);
+        let closure = incident(&prepared, atoms[1], left);
+        assert_eq!(walked.structural_frontier().ring_closures(), &[closure]);
+        let closed = attempt(
+            &walked,
+            StructuralCandidate::RingClose {
+                incident: closure,
+                first_endpoint: atoms[0],
+            },
+        );
+        assert!(closed.graph_is_complete());
+        assert_eq!(
+            closed.structural_frontier().path_completion(),
+            Some(PathCompletion::FinishSegment)
         );
     }
 

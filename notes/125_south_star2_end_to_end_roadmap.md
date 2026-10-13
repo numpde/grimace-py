@@ -23,6 +23,22 @@ coverage, not an exhaustive language or RDKit writer-support result.
 
 ## Tetrahedral Forest candidate plan
 
+Finite local extension qualification at `ffdfdbc2`: for a three-bond center
+with one implicit H and a four-bond center, all 112 root/entry and fixed-role
+combinations (68 legal, 44 illegal entry-ring) preserve exactly the lexical ligand orders formed by entry first,
+then implicit H when present, then ring occurrences, then traversal children.
+Both marker orientations give 224 prepared context/role cases and 448 parity
+transitions, checked against independent
+permutation inversion counts. The actual prepared Generic AnyOrder Forest
+latent factor was activated for every fixed-role case alongside the initially
+active Forest topology factor; its projected order
+domain matched the independent local set or contradicted an illegal entry-ring
+or incompatible marker. This is a local extension law under fixed incident
+roles, not a proof that all jointly constrained molecules or public writer
+paths complete. The lexical order follows [OpenSMILES §3.8.2](https://opensmiles.org/opensmiles.html);
+the parity-to-marker mapping remains a prepared fact rather than an RDKit
+writer-support claim.
+
 Admit tetrahedral facts to generic Forest when no directional relation is present. Preserve the Tree role rule; in Forest, each residual chemical group can contain several traversal incidences, while the actual per-bond traversal/ring decisions and topology factor own role consistency. Keep the entry bond as the tetrahedral entry ligand and do not treat a dot or serialization predecessor as a ligand. Qualify the candidate with bounded native tests for real chiral molecules, opposite parity, sibling incidences, completed support, and rejected premature acceptance. This slice does not change E/Z Forest admission or claim general writer parity.
 
 Candidate evidence: the isolated offline wheel exercised version-keyed semantic witnesses in `GENERAL` and `COMPACT` for both halogenated enantiomers, a ring center with two traversal children in one chemical residual component, and adjacent tetrahedral centers. Each selected path reached acceptance, parsed back with the source chirality, and rejected the opposite marker. The earlier exhaustive tetrahedral semantic loops now explicitly cover the no-dot tree-like sublanguage; their collectors fail with a named budget if this scope grows. These checks do not validate leading-dot tetrahedral branches, all Forest paths, or RDKit writer support for the dot spellings.

@@ -165,6 +165,108 @@ mod tests {
     }
 
     #[test]
+    fn every_local_role_assignment_has_exactly_the_legal_order_extensions() {
+        for bond_count in [3_usize, 4] {
+            let bonds = (0..bond_count)
+                .map(|index| BondId::new(index as u32))
+                .collect::<Vec<_>>();
+            let mut ligands = bonds
+                .iter()
+                .copied()
+                .map(TetrahedralLigand::Bond)
+                .collect::<Vec<_>>();
+            if bond_count == 3 {
+                ligands.push(TetrahedralLigand::VirtualHydrogen);
+            }
+            let reference: [TetrahedralLigand; 4] = ligands.try_into().unwrap();
+            let bond_bits = bonds
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(bit, bond)| (bond, bit as u8))
+                .collect::<Vec<_>>();
+            for entry in std::iter::once(None).chain(bonds.iter().copied().map(Some)) {
+                let mut prefix = entry
+                    .map(TetrahedralLigand::Bond)
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if bond_count == 3 {
+                    prefix.push(TetrahedralLigand::VirtualHydrogen);
+                }
+                let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+                for pattern in 0..(1_u8 << bond_count) {
+                    let mut ring = Vec::new();
+                    let mut traversal = Vec::new();
+                    for (bit, bond) in bonds.iter().copied().enumerate() {
+                        if Some(bond) == entry {
+                            continue;
+                        }
+                        if pattern & (1 << bit) == 0 {
+                            traversal.push(TetrahedralLigand::Bond(bond));
+                        } else {
+                            ring.push(TetrahedralLigand::Bond(bond));
+                        }
+                    }
+                    let expected = if entry.is_some_and(|bond| {
+                        pattern & (1 << bonds.iter().position(|candidate| *candidate == bond).unwrap()) != 0
+                    }) {
+                        BTreeSet::new()
+                    } else {
+                        let mut expected = BTreeSet::new();
+                        for ring_order in permutations_of(&ring) {
+                            for traversal_order in permutations_of(&traversal) {
+                                let order = prefix.iter().chain(&ring_order).chain(&traversal_order)
+                                    .copied().collect::<Vec<_>>();
+                                expected.insert(order);
+                            }
+                        }
+                        expected
+                    };
+                    let actual = rows[pattern as usize]
+                        .iter()
+                        .map(|value| order_for_value(&reference, value).unwrap().to_vec())
+                        .collect::<BTreeSet<_>>();
+                    assert_eq!(actual, expected, "bond_count={bond_count}, entry={entry:?}, pattern={pattern}");
+                    for parity in TetrahedralParity::ALL {
+                        let expected_parity = expected.iter().filter(|order| {
+                            let positions = order.iter().map(|ligand| reference.iter().position(|item| item == ligand).unwrap())
+                                .collect::<Vec<_>>();
+                            let inversions = (0..4).flat_map(|left| ((left + 1)..4).map(move |right| (left, right)))
+                                .filter(|(left, right)| positions[*left] > positions[*right]).count();
+                            (inversions % 2 == 0) == (parity == TetrahedralParity::Even)
+                        }).count();
+                        assert_eq!(rows[pattern as usize].intersect(parity_domain(parity)).len(), expected_parity);
+                    }
+                    assert_eq!(
+                        rows[pattern as usize].intersect(parity_domain(TetrahedralParity::Even))
+                            .union(rows[pattern as usize].intersect(parity_domain(TetrahedralParity::Odd))),
+                        rows[pattern as usize]
+                    );
+                    assert_eq!(!actual.is_empty(), entry.is_none_or(|bond| {
+                        pattern & (1 << bonds.iter().position(|candidate| *candidate == bond).unwrap()) == 0
+                    }));
+                }
+            }
+        }
+    }
+
+    fn permutations_of(items: &[TetrahedralLigand]) -> Vec<Vec<TetrahedralLigand>> {
+        if items.is_empty() {
+            return vec![Vec::new()];
+        }
+        let mut result = Vec::new();
+        for (index, item) in items.iter().enumerate() {
+            let rest = items.iter().enumerate().filter_map(|(other, value)| (other != index).then_some(*value))
+                .collect::<Vec<_>>();
+            for mut tail in permutations_of(&rest) {
+                tail.insert(0, *item);
+                result.push(tail);
+            }
+        }
+        result
+    }
+
+    #[test]
     fn all_orders_are_unique_and_split_evenly_by_parity() {
         let reference = reference();
         let orders = (0..TETRAHEDRAL_ORDER_COUNT as u8)

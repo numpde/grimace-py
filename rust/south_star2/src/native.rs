@@ -391,6 +391,9 @@ impl NativeSolverState {
                 FactorDefinition::OrderedRingPhase(phase) => {
                     revise_ordered_ring_phase(phase, &mut self.domains)?
                 }
+                FactorDefinition::OrdinaryOrder(order) => {
+                    revise_ordinary_order(order, &mut self.domains)?
+                }
                 FactorDefinition::FixedSchedule(schedule) => {
                     revise_fixed_schedule(schedule, &mut self.domains)?
                 }
@@ -517,8 +520,13 @@ impl NativeSolverState {
                 }
                 FactorDefinition::FixedSchedule(schedule) => {
                     core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                    core_variables.extend(schedule.ordinary_centers().iter()
+                        .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
                     core_variables.extend(schedule.capacity_bits().iter().copied());
                     core_variables.extend(schedule.root_bits().iter().copied());
+                }
+                FactorDefinition::OrdinaryOrder(order) => {
+                    core_variables.extend(order.variables().iter().copied());
                 }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
@@ -577,8 +585,13 @@ impl NativeSolverState {
                 }
                 FactorDefinition::FixedSchedule(schedule) => {
                     projected_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                    projected_variables.extend(schedule.ordinary_centers().iter()
+                        .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
                     projected_variables.extend(schedule.capacity_bits().iter().copied());
                     projected_variables.extend(schedule.root_bits().iter().copied());
+                }
+                FactorDefinition::OrdinaryOrder(order) => {
+                    projected_variables.extend(order.variables().iter().copied());
                 }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
@@ -773,6 +786,8 @@ impl NativeExactPlan {
                         visited_semantic[factor_id.index()] = true;
                         potential_resource_factors.insert(factor_id);
                         potential_core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
+                        potential_core_variables.extend(schedule.ordinary_centers().iter()
+                            .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
                         potential_core_variables.extend(schedule.capacity_bits().iter().copied());
                         potential_core_variables.extend(schedule.root_bits().iter().copied());
                         for edge in schedule.edges() {
@@ -781,6 +796,12 @@ impl NativeExactPlan {
                                 .or_insert(edge.role_partition);
                         }
                         schedule.variables()
+                    }
+                    FactorDefinition::OrdinaryOrder(order) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_resource_factors.insert(factor_id);
+                        potential_core_variables.extend(order.variables().iter().copied());
+                        order.variables()
                     }
                     FactorDefinition::AromaticMatching(_) => {
                         unreachable!(
@@ -805,6 +826,7 @@ impl NativeExactPlan {
                             | FactorDefinition::TetrahedralLayout(_)
                             | FactorDefinition::RingCountAtMost(_)
                             | FactorDefinition::OrderedRingPhase(_)
+                            | FactorDefinition::OrdinaryOrder(_)
                             | FactorDefinition::FixedSchedule(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
@@ -839,6 +861,7 @@ impl NativeExactPlan {
                                                 | FactorDefinition::TetrahedralLayout(_)
                                                 | FactorDefinition::RingCountAtMost(_)
                                                 | FactorDefinition::OrderedRingPhase(_)
+                                                | FactorDefinition::OrdinaryOrder(_)
                                                 | FactorDefinition::FixedSchedule(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
@@ -1358,7 +1381,9 @@ fn revise_fixed_schedule(
 ) -> Result<Vec<VariableId>, NativeSolverError> {
     if factor.capacity_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
         || factor.root_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
-        || factor.centers().iter().any(|center| !domains[center.order_variable.index()].is_singleton()) {
+        || factor.centers().iter().any(|center| !domains[center.order_variable.index()].is_singleton())
+        || factor.ordinary_centers().iter().flat_map(|center| center.pairs.iter())
+            .any(|pair| !domains[pair.variable.index()].is_singleton()) {
         return Ok(Vec::new());
     }
     for edge in factor.edges() {
@@ -1375,6 +1400,42 @@ fn revise_fixed_schedule(
     } else {
         Err(NativeSolverError::Contradiction)
     }
+}
+
+fn revise_ordinary_order(
+    factor: &crate::model::OrdinaryOrderFactor,
+    domains: &mut PagedStore<Domain>,
+) -> Result<Vec<VariableId>, NativeSolverError> {
+    let mut bonds = BTreeSet::new();
+    let mut fixed = BTreeMap::<crate::ids::BondId, Vec<crate::ids::BondId>>::new();
+    let mut indegree = BTreeMap::<crate::ids::BondId, usize>::new();
+    for pair in factor.pairs() {
+        bonds.insert(pair.first);
+        bonds.insert(pair.second);
+        indegree.entry(pair.first).or_default();
+        indegree.entry(pair.second).or_default();
+        let domain = domains[pair.variable.index()];
+        if domain.is_singleton() {
+            let (earlier, later) = if domain.contains(0) {
+                (pair.first, pair.second)
+            } else { (pair.second, pair.first) };
+            fixed.entry(earlier).or_default().push(later);
+            *indegree.get_mut(&later).expect("pair endpoint must exist") += 1;
+        }
+    }
+    let mut pending = indegree.iter().filter_map(|(bond, count)| (*count == 0).then_some(*bond))
+        .collect::<Vec<_>>();
+    let mut removed = 0;
+    while let Some(bond) = pending.pop() {
+        removed += 1;
+        for next in fixed.get(&bond).into_iter().flatten() {
+            let count = indegree.get_mut(next).expect("pair endpoint must exist");
+            *count -= 1;
+            if *count == 0 { pending.push(*next); }
+        }
+    }
+    if removed != bonds.len() { return Err(NativeSolverError::Contradiction); }
+    Ok(Vec::new())
 }
 
 fn revise_traversal_topology(

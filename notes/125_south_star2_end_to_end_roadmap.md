@@ -2071,3 +2071,54 @@ reported `verified_no_live_members` cleanup. Evidence logs are
 `/tmp/grimace-fixed-schedule-wheel-build.log`,
 `/tmp/grimace-fixed-schedule-wheel-public.log`, and
 `/tmp/grimace-fixed-schedule-checkout-public.log`.
+
+### Ordinary-incidence fixed-tree schedule slice
+
+The fixed-tree schedule now shares one Boolean precedence fact for each pair of
+incident bonds at an ordinary atom. A latent local factor rejects directed
+cycles, and the writer records an ordinary atom's entry incidence before its
+other incidences, then retains selected-event precedence over every remaining
+incidence even after a branch frame is popped. On fixed roles, the schedule
+activates these facts with the tetrahedral layouts and projects the future
+ring-label peak through the shared exact solver. There is no 64-value local
+permutation cap: storage is O(sum of squared atom degrees), and the local
+fixed-direction cycle check is O(degree squared). Exact search over the shared
+orders can still be exponential.
+
+The one-label subdivided-diamond conditional regression is now green: with
+A-X-B as the long traversal arm, A-C/A-D as the others, and B-C/B-D as rings,
+the ordinary root does not offer X first and retains both viable short-arm
+starts. A finite independent 6-by-6 event relation establishes that expectation.
+An unseeded writer test in the same one-label namespace reaches the original
+four-atom diamond naturally: after A chooses the C branch, all roles fix, the
+factor activates, B-before-D is projected, and the ordinary order facts persist
+after the C branch pops.
+An ordinary-only cycle graph prepares the test factor. Four-incidence testing
+checks all 64 tournaments against 24 orders and a partial transitive projection
+against the exhaustive oracle; degree five checks construction beyond 64
+possible orders.
+
+Bounded offline `cargo check -p grimace-south-star2`, focused `ordinary_`, and
+focused `diamond_` Rust lanes passed with verified process-tree cleanup. Logs:
+`/tmp/grimace-ordinary-schedule-check.log`,
+`/tmp/grimace-ordinary-schedule-ordinary-focused.log`, and
+`/tmp/grimace-ordinary-schedule-diamond-focused.log`.
+Unfixed topology, selected forests, lexical prefix lifting, and full admitted-
+graph completeness remain separate obligations. The one-label fixture does
+not establish a default 100-label public counterexample.
+
+After integration, the bounded `ordinary_` and `diamond_` native lanes passed
+9 and 8 tests. A
+bounded offline release build produced CPython 3.12 wheel SHA-256
+`6540d7bbce7ef89cacfee7ee5c8c4a1d6b2cce9ee761230da3c76e8095238974`;
+the extracted extension SHA-256 is
+`c2442dd2f76310e1c0063b20aab096c230b66c042364c469157e562567ae7f07`.
+All 16 public prefix tests passed against both the extracted wheel and the
+refreshed checkout extension. The prior checkout extension is backed up at
+`/tmp/grimace-ordinary-schedule-checkout-core-before.so`; the current checkout
+extension matches the wheel bytes. Each bounded run verified process-tree
+cleanup. Logs: `/tmp/grimace-ordinary-schedule-integrated-ordinary.log`,
+`/tmp/grimace-ordinary-schedule-integrated-diamond.log`,
+`/tmp/grimace-ordinary-schedule-wheel-build.log`,
+`/tmp/grimace-ordinary-schedule-wheel-public.log`, and
+`/tmp/grimace-ordinary-schedule-checkout-public.log`.

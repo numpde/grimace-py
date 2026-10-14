@@ -322,10 +322,18 @@ impl PreparedConstraintAssembly {
         root_bits: Arc<[VariableId]>,
         edges: Arc<[crate::model::FixedScheduleEdge]>,
         centers: Arc<[crate::model::FixedScheduleCenter]>,
+        ordinary_centers: Arc<[crate::model::FixedScheduleOrdinaryCenter]>,
         capacity_bits: Arc<[VariableId]>,
     ) -> FactorId {
-        self.builder.add_latent_fixed_schedule(root_bits, edges, centers, capacity_bits)
+        self.builder.add_latent_fixed_schedule(root_bits, edges, centers, ordinary_centers, capacity_bits)
             .expect("prepared fixed schedule must define a valid latent factor")
+    }
+
+    pub(crate) fn add_latent_ordinary_order(
+        &mut self, atom: AtomId, pairs: Arc<[crate::model::OrdinaryOrderPair]>,
+    ) -> FactorId {
+        self.builder.add_latent_ordinary_order(atom, pairs)
+            .expect("prepared ordinary order must define a valid latent factor")
     }
 
     pub(crate) fn finish(self) -> PreparedMolecule {

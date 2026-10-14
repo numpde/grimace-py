@@ -300,6 +300,9 @@ fn assignment_satisfies(
                     },
                 )
             }
+            FactorDefinition::OrdinaryOrder(order) => {
+                order.permits(|variable| assignment[variable.index()])
+            }
             FactorDefinition::FixedSchedule(schedule) => {
                 schedule.permits(|variable| assignment[variable.index()])
             }
@@ -410,7 +413,7 @@ fn assignment_satisfies_traversal_topology(
 mod fixed_schedule_tests {
     use super::*;
     use crate::ids::BondId;
-    use crate::model::{FixedScheduleCenter, FixedScheduleEdge};
+    use crate::model::{FixedScheduleCenter, FixedScheduleEdge, FixedScheduleOrdinaryCenter, OrdinaryOrderPair};
     use crate::tetrahedral::{full_order_domain, TetrahedralLigand};
 
     #[test]
@@ -439,7 +442,15 @@ mod fixed_schedule_tests {
         let capacity: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(1).unwrap()).unwrap()].into();
         let root_bits: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(0).unwrap()).unwrap(),
             builder.add_variable(Domain::singleton(0).unwrap()).unwrap()].into();
-        let factor_id = builder.add_latent_fixed_schedule(root_bits, edges, centers, capacity).unwrap();
+        let ordinary_centers: Arc<[FixedScheduleOrdinaryCenter]> = [
+            (AtomId::new(2), bonds[1], bonds[3]),
+            (AtomId::new(3), bonds[2], bonds[4]),
+        ].into_iter().map(|(atom, first, second)| FixedScheduleOrdinaryCenter {
+            atom,
+            pairs: Arc::from([OrdinaryOrderPair { first, second,
+                variable: builder.add_variable(Domain::singleton(0).unwrap()).unwrap() }]),
+        }).collect::<Vec<_>>().into();
+        let factor_id = builder.add_latent_fixed_schedule(root_bits, edges, centers, ordinary_centers, capacity).unwrap();
         let model = Arc::new(builder.build());
         let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model)).unwrap().unwrap_consistent()
             .transitioned(&[], &[factor_id]).unwrap().unwrap_consistent();
@@ -469,6 +480,74 @@ mod fixed_schedule_tests {
             assert_eq!(matches!(exhaustive.transitioned(&restrictions, &[]).unwrap(),
                 Consistency::Consistent(_)), expected);
         }
+    }
+}
+
+#[cfg(test)]
+mod ordinary_order_tests {
+    use super::*;
+    use crate::ids::BondId;
+    use crate::model::OrdinaryOrderPair;
+
+    fn factor(degree: usize) -> (Arc<ConstraintModel>, FactorId, Vec<OrdinaryOrderPair>) {
+        let mut builder = ConstraintModelBuilder::new();
+        let pairs = (0..degree).flat_map(|first| (first + 1..degree).map(move |second| (first, second)))
+            .map(|(first, second)| OrdinaryOrderPair {
+                first: BondId::new(first as u32), second: BondId::new(second as u32),
+                variable: builder.add_variable(Domain::from_bits(3)).unwrap(),
+            }).collect::<Vec<_>>();
+        let id = builder.add_latent_ordinary_order(AtomId::new(0), pairs.clone().into()).unwrap();
+        (Arc::new(builder.build()), id, pairs)
+    }
+
+    #[test]
+    fn ordinary_four_incidence_tournaments_are_exactly_the_24_orders() {
+        let (model, id, pairs) = factor(4);
+        let FactorDefinition::OrdinaryOrder(order) = model.factor(id).unwrap() else { unreachable!() };
+        let accepted = (0..64_u64).filter(|mask| order.permits(|variable| ((mask >> variable.index()) & 1) as u8))
+            .collect::<BTreeSet<_>>();
+        let mut expected = BTreeSet::new();
+        for a in 0..4 { for b in 0..4 { for c in 0..4 { for d in 0..4 {
+            let sequence = [a, b, c, d];
+            if sequence.iter().copied().collect::<BTreeSet<_>>().len() != 4 { continue; }
+            let mask = pairs.iter().enumerate().fold(0_u64, |mask, (index, pair)| {
+                let first = sequence.iter().position(|value| *value == pair.first.index()).unwrap();
+                let second = sequence.iter().position(|value| *value == pair.second.index()).unwrap();
+                mask | (u64::from(second < first) << index)
+            });
+            expected.insert(mask);
+        }}}}
+        assert_eq!(accepted, expected);
+        assert_eq!(accepted.len(), 24);
+        let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model)).unwrap().unwrap_consistent()
+            .transitioned(&[], &[id]).unwrap().unwrap_consistent();
+        let exhaustive = ExhaustiveSolverState::initial(model).unwrap().unwrap_consistent()
+            .transitioned(&[], &[id]).unwrap().unwrap_consistent();
+        for pair in &pairs { assert_eq!(native.domain(pair.variable), exhaustive.domain(pair.variable)); }
+        let precedence = [(0, 1), (1, 2)].into_iter().map(|(a, b)| {
+            let pair = pairs.iter().find(|pair| pair.first.index() == a && pair.second.index() == b).unwrap();
+            (pair.variable, Domain::singleton(0).unwrap())
+        }).collect::<Vec<_>>();
+        let native_partial = native.transitioned(&precedence, &[]).unwrap().unwrap_consistent();
+        let exhaustive_partial = exhaustive.transitioned(&precedence, &[]).unwrap().unwrap_consistent();
+        let implied = pairs.iter().find(|pair| pair.first.index() == 0 && pair.second.index() == 2).unwrap();
+        assert_eq!(native_partial.domain(implied.variable), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(native_partial.domain(implied.variable), exhaustive_partial.domain(implied.variable));
+        let cycle = [(0, 1), (1, 2), (0, 2)];
+        let restrictions = cycle.into_iter().map(|(a, b)| {
+            let pair = pairs.iter().find(|pair| pair.first.index() == a && pair.second.index() == b).unwrap();
+            (pair.variable, Domain::singleton(u8::from((a, b) == (0, 2))).unwrap())
+        }).collect::<Vec<_>>();
+        assert!(matches!(native.transitioned(&restrictions, &[]).unwrap(), Consistency::Contradiction));
+        assert!(matches!(exhaustive.transitioned(&restrictions, &[]).unwrap(), Consistency::Contradiction));
+    }
+
+    #[test]
+    fn ordinary_degree_five_has_no_permutation_domain_cap() {
+        let (model, id, pairs) = factor(5);
+        let FactorDefinition::OrdinaryOrder(order) = model.factor(id).unwrap() else { unreachable!() };
+        assert_eq!(pairs.len(), 10);
+        assert!(order.permits(|_| 0));
     }
 }
 

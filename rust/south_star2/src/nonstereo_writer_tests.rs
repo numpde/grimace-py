@@ -8758,6 +8758,8 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
         WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
     ).unwrap();
     let mut state = initial(&surface);
+    assert!(surface.fixed_schedule_factor.is_some(),
+        "ordinary-only cycle graphs prepare the fixed schedule in the test namespace");
     state.labels.maximum_spelling_label = Some(0);
     let (_, root) = only_root_atom(&state, atoms[0]);
     assert!(!root.choices().unwrap().iter().any(|choice|
@@ -8889,6 +8891,9 @@ fn fixed_schedule_factor_matches_independent_diamond_event_reference() {
                     u8::from(bit == 0)
                 } else if schedule.root_bits().contains(&variable) {
                     0
+                } else if schedule.ordinary_centers().iter().any(|center|
+                    center.pairs.iter().any(|pair| pair.variable == variable)) {
+                    0
                 } else {
                     let edge = schedule.edges().iter().find(|edge| edge.decision_variable == variable)
                         .expect("schedule variable must belong to a prepared edge");
@@ -8974,6 +8979,131 @@ fn unseeded_diamond_branch_seal_checks_future_ring_schedule() {
             }
         }
     }
+}
+
+#[test]
+fn ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 5] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    // A-X-B is the long traversal arm; C and D are distinct short arms.
+    let bonds = [(0, 1), (1, 2), (0, 3), (0, 4), (2, 3), (2, 4)]
+        .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::Bond(bonds[5]),
+                    TetrahedralLigand::VirtualHydrogen],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("O".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
+        let partition = surface.molecule().bond_role_partition(bond).unwrap();
+        (surface.molecule().bond_decision_variable(bond).unwrap(),
+            if index < 4 { partition.traversal_values() } else { partition.ring_values() })
+    }).collect::<Vec<_>>();
+    state.structural = state.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let (_, root) = only_root_atom(&state, atoms[0]);
+    let mut viable_first = BTreeSet::new();
+    for children in permutations(&[bonds[0], bonds[2], bonds[3]]) {
+        for b_events in permutations(&[Some(bonds[4]), Some(bonds[5]), None]) {
+            let mut live = BTreeSet::new();
+            let mut fits = true;
+            for child in &children {
+                let events: Vec<BondId> = if *child == bonds[0] {
+                    b_events.iter().flatten().copied().collect()
+                } else if *child == bonds[2] { vec![bonds[4]] }
+                else { vec![bonds[5]] };
+                for ring in events {
+                    if !live.remove(&ring) { live.insert(ring); }
+                    fits &= live.len() <= 1;
+                }
+            }
+            if fits && live.is_empty() { viable_first.insert(children[0]); }
+        }
+    }
+    assert_eq!(viable_first, BTreeSet::from([bonds[2], bonds[3]]));
+    let choices = root.choices().unwrap();
+    for first in [bonds[0], bonds[2], bonds[3]] {
+        let offered = choices.iter().any(|choice|
+            choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+                incident(&surface, atoms[0], first))));
+        assert_eq!(offered, viable_first.contains(&first),
+            "first ordinary child {first:?} must preserve a complete one-label schedule");
+    }
+}
+
+#[test]
+fn unseeded_ordinary_root_activates_fixed_schedule_after_first_branch() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
+        .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+        PreparedMolecule::new(graph.build()),
+        vec![PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [TetrahedralLigand::Bond(bonds[0]),
+                    TetrahedralLigand::Bond(bonds[3]), TetrahedralLigand::Bond(bonds[4]),
+                    TetrahedralLigand::VirtualHydrogen],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            }, PreparedAtomToken::Fixed("C".to_owned()), PreparedAtomToken::Fixed("O".to_owned())],
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+    ).unwrap();
+    let mut state = initial(&surface);
+    state.labels.maximum_spelling_label = Some(0);
+    let (_, root) = only_root_atom(&state, atoms[0]);
+    let factor = surface.fixed_schedule_factor.unwrap();
+    assert!(!root.structural.factor_is_active(factor));
+    let first = root.choices().unwrap().into_iter().find(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+            incident(&surface, atoms[0], bonds[1])))).expect("A-C is a feasible first branch");
+    let successor = first.successor();
+    assert!(successor.structural.factor_is_active(factor));
+    assert_eq!(successor.structural.fixed_bond_role(bonds[3]), Some(BondRole::Ring));
+    assert_eq!(successor.structural.fixed_bond_role(bonds[4]), Some(BondRole::Ring));
+    let pair = surface.ordinary_order_pairs[atoms[0].index()].iter().find(|pair|
+        [pair.first, pair.second] == [bonds[0], bonds[2]]
+            || [pair.first, pair.second] == [bonds[2], bonds[0]])
+        .expect("root B/D precedence variable");
+    let b_before_d = u8::from(pair.first == bonds[2]);
+    assert_eq!(successor.structural.semantic_domain(pair.variable),
+        Domain::singleton(b_before_d).unwrap());
+    let (_, c) = only_choice(successor, "C");
+    let c_entry = surface.ordinary_order_pairs[atoms[2].index()].iter().find(|pair|
+        [pair.first, pair.second] == [bonds[1], bonds[3]]
+            || [pair.first, pair.second] == [bonds[3], bonds[1]])
+        .expect("C entry and ring incidence share one order fact");
+    let entry_first = u8::from(c_entry.second == bonds[1]);
+    assert_eq!(c.structural.semantic_domain(c_entry.variable),
+        Domain::singleton(entry_first).unwrap());
+    let opened = c.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[3]))
+        .expect("C opens BC before leaving its branch").into_successor();
+    let (_, restored) = only_choice(&opened, ")");
+    assert!(restored.structural.factor_is_active(factor));
+    assert_eq!(restored.structural.semantic_domain(pair.variable),
+        Domain::singleton(b_before_d).unwrap());
+    assert_eq!(restored.structural.semantic_domain(c_entry.variable),
+        Domain::singleton(entry_first).unwrap());
+    let c_before_b = surface.ordinary_order_pairs[atoms[0].index()].iter().find(|pair|
+        [pair.first, pair.second] == [bonds[0], bonds[1]]
+            || [pair.first, pair.second] == [bonds[1], bonds[0]])
+        .unwrap();
+    assert_eq!(restored.structural.semantic_domain(c_before_b.variable),
+        Domain::singleton(u8::from(c_before_b.first == bonds[0])).unwrap());
 }
 
 #[test]

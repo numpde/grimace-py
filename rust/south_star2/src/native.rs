@@ -386,6 +386,8 @@ impl NativeSolverState {
         }
 
         while let Some(factor_id) = queue.pop_front() {
+            #[cfg(test)]
+            crate::work_diagnostic::record(|counts| counts.factor_revisions += 1);
             queued.remove(&factor_id);
 
             let factor = self
@@ -671,7 +673,16 @@ impl NativeSolverState {
                 _ => None,
             });
 
+        #[cfg(test)]
+        let mut first_node = true;
         while let Some(candidate) = stack.pop() {
+            #[cfg(test)]
+            crate::work_diagnostic::record(|counts| {
+                counts.search_nodes += 1;
+                if !first_node { counts.children_explored += 1; }
+            });
+            #[cfg(test)]
+            { first_node = false; }
             if event_schedule.is_some() {
                 if let Some(edge) = component.structural_variables.iter().find(|edge| {
                     let domain = candidate.domains[edge.variable.index()];
@@ -680,9 +691,17 @@ impl NativeSolverState {
                 }) {
                     #[cfg(test)]
                     candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
+                    #[cfg(test)]
+                    crate::work_diagnostic::record(|counts| counts.grouped_branches += 1);
                     for role in [edge.role_partition.ring_values(), edge.role_partition.traversal_values()] {
+                        #[cfg(test)]
+                        crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
                         match candidate.restricted_and_propagated(edge.variable, role) {
-                            Ok(child) => stack.push(child),
+                            Ok(child) => {
+                                #[cfg(test)]
+                                crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
+                                stack.push(child)
+                            },
                             Err(NativeSolverError::Contradiction) => {}
                             Err(failure) => return Err(failure),
                         }
@@ -694,9 +713,15 @@ impl NativeSolverState {
                 event_rank_branches(schedule, &candidate.domains)) {
                 #[cfg(test)]
                 candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
+                #[cfg(test)]
+                crate::work_diagnostic::record(|counts| counts.grouped_branches += 1);
                 for restrictions in branches.into_iter().rev() {
+                    #[cfg(test)]
+                    crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
                     match candidate.restricted_many_and_propagated(&restrictions) {
                         Ok(child) => {
+                            #[cfg(test)]
+                            crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
                             debug_assert!(restrictions.iter().any(|(variable, _)|
                                 child.domains[variable.index()] != candidate.domains[variable.index()]),
                                 "event rank branch must narrow its parent");
@@ -730,16 +755,24 @@ impl NativeSolverState {
 
             #[cfg(test)]
             candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
+            #[cfg(test)]
+            crate::work_diagnostic::record(|counts| counts.scalar_branches += 1);
 
             let mut values = candidate.domains[variable.index()]
                 .iter()
                 .collect::<Vec<_>>();
             values.reverse();
             for value in values {
+                #[cfg(test)]
+                crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
                 match candidate
                     .restricted_and_propagated(variable, Domain::from_bits(1_u64 << value))
                 {
-                    Ok(child) => stack.push(child),
+                    Ok(child) => {
+                        #[cfg(test)]
+                        crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
+                        stack.push(child)
+                    },
                     Err(NativeSolverError::Contradiction) => {}
                     Err(failure) => return Err(failure),
                 }

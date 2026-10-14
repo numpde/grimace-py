@@ -68,6 +68,8 @@ impl<T: Clone> PagedStore<T> {
     }
 
     pub(crate) fn get(&self, index: usize) -> Option<&T> {
+        #[cfg(test)]
+        crate::work_diagnostic::record(|counts| counts.paged_reads += 1);
         if index >= self.len {
             return None;
         }

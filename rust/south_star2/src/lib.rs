@@ -9,6 +9,8 @@
 mod aromatic_matching;
 mod atom_spelling;
 mod domain;
+#[cfg(test)]
+mod work_diagnostic;
 mod event_schedule;
 mod ids;
 mod model;

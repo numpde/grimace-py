@@ -2231,3 +2231,70 @@ extension. Logs in the same directory are
 `fact-relabel-current.log`, and `fact-relabel-old-abi.log`. These observations
 show no new failure in the focused South Star 2 selection, but do not qualify
 the full maintained semantics suite.
+
+## Bounded per-state work diagnostic at `f4e79c82`
+
+An ignored native diagnostic in an isolated archive measured one complete
+`NonStereoWriterState<NativeSolverState>::choices()` call after selecting a
+degree-one carbon root. Each added remote gadget has three labelled carbon
+atoms and one triangle; atom degree remains at most three. The one-label test
+namespace activates the Forest event schedule at both sizes. The root's local
+graph incidence count stays one, while the number of permitted remote dot
+choices can grow; the actual returned transition count is therefore reported.
+The helper that selected the root was measured separately and considered more
+than one possible root. Graph construction and the later model-counting loop
+were outside the preparation timer.
+
+| Remote triangles | Prepared atoms / edges | Variables / factor references | Unary end bits | Root selection: paged reads / search nodes | One post-root `choices()`: raw outputs / distinct observed `(text, state)` projections | Post-root search nodes / factor revisions / paged reads |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 4 / 4 | 55 / 71 | 16 | 50,763 / 92 | 9 / 9 | 147 / 938 / 145,077 |
+| 2 | 7 / 8 | 124 / 155 | 49 | 1,732,715 / 420 | 11 / 11 | 3,072 / 52,126 / 25,331,088 |
+
+During those same post-root calls, sibling restrictions proposed rose from
+524 to 48,605; 236 and 3,420 successfully propagated and were pushed, while
+133 and 3,052 child states were actually popped. The search eagerly propagates
+siblings before it explores them, so even a first feasible witness can incur
+work on alternatives that are never visited. Structural candidate attempts
+were 8 and 11, including two contradictions at each size. The source state
+recorded 538 and 65,166 copy-on-write domain value-page copies during the
+post-root calls; index-node copies were 0 and 48,625. The counters named
+“paged reads” include every `PagedStore::get` for domains, active factors, and
+factor adjacency, not just variable inspections. Factor revisions count
+propagation-queue pops, search nodes count DFS pops, and the sibling counts
+distinguish attempted restrictions, successful propagated pushes, and actual
+pops. The reported model payload lower bounds, 724 and 1,612 bytes, include
+only variable-domain and factor-variable-reference payloads; they are not
+total owned allocation sizes.
+
+An acyclic 102-carbon chain with 101 edges and the normal Generic MAXIMAL
+namespace of 100 labels prepared the EventSchedule in 34 ms, producing 11,732
+variables (10,404 unary end bits) and 12,137 factor references. This follows
+the Forest safe bound `possible_ring_count = E`, even though the graph has no
+cycle. The diagnostic stopped after preparation for this case: no default-size
+root selection or transition cost was measured. The k-gadget family enters
+the same default-namespace preparation path at k=26 (`E=104`), but the small
+case timings cannot be extrapolated to that size.
+
+The complete bounded k=1,2 run and the separate 102-atom preparation run both
+passed and reported `verified_no_live_members`. Their durable logs are
+`/tmp/grimace-work-bound-f4e79c82/work-k1-k2.log` and
+`/tmp/grimace-work-bound-f4e79c82/work-default-chain-prep.log`. The named
+commands, run from the isolated archive, were:
+
+```sh
+python3 scripts/run_bounded_tests.py --wall-seconds 45 --rss-mib 2048 --cpu-seconds 45 --address-space-mib 4096 -- env CARGO_NET_OFFLINE=true GRIMACE_WORK_SIZES=1,2 cargo test -p grimace-south-star2 --lib work_diagnostic_remote_triangle_chain -- --ignored --nocapture
+python3 scripts/run_bounded_tests.py --wall-seconds 45 --rss-mib 2048 --cpu-seconds 45 --address-space-mib 4096 -- env CARGO_NET_OFFLINE=true GRIMACE_WORK_MODE=chain_prep GRIMACE_WORK_SIZES=102 GRIMACE_WORK_MAX_LABEL=99 cargo test -p grimace-south-star2 --lib work_diagnostic_remote_triangle_chain -- --ignored --nocapture
+```
+
+All 9 and 11 returned choices had different `(text, observe_raw())`
+projections, so these measurements contain no exact duplicate full states;
+the projection omits some solver facts and cannot establish full-state identity
+when two projections match in another case. The diagnostic does not prove
+productivity or completeness of the returned transitions, nor an unavoidable
+asymptotic lower bound. The measured implementation cost comes from repeated
+global rank/end revision and search, amplified by eager sibling propagation.
+A narrow next mechanism correction is lazy admission of sibling restrictions,
+with the same per-state counters and independent semantic checks. Even if that
+reduces unvisited-sibling work, the global event fact volume and repeated scans
+remain to be measured against the governing affected-facts-and-outputs bound;
+no such bound is established here.

@@ -588,14 +588,20 @@ impl<S: ConstraintSolver> WriterState<S> {
         semantic_restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
+        #[cfg(test)]
+        crate::work_diagnostic::record(|counts| counts.candidate_attempts += 1);
         match candidate {
             StructuralCandidate::BranchChild { incident }
                 if self.prepared.topology() == crate::model::TraversalTopologyRequirement::Forest
                     && !self.can_close_parent_ring_phase(Some(incident.bond())) => {
+                #[cfg(test)]
+                crate::work_diagnostic::record(|counts| counts.candidate_rejections += 1);
                 return Ok(Consistency::Contradiction);
             }
             StructuralCandidate::DotBranchRoot { .. }
                 if !self.can_close_parent_ring_phase(None) => {
+                #[cfg(test)]
+                crate::work_diagnostic::record(|counts| counts.candidate_rejections += 1);
                 return Ok(Consistency::Contradiction);
             }
             _ => {}
@@ -721,6 +727,10 @@ impl<S: ConstraintSolver> WriterState<S> {
                     candidate_batch_derivations: self.candidate_batch_derivations.clone(),
                 }
             });
+        #[cfg(test)]
+        if matches!(&attempted, Consistency::Contradiction) {
+            crate::work_diagnostic::record(|counts| counts.candidate_rejections += 1);
+        }
         #[cfg(test)]
         {
             Ok(attempted.map(|mut successor| {

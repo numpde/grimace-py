@@ -8954,6 +8954,114 @@ fn event_preparation_uses_the_actual_writer_label_namespace() {
     assert!(ring_count_exceeds_schedule_capacity(100, WriterRegime::RdkitRandomNoncanonical, 99));
 }
 
+/// Count a complete native frontier with a fixed leaf degree and remote cycles.
+#[test]
+#[ignore = "opt-in bounded work diagnostic; run one selected family size"]
+fn work_diagnostic_remote_triangle_chain() {
+    use std::io::Write;
+    let sizes = std::env::var("GRIMACE_WORK_SIZES").unwrap_or_else(|_| "1,2".to_owned());
+    let chain = std::env::var("GRIMACE_WORK_MODE").is_ok_and(|mode| mode == "chain_prep");
+    for gadgets in sizes.split(',').map(|part| part.parse::<usize>().unwrap()) {
+        let mut graph = PreparedGraphBuilder::new();
+        let root = graph.add_atom().unwrap();
+        let mut previous = root;
+        let mut edges = 0;
+        let atoms = if chain {
+            for _ in 1..gadgets {
+                let atom = graph.add_atom().unwrap();
+                graph.add_bond(previous, atom).unwrap();
+                previous = atom;
+                edges += 1;
+            }
+            gadgets
+        } else {
+            for _ in 0..gadgets {
+                let a = graph.add_atom().unwrap();
+                let b = graph.add_atom().unwrap();
+                let c = graph.add_atom().unwrap();
+                for (left, right) in [(previous, a), (a, b), (b, c), (c, a)] {
+                    graph.add_bond(left, right).unwrap();
+                    edges += 1;
+                }
+                previous = c;
+            }
+            1 + 3 * gadgets
+        };
+        let maximum = std::env::var("GRIMACE_WORK_MAX_LABEL")
+            .map(|value| value.parse::<usize>().unwrap()).unwrap_or(0);
+        println!("STAGE family={} size={gadgets} atoms={atoms} edges={edges} max_label={maximum} phase=prepare_start",
+            if chain { "acyclic_chain" } else { "remote_triangles" });
+        std::io::stdout().flush().unwrap();
+        crate::work_diagnostic::begin();
+        let prep_started = std::time::Instant::now();
+        let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+            PreparedMolecule::new(graph.build()),
+            (0..atoms).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+            vec![NonStereoBondToken::Elided; edges], Vec::new(),
+            WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, maximum,
+        ).unwrap();
+        let prep_elapsed = prep_started.elapsed();
+        let prep_work = crate::work_diagnostic::finish();
+        let model = surface.molecule().constraint_model();
+        let factor_refs = (0..model.factor_count()).map(|index| {
+            model.factor(FactorId::new(index as u32)).unwrap().variables().len()
+        }).sum::<usize>();
+        let schedule = surface.event_schedule_factor.and_then(|id| model.factor(id));
+        let (rank_bits, kind_vars, end_bits, schedule_refs) = match schedule {
+            Some(crate::model::FactorDefinition::EventSchedule(schedule)) => (
+                schedule.visits.iter().map(|visit| visit.rank_bits.len()).sum::<usize>(),
+                schedule.visits.len(),
+                schedule.visits.iter().map(|visit| visit.end_bits.len()).sum::<usize>(),
+                schedule.variables().len(),
+            ),
+            _ => (0, 0, 0, 0),
+        };
+        let domain_size = std::mem::size_of::<crate::domain::Domain>();
+        let model_payload_lower_bytes = model.variable_count() * domain_size
+            + factor_refs * std::mem::size_of::<crate::ids::VariableId>();
+        println!("STAGE family={} size={gadgets} phase=prepare_done elapsed_ms={} counters={prep_work:?} vars={} factors={} refs={factor_refs} rank_bits={rank_bits} kind_vars={kind_vars} end_bits={end_bits} schedule_refs={schedule_refs} model_payload_lower_bytes={model_payload_lower_bytes}",
+            if chain { "acyclic_chain" } else { "remote_triangles" }, prep_elapsed.as_millis(),
+            model.variable_count(), model.factor_count());
+        std::io::stdout().flush().unwrap();
+        if chain { continue; }
+        println!("STAGE family=remote_triangles size={gadgets} phase=root_start");
+        std::io::stdout().flush().unwrap();
+        crate::work_diagnostic::begin();
+        let root_started = std::time::Instant::now();
+        let state = initial(&surface);
+        let (_, rooted) = only_root_atom(&state, root);
+        let root_elapsed = root_started.elapsed();
+        let root_work = crate::work_diagnostic::finish();
+        println!("STAGE family=remote_triangles size={gadgets} phase=root_done elapsed_ms={} counters={root_work:?}", root_elapsed.as_millis());
+        std::io::stdout().flush().unwrap();
+        rooted.structural.constraints_for_test().reset_solver_copy_counts();
+        rooted.structural.reset_traversal_copy_counts();
+        println!("STAGE family=remote_triangles size={gadgets} phase=choices_start");
+        std::io::stdout().flush().unwrap();
+        crate::work_diagnostic::begin();
+        let choices_started = std::time::Instant::now();
+        let choices = rooted.choices().unwrap();
+        let choices_elapsed = choices_started.elapsed();
+        let work = crate::work_diagnostic::finish();
+        let ((domain_nodes, domain_pages), (active_nodes, active_pages),
+            (adj_nodes, adj_pages)) = rooted.structural.constraints_for_test().solver_copy_counts();
+        let (traversal_nodes, traversal_pages) = rooted.structural.traversal_copy_counts();
+        let texts = choices.iter().map(|choice| choice.text().to_owned()).collect::<BTreeSet<_>>();
+        let observed = choices.iter().map(|choice|
+            (choice.text(), choice.successor().observe_raw())).collect::<Vec<_>>();
+        let duplicate_observed = observed.iter().enumerate().filter(|(index, row)|
+            observed[..*index].contains(row)).count();
+        println!("WORK gadgets={gadgets} atoms={atoms} edges={edges} max_label={maximum} choices_elapsed_ms={} vars={} factors={} refs={factor_refs} rank_bits={rank_bits} kind_vars={kind_vars} end_bits={end_bits} schedule_refs={schedule_refs} model_payload_lower_bytes={model_payload_lower_bytes} attempts={} rejected={} outputs={} texts={} duplicate_observed={} paged_reads={} factor_revisions={} search_nodes={} grouped_branches={} scalar_branches={} sibling_proposals={} sibling_propagated={} children_explored={} copied_domain_nodes={domain_nodes} copied_domain_pages={domain_pages} copied_active_nodes={active_nodes} copied_active_pages={active_pages} copied_adj_nodes={adj_nodes} copied_adj_pages={adj_pages} copied_traversal_nodes={traversal_nodes} copied_traversal_pages={traversal_pages}",
+            choices_elapsed.as_millis(),
+            model.variable_count(), model.factor_count(), work.candidate_attempts,
+            work.candidate_rejections, choices.len(), texts.len(), duplicate_observed, work.paged_reads,
+            work.factor_revisions, work.search_nodes, work.grouped_branches,
+            work.scalar_branches, work.sibling_proposals, work.sibling_propagated,
+            work.children_explored);
+        std::io::stdout().flush().unwrap();
+    }
+}
+
 #[test]
 fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
     let (surface, atoms, bonds) = tetrahedral_diamond_surface();

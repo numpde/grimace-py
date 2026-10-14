@@ -9,6 +9,8 @@ pub(crate) struct Counts {
     pub(crate) search_nodes: usize,
     pub(crate) grouped_branches: usize,
     pub(crate) scalar_branches: usize,
+    pub(crate) sibling_offered: usize,
+    // Counts attempted restrictions, including contradictions.
     pub(crate) sibling_proposals: usize,
     pub(crate) sibling_propagated: usize,
     pub(crate) children_explored: usize,

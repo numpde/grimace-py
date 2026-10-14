@@ -2298,3 +2298,34 @@ with the same per-state counters and independent semantic checks. Even if that
 reduces unvisited-sibling work, the global event fact volume and repeated scans
 remain to be measured against the governing affected-facts-and-outputs bound;
 no such bound is established here.
+
+### Deferred exact-search siblings (2026-10-14)
+
+The mixed finite-domain search now queues a parent state and each ordered child
+restriction, propagating a child only when DFS explores it. This keeps the
+previous branch order, first-witness stop, and exact projection union. The
+diagnostic's `sibling_proposals` still counts attempted restrictions;
+`sibling_offered` counts queued alternatives, including those never attempted.
+The k=1,2 probe offered the same 524 and 48,605 alternatives as before, but
+attempted 293 and 46,942, respectively. Successfully propagated children
+fell from 236 to 133 and 3,420 to 3,052; explored children remained 133 and
+3,052. Paged reads fell from 145,077 to 90,087 and 25,331,088 to 24,582,951.
+The observed choice counts, rejection counts, distinct `(text, observe_raw())`
+projections, and search-node counts were unchanged. Elapsed choice time was
+24 ms versus 17 ms at k=1 and 2,946 ms versus 2,486 ms at k=2 in these runs;
+those timings do not establish a speedup.
+
+The post-change bounded run used the same k=1,2 command above from the
+isolated archive at `/tmp/grimace-lazy-children-eb108c05`, with its log at
+`/tmp/grimace-lazy-children-k1-k2.log`; it reported
+`verified_no_live_members`. A direct ignored work-count test confirms that a
+first witness leaves its queued sibling unpropagated. Focused native, event,
+and diamond correctness tests passed; a compact active ring-capacity model
+also matched exhaustive projection across both role assignments, and a
+locally consistent pre-exact search state exercised a contradictory first
+child, a later witness, and full contradiction. These observations measure a
+bounded mechanism improvement, not the governing end-to-end work bound.
+Global EventSchedule fact preparation and repeated rank/end revision remain
+open.
+
+Qualification of the frozen Rust candidate from baseline `eb108c05d177af58d502a27432df3a5494706d7d` used `/tmp/grimace-lazy-children-eb108c05`; the build-time tracked-source comparison found only this note, `native.rs`, `work_diagnostic.rs`, and `nonstereo_writer_tests.rs` changed, with `native.rs` SHA-256 `96b291bbd6581388f6226f566ef5d8673cbfb1351afb1f82e39f6f843bc54be3`. The bounded offline release wheel at `/tmp/grimace-lazy-qualification-eb108c05/dist/grimace_py-0.1.10-cp312-cp312-manylinux_2_34_x86_64.whl` has SHA-256 `ae3c090b9e1d421fef384231ab48de60622d5c15040fb4f1c8071c9a53973505`; its sole `_core` extension has SHA-256 `10b8fd9e896e9600c8819ba01162d6ce7053a0a5a500d8d14f25cce388aba8f9`. Import checks resolved `grimace` and `_core` to the extracted wheel, and all 16 public-prefix tests passed there. The prior ignored checkout extension (SHA-256 `b816afcdd7404b54f88d592f68f5df4582619b141e2cfd6ab94c26a27a496661`) was backed up at `/tmp/grimace-lazy-qualification-eb108c05/checkout-core-before.so`; the refreshed checkout extension matches the wheel bytes and resolved from the checkout package. The focused South Star 2 semantic selection (`test_standard_smiles_semantics`, `test_compact_language`, `test_leading_dot_tetra_semantics`, `test_kekule_semantics`) passed 37 tests. Every bounded build/import/test run reported `verified_no_live_members`; logs are `/tmp/grimace-lazy-qualification-eb108c05/{wheel-build,wheel-import,wheel-public-prefix,checkout-import,checkout-south-star2-semantics}.log`. This qualifies the represented public and semantic paths, without establishing a speedup or the broader work bound.

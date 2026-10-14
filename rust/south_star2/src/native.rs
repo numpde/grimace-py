@@ -665,7 +665,14 @@ impl NativeSolverState {
             .map(|variable| self.domains[variable.index()])
             .collect::<Vec<_>>();
         let mut supported = vec![Domain::empty(); projected_variables.len()];
-        let mut stack = vec![self.clone()];
+        enum SearchEntry {
+            Candidate(NativeSolverState),
+            Pending {
+                parent: Arc<NativeSolverState>,
+                restrictions: Vec<(VariableId, Domain)>,
+            },
+        }
+        let mut stack = vec![SearchEntry::Candidate(self.clone())];
         let mut found_solution = false;
         let event_schedule = active_resources.iter().find_map(|factor|
             match self.model.factor(*factor) {
@@ -675,7 +682,23 @@ impl NativeSolverState {
 
         #[cfg(test)]
         let mut first_node = true;
-        while let Some(candidate) = stack.pop() {
+        while let Some(entry) = stack.pop() {
+            let candidate = match entry {
+                SearchEntry::Candidate(candidate) => candidate,
+                SearchEntry::Pending { parent, restrictions } => {
+                    #[cfg(test)]
+                    crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
+                    match parent.restricted_many_and_propagated(&restrictions) {
+                        Ok(child) => {
+                            #[cfg(test)]
+                            crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
+                            child
+                        }
+                        Err(NativeSolverError::Contradiction) => continue,
+                        Err(failure) => return Err(failure),
+                    }
+                }
+            };
             #[cfg(test)]
             crate::work_diagnostic::record(|counts| {
                 counts.search_nodes += 1;
@@ -693,18 +716,14 @@ impl NativeSolverState {
                     candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
                     #[cfg(test)]
                     crate::work_diagnostic::record(|counts| counts.grouped_branches += 1);
+                    let parent = Arc::new(candidate);
                     for role in [edge.role_partition.ring_values(), edge.role_partition.traversal_values()] {
                         #[cfg(test)]
-                        crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
-                        match candidate.restricted_and_propagated(edge.variable, role) {
-                            Ok(child) => {
-                                #[cfg(test)]
-                                crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
-                                stack.push(child)
-                            },
-                            Err(NativeSolverError::Contradiction) => {}
-                            Err(failure) => return Err(failure),
-                        }
+                        crate::work_diagnostic::record(|counts| counts.sibling_offered += 1);
+                        stack.push(SearchEntry::Pending {
+                            parent: Arc::clone(&parent),
+                            restrictions: vec![(edge.variable, role)],
+                        });
                     }
                     continue;
                 }
@@ -715,21 +734,18 @@ impl NativeSolverState {
                 candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
                 #[cfg(test)]
                 crate::work_diagnostic::record(|counts| counts.grouped_branches += 1);
+                let parent = Arc::new(candidate);
                 for restrictions in branches.into_iter().rev() {
                     #[cfg(test)]
-                    crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
-                    match candidate.restricted_many_and_propagated(&restrictions) {
-                        Ok(child) => {
-                            #[cfg(test)]
-                            crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
-                            debug_assert!(restrictions.iter().any(|(variable, _)|
-                                child.domains[variable.index()] != candidate.domains[variable.index()]),
-                                "event rank branch must narrow its parent");
-                            stack.push(child)
-                        }
-                        Err(NativeSolverError::Contradiction) => {}
-                        Err(failure) => return Err(failure),
-                    }
+                    crate::work_diagnostic::record(|counts| counts.sibling_offered += 1);
+                    debug_assert!(restrictions.iter().any(|(variable, allowed)|
+                        parent.domains[variable.index()].intersect(*allowed)
+                            != parent.domains[variable.index()]),
+                        "event rank branch must narrow its parent");
+                    stack.push(SearchEntry::Pending {
+                        parent: Arc::clone(&parent),
+                        restrictions,
+                    });
                 }
                 continue;
             }
@@ -762,20 +778,14 @@ impl NativeSolverState {
                 .iter()
                 .collect::<Vec<_>>();
             values.reverse();
+            let parent = Arc::new(candidate);
             for value in values {
                 #[cfg(test)]
-                crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
-                match candidate
-                    .restricted_and_propagated(variable, Domain::from_bits(1_u64 << value))
-                {
-                    Ok(child) => {
-                        #[cfg(test)]
-                        crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
-                        stack.push(child)
-                    },
-                    Err(NativeSolverError::Contradiction) => {}
-                    Err(failure) => return Err(failure),
-                }
+                crate::work_diagnostic::record(|counts| counts.sibling_offered += 1);
+                stack.push(SearchEntry::Pending {
+                    parent: Arc::clone(&parent),
+                    restrictions: vec![(variable, Domain::from_bits(1_u64 << value))],
+                });
             }
         }
 
@@ -795,29 +805,6 @@ impl NativeSolverState {
             }
         }
         Ok(reductions)
-    }
-
-    fn restricted_and_propagated(
-        &self,
-        variable: VariableId,
-        allowed: Domain,
-    ) -> Result<Self, NativeSolverError> {
-        let current = self
-            .domain_bound(variable)
-            .ok_or(NativeSolverError::UnknownVariable(variable))?;
-        let restricted = current.intersect(allowed);
-        if restricted.is_empty() {
-            return Err(NativeSolverError::Contradiction);
-        }
-        if restricted == current {
-            return Ok(self.clone());
-        }
-
-        let mut successor = self.clone();
-        successor.domains[variable.index()] = restricted;
-        let seed_factors = successor.active_factors_for_variable(variable);
-        successor.propagate(seed_factors)?;
-        Ok(successor)
     }
 
     fn restricted_many_and_propagated(
@@ -2195,6 +2182,92 @@ mod tests {
         BondRole, ConstraintModelBuilder, EdgeRolePartition, SpanningTreeEdge,
         TetrahedralLayoutBond,
     };
+
+    #[test]
+    #[ignore = "opt-in work count for lazy mixed-search siblings"]
+    fn mixed_first_witness_does_not_propagate_queued_sibling() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variable = builder.add_variable(two_values()).unwrap();
+        let mut state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        let component = MixedExactComponent {
+            always_core_variables: vec![variable].into(),
+            potential_layout_factors: Box::new([]),
+            potential_resource_factors: Box::new([]),
+            structural_variables: Box::new([]),
+            projected_variables: vec![variable].into(),
+        };
+
+        crate::work_diagnostic::begin();
+        assert_eq!(state.complete_filter_mixed_component(&component, true), Ok(Vec::new()));
+        let work = crate::work_diagnostic::finish();
+        assert_eq!(work.sibling_offered, 2);
+        assert_eq!(work.sibling_proposals, 1);
+        assert_eq!(work.sibling_propagated, 1);
+        assert_eq!(work.children_explored, 1);
+    }
+
+    #[test]
+    fn mixed_search_skips_contradictory_first_child_and_finds_later_witness() {
+        let mut builder = ConstraintModelBuilder::new();
+        let x = builder.add_variable(two_values()).unwrap();
+        let y = builder.add_variable(two_values()).unwrap();
+        let z = builder.add_variable(two_values()).unwrap();
+        builder.add_binary_relation(x, y, [(0, 0), (1, 0), (1, 1)]).unwrap();
+        builder.add_binary_relation(x, z, [(0, 1), (1, 0), (1, 1)]).unwrap();
+        builder.add_binary_relation(y, z, [(0, 0), (1, 1)]).unwrap();
+        let model = Arc::new(builder.build());
+        let mut state = NativeSolverState::initial(Arc::clone(&model)).unwrap();
+        let component = MixedExactComponent {
+            always_core_variables: vec![x, y, z].into(),
+            potential_layout_factors: Box::new([]),
+            potential_resource_factors: Box::new([]),
+            structural_variables: Box::new([]),
+            projected_variables: vec![x, y, z].into(),
+        };
+        // Model the locally consistent, pre-exact state that an initial or transition pass
+        // can receive: exact filtering already removed x=0 from this prepared state.
+        state.domains[x.index()] = two_values();
+        assert!(matches!(state.restricted_many_and_propagated(&[(x, Domain::singleton(0).unwrap())]),
+            Err(NativeSolverError::Contradiction)));
+        assert_eq!(state.complete_filter_mixed_component(&component, true), Ok(Vec::new()));
+
+        let mut unsatisfiable = state.clone();
+        unsatisfiable.domains[x.index()] = Domain::singleton(0).unwrap();
+        assert_eq!(unsatisfiable.complete_filter_mixed_component(&component, true),
+            Err(NativeSolverError::Contradiction));
+
+        assert_eq!(state.complete_filter_mixed_component(&component, false), Ok(vec![x]));
+        let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
+            .unwrap().unwrap_consistent();
+        for variable in [x, y, z] {
+            assert_eq!(state.domain_bound(variable), oracle.domain_bound(variable));
+        }
+    }
+
+    #[test]
+    fn active_ring_count_exact_projection_unions_both_role_assignments() {
+        let mut builder = ConstraintModelBuilder::new();
+        let roles = (0..2).map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let budget = builder.add_variable(two_values()).unwrap();
+        builder.add_binary_relation(roles[0], roles[1], [(0, 1), (1, 0)]).unwrap();
+        let bonds = roles.iter().enumerate().map(|(index, &variable)|
+            SpanningTreeEdge::with_role_partition(variable, AtomId::new(0),
+                AtomId::new((index + 1) as u32), EdgeRolePartition::bond_role()));
+        let factor = builder.add_latent_ring_count_at_most(bonds, [budget]).unwrap();
+        let model = Arc::new(builder.build());
+        let native = NativeSolverState::with_transition(
+            &NativeSolverState::initial(Arc::clone(&model)).unwrap(), [], [factor]).unwrap();
+        let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
+            .unwrap().unwrap_consistent().transitioned(&[], &[factor])
+            .unwrap().unwrap_consistent();
+        for variable in roles.iter().copied().chain([budget]) {
+            assert_eq!(native.domain_bound(variable), oracle.domain_bound(variable));
+        }
+        assert_eq!(native.domain_bound(roles[0]), Some(BondRole::role_domain()));
+        assert_eq!(native.domain_bound(roles[1]), Some(BondRole::role_domain()));
+        assert_eq!(native.domain_bound(budget), Some(Domain::singleton(1).unwrap()));
+    }
 
     #[test]
     fn active_ring_count_joins_correlated_roles_in_exact_projection() {

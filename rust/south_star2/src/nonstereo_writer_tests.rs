@@ -9051,12 +9051,12 @@ fn work_diagnostic_remote_triangle_chain() {
             (choice.text(), choice.successor().observe_raw())).collect::<Vec<_>>();
         let duplicate_observed = observed.iter().enumerate().filter(|(index, row)|
             observed[..*index].contains(row)).count();
-        println!("WORK gadgets={gadgets} atoms={atoms} edges={edges} max_label={maximum} choices_elapsed_ms={} vars={} factors={} refs={factor_refs} rank_bits={rank_bits} kind_vars={kind_vars} end_bits={end_bits} schedule_refs={schedule_refs} model_payload_lower_bytes={model_payload_lower_bytes} attempts={} rejected={} outputs={} texts={} duplicate_observed={} paged_reads={} factor_revisions={} search_nodes={} grouped_branches={} scalar_branches={} sibling_proposals={} sibling_propagated={} children_explored={} copied_domain_nodes={domain_nodes} copied_domain_pages={domain_pages} copied_active_nodes={active_nodes} copied_active_pages={active_pages} copied_adj_nodes={adj_nodes} copied_adj_pages={adj_pages} copied_traversal_nodes={traversal_nodes} copied_traversal_pages={traversal_pages}",
+        println!("WORK gadgets={gadgets} atoms={atoms} edges={edges} max_label={maximum} choices_elapsed_ms={} vars={} factors={} refs={factor_refs} rank_bits={rank_bits} kind_vars={kind_vars} end_bits={end_bits} schedule_refs={schedule_refs} model_payload_lower_bytes={model_payload_lower_bytes} attempts={} rejected={} outputs={} texts={} duplicate_observed={} paged_reads={} factor_revisions={} search_nodes={} grouped_branches={} scalar_branches={} sibling_offered={} sibling_proposals={} sibling_propagated={} children_explored={} copied_domain_nodes={domain_nodes} copied_domain_pages={domain_pages} copied_active_nodes={active_nodes} copied_active_pages={active_pages} copied_adj_nodes={adj_nodes} copied_adj_pages={adj_pages} copied_traversal_nodes={traversal_nodes} copied_traversal_pages={traversal_pages}",
             choices_elapsed.as_millis(),
             model.variable_count(), model.factor_count(), work.candidate_attempts,
             work.candidate_rejections, choices.len(), texts.len(), duplicate_observed, work.paged_reads,
             work.factor_revisions, work.search_nodes, work.grouped_branches,
-            work.scalar_branches, work.sibling_proposals, work.sibling_propagated,
+            work.scalar_branches, work.sibling_offered, work.sibling_proposals, work.sibling_propagated,
             work.children_explored);
         std::io::stdout().flush().unwrap();
     }

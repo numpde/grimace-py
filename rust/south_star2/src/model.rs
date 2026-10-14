@@ -5,6 +5,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
+use crate::event_schedule::EventScheduleFactor;
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
 use crate::tetrahedral::{order_for_value, TetrahedralLigand};
 
@@ -269,7 +270,7 @@ pub struct TetrahedralLayoutFactor {
     order_variable: VariableId,
     role_pattern_variable: VariableId,
     bonds: Box<[TetrahedralLayoutBond]>,
-    allowed_orders_by_pattern: Box<[Domain]>,
+    allowed_orders_by_pattern: Arc<[Domain]>,
     variables: Box<[VariableId]>,
 }
 
@@ -297,7 +298,7 @@ pub struct OrderedRingPhaseFactor {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FixedScheduleEdge {
+pub struct ScheduleEdge {
     pub bond: BondId,
     pub a: AtomId,
     pub b: AtomId,
@@ -305,11 +306,15 @@ pub struct FixedScheduleEdge {
     pub role_partition: EdgeRolePartition,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FixedScheduleCenter {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScheduleCenter {
     pub atom: AtomId,
     pub order_variable: VariableId,
+    pub role_pattern_variable: VariableId,
     pub reference_order: [TetrahedralLigand; 4],
+    pub bond_pattern_bits: Arc<[(BondId, u8)]>,
+    pub root_layout_rows: Arc<[Domain]>,
+    pub entry_layout_rows: Arc<[(BondId, Arc<[Domain]>)]>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -363,127 +368,9 @@ fn assert_complete_ordinary_pairs(incidence: &[BondId], pairs: &[OrdinaryOrderPa
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FixedScheduleOrdinaryCenter {
+pub struct ScheduleOrdinaryCenter {
     pub atom: AtomId,
     pub pairs: Arc<[OrdinaryOrderPair]>,
-}
-
-/// One selected-root relation over bond roles and local incidence orders.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FixedScheduleFactor {
-    root_bits: Arc<[VariableId]>,
-    edges: Arc<[FixedScheduleEdge]>,
-    centers: Arc<[FixedScheduleCenter]>,
-    ordinary_centers: Arc<[FixedScheduleOrdinaryCenter]>,
-    capacity_bits: Arc<[VariableId]>,
-    variables: Box<[VariableId]>,
-}
-
-impl FixedScheduleFactor {
-    pub fn root_bits(&self) -> &[VariableId] { &self.root_bits }
-    pub fn edges(&self) -> &[FixedScheduleEdge] { &self.edges }
-    pub fn centers(&self) -> &[FixedScheduleCenter] { &self.centers }
-    pub fn ordinary_centers(&self) -> &[FixedScheduleOrdinaryCenter] { &self.ordinary_centers }
-    pub fn capacity_bits(&self) -> &[VariableId] { &self.capacity_bits }
-    pub fn variables(&self) -> &[VariableId] { &self.variables }
-
-    pub fn permits(&self, mut value: impl FnMut(VariableId) -> u8) -> bool {
-        let root_index = self.root_bits.iter().enumerate().fold(0_usize, |index, (bit, variable)| {
-            index | (usize::from(value(*variable)) << bit)
-        });
-        let atom_count = self.edges.iter().fold(0_usize, |count, edge| {
-            count.max(edge.a.index() + 1).max(edge.b.index() + 1)
-        });
-        if root_index >= atom_count { return false; }
-        let root = AtomId::new(u32::try_from(root_index).expect("prepared atom index must fit identifier"));
-        let mut neighbours = vec![Vec::<(AtomId, BondId, bool)>::new(); atom_count];
-        for edge in self.edges.iter() {
-            let ring = edge.role_partition.ring_values().contains(value(edge.decision_variable));
-            neighbours[edge.a.index()].push((edge.b, edge.bond, ring));
-            neighbours[edge.b.index()].push((edge.a, edge.bond, ring));
-        }
-        let mut parent = vec![None::<AtomId>; atom_count];
-        let mut visited = vec![false; atom_count];
-        visited[root.index()] = true;
-        let mut pending = vec![root];
-        while let Some(atom) = pending.pop() {
-            for &(other, _, ring) in &neighbours[atom.index()] {
-                if ring || visited[other.index()] { continue; }
-                visited[other.index()] = true;
-                parent[other.index()] = Some(atom);
-                pending.push(other);
-            }
-        }
-        if visited.iter().any(|visited| !visited) { return false; }
-        let capacity = self.capacity_bits.iter().enumerate().fold(0_usize, |count, (bit, variable)| {
-            count | (usize::from(value(*variable)) << bit)
-        });
-        let mut open = std::collections::BTreeSet::<BondId>::new();
-        enum Event { Atom(AtomId), Ring(BondId) }
-        let mut stack = vec![Event::Atom(root)];
-        while let Some(event) = stack.pop() {
-            let atom = match event {
-                Event::Ring(bond) => {
-                    if !open.remove(&bond) {
-                        open.insert(bond);
-                        if open.len() > capacity { return false; }
-                    }
-                    continue;
-                }
-                Event::Atom(atom) => atom,
-            };
-            let entry = parent[atom.index()];
-            let mut rings = neighbours[atom.index()].iter().filter(|(_, _, ring)| *ring)
-                .map(|(_, bond, _)| *bond).collect::<Vec<_>>();
-            let mut children = neighbours[atom.index()].iter().filter(|(other, _, ring)| {
-                !*ring && parent[other.index()] == Some(atom)
-            }).map(|(other, bond, _)| (*other, *bond)).collect::<Vec<_>>();
-            let position = if let Some(center) = self.centers.iter().find(|center| center.atom == atom) {
-                let Some(order) = order_for_value(&center.reference_order, value(center.order_variable)) else {
-                    return false;
-                };
-                let position = |bond: BondId| order.iter().position(|ligand| {
-                    *ligand == TetrahedralLigand::Bond(bond)
-                }).expect("prepared center order must name every incident bond");
-                neighbours[atom.index()].iter().map(|(_, bond, _)| (*bond, position(*bond)))
-                    .collect::<std::collections::BTreeMap<_, _>>()
-            } else {
-                let Some(center) = self.ordinary_centers.iter().find(|center| center.atom == atom) else {
-                    return false;
-                };
-                let mut positions = std::collections::BTreeMap::<BondId, usize>::new();
-                for (_, bond, _) in &neighbours[atom.index()] { positions.insert(*bond, 0); }
-                for pair in center.pairs.iter() {
-                    positions.entry(pair.first).or_default();
-                    positions.entry(pair.second).or_default();
-                    let later = if value(pair.variable) == 0 { pair.second } else { pair.first };
-                    *positions.get_mut(&later).expect("pair endpoint must exist") += 1;
-                }
-                let mut ranks = positions.values().copied().collect::<Vec<_>>();
-                ranks.sort_unstable();
-                if !ranks.iter().copied().eq(0..ranks.len()) { return false; }
-                positions
-            };
-            if let Some(parent) = entry {
-                debug_assert!(neighbours[atom.index()].iter().any(|(other, _, ring)| *other == parent && !ring));
-                let entry_bond = neighbours[atom.index()].iter().find(|(other, _, ring)| *other == parent && !ring)
-                    .map(|(_, bond, _)| *bond).expect("tree entry must exist");
-                if rings.iter().chain(children.iter().map(|(_, bond)| bond))
-                    .any(|bond| position[bond] < position[&entry_bond]) { return false; }
-            }
-            if rings.iter().any(|ring| children.iter().any(|(_, child)| position[ring] > position[child])) {
-                return false;
-            }
-            let mut events = rings.drain(..).map(|bond| (position[&bond], None, bond))
-                .chain(children.drain(..).map(|(child, bond)| (position[&bond], Some(child), bond)))
-                .collect::<Vec<_>>();
-            events.sort_by_key(|(position, _, _)| *position);
-            for (_, child, bond) in events.into_iter().rev() {
-                stack.push(match child { Some(child) => Event::Atom(child), None => Event::Ring(bond) });
-            }
-        }
-        open.is_empty()
-    }
 }
 
 impl OrderedRingPhaseFactor {
@@ -601,7 +488,7 @@ pub enum FactorDefinition {
     RingCountAtMost(RingCountAtMostFactor),
     OrderedRingPhase(OrderedRingPhaseFactor),
     OrdinaryOrder(OrdinaryOrderFactor),
-    FixedSchedule(FixedScheduleFactor),
+    EventSchedule(EventScheduleFactor),
 }
 
 impl FactorDefinition {
@@ -615,7 +502,7 @@ impl FactorDefinition {
             Self::RingCountAtMost(factor) => factor.variables(),
             Self::OrderedRingPhase(factor) => factor.variables(),
             Self::OrdinaryOrder(factor) => factor.variables(),
-            Self::FixedSchedule(factor) => factor.variables(),
+            Self::EventSchedule(factor) => factor.variables(),
         }
     }
 }
@@ -1149,6 +1036,17 @@ impl ConstraintModelBuilder {
         bonds: impl IntoIterator<Item = TetrahedralLayoutBond>,
         allowed_orders_by_pattern: impl IntoIterator<Item = Domain>,
     ) -> Result<FactorId, ConstraintModelError> {
+        self.add_latent_tetrahedral_layout_rows(order_variable, role_pattern_variable,
+            bonds, allowed_orders_by_pattern.into_iter().collect::<Vec<_>>().into())
+    }
+
+    pub(crate) fn add_latent_tetrahedral_layout_rows(
+        &mut self,
+        order_variable: VariableId,
+        role_pattern_variable: VariableId,
+        bonds: impl IntoIterator<Item = TetrahedralLayoutBond>,
+        allowed_orders_by_pattern: Arc<[Domain]>,
+    ) -> Result<FactorId, ConstraintModelError> {
         let order_domain = self
             .variables
             .get(order_variable.index())
@@ -1219,14 +1117,13 @@ impl ConstraintModelBuilder {
             return Err(ConstraintModelError::IncompleteTetrahedralPatternBits);
         }
 
-        let allowed_orders_by_pattern = allowed_orders_by_pattern.into_iter().collect::<Vec<_>>();
         if allowed_orders_by_pattern.len() != pattern_count {
             return Err(ConstraintModelError::TetrahedralLayoutRowCountMismatch {
                 expected: pattern_count,
                 actual: allowed_orders_by_pattern.len(),
             });
         }
-        for &allowed in &allowed_orders_by_pattern {
+        for &allowed in allowed_orders_by_pattern.iter() {
             if !allowed.is_subset_of(order_domain) {
                 return Err(ConstraintModelError::TetrahedralOrderOutsideInitialDomain(
                     order_variable,
@@ -1242,55 +1139,114 @@ impl ConstraintModelBuilder {
                 order_variable,
                 role_pattern_variable,
                 bonds: bonds.into_boxed_slice(),
-                allowed_orders_by_pattern: allowed_orders_by_pattern.into_boxed_slice(),
+                allowed_orders_by_pattern,
                 variables: variables.into_boxed_slice(),
             }),
             FactorActivation::Latent,
         )
     }
 
-    pub fn add_latent_fixed_schedule(
+    pub(crate) fn add_latent_event_schedule(
         &mut self,
-        root_bits: Arc<[VariableId]>,
-        edges: Arc<[FixedScheduleEdge]>,
-        centers: Arc<[FixedScheduleCenter]>,
-        ordinary_centers: Arc<[FixedScheduleOrdinaryCenter]>,
+        visits: Arc<[crate::event_schedule::EventVisit]>,
+        edges: Arc<[ScheduleEdge]>,
+        centers: Arc<[ScheduleCenter]>,
+        ordinary_centers: Arc<[ScheduleOrdinaryCenter]>,
         capacity_bits: Arc<[VariableId]>,
+        forest_roots: Arc<[VariableId]>,
+        segments: bool,
     ) -> Result<FactorId, ConstraintModelError> {
-        let edge_atoms = edges.iter().flat_map(|edge| [edge.a, edge.b])
-            .collect::<BTreeSet<_>>();
-        let center_atoms = centers.iter().map(|center| center.atom)
-            .chain(ordinary_centers.iter().map(|center| center.atom))
-            .collect::<BTreeSet<_>>();
-        assert_eq!(centers.len() + ordinary_centers.len(), center_atoms.len(),
-            "fixed schedule must have one order owner per atom");
-        assert_eq!(center_atoms, edge_atoms,
-            "fixed schedule order owners must cover every incident atom");
-        for center in ordinary_centers.iter() {
-            let incidence = edges.iter().filter(|edge| edge.a == center.atom || edge.b == center.atom)
+        let factor = EventScheduleFactor::new(visits, edges, centers,
+            ordinary_centers, capacity_bits, forest_roots, segments);
+        let domain = |variable: VariableId| self.variables.get(variable.index())
+            .map(|definition| definition.initial_domain)
+            .ok_or(ConstraintModelError::UnknownVariable(variable));
+        let binary = Domain::from_bits(3);
+        let count = factor.visits.len();
+        let rank_width = (usize::BITS - count.saturating_sub(1).leading_zeros()) as usize;
+        if count == 0 || factor.capacity_bits.len() > usize::BITS as usize
+            || factor.visits.iter().any(|visit|
+            visit.rank_bits.len() != rank_width || visit.end_bits.len() != count)
+            // Empty root scope permits standalone finite event-relation tests;
+            // prepared writer forests supply one root fact per atom.
+            || !(factor.forest_roots.is_empty() || segments && factor.forest_roots.len() == count)
+            || factor.centers.len() + factor.ordinary_centers.len() != count {
+            return Err(ConstraintModelError::InvalidEventSchedule("visit, root, or center shape"));
+        }
+        let mut edge_ids = BTreeSet::new();
+        for edge in factor.edges.iter() {
+            if !edge_ids.insert(edge.bond) || edge.a == edge.b
+                || edge.a.index() >= count || edge.b.index() >= count {
+                return Err(ConstraintModelError::InvalidEventSchedule("edge incidence"));
+            }
+            let initial = domain(edge.decision_variable)?;
+            if !edge.role_partition.traversal_values().intersect(edge.role_partition.ring_values()).is_empty()
+                || edge.role_partition.traversal_values().union(edge.role_partition.ring_values()) != initial {
+                return Err(ConstraintModelError::InvalidEdgeRolePartition(edge.decision_variable));
+            }
+        }
+        let mut covered = BTreeSet::new();
+        for center in factor.centers.iter() {
+            let incidence = factor.edges.iter().filter(|edge| edge.a == center.atom || edge.b == center.atom)
+                .map(|edge| edge.bond).collect::<BTreeSet<_>>();
+            if !(3..=4).contains(&incidence.len()) || center.bond_pattern_bits.len() != incidence.len() {
+                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center degree"));
+            }
+            let pattern_count = 1_usize << center.bond_pattern_bits.len();
+            let pattern_bonds = center.bond_pattern_bits.iter().map(|(bond, _)| *bond).collect::<BTreeSet<_>>();
+            let pattern_bits = center.bond_pattern_bits.iter().map(|(_, bit)| usize::from(*bit)).collect::<BTreeSet<_>>();
+            let entry_bonds = center.entry_layout_rows.iter().map(|(bond, _)| *bond).collect::<BTreeSet<_>>();
+            let reference_bonds = center.reference_order.iter().filter_map(|ligand|
+                match ligand { TetrahedralLigand::Bond(bond) => Some(*bond), _ => None })
+                .collect::<BTreeSet<_>>();
+            let reference_bond_count = center.reference_order.iter().filter(|ligand|
+                matches!(ligand, TetrahedralLigand::Bond(_))).count();
+            if !covered.insert(center.atom) || center.atom.index() >= count
+                || !(3..=4).contains(&incidence.len()) || pattern_bonds != incidence
+                || pattern_bits != (0..incidence.len()).collect()
+                || entry_bonds != incidence || center.entry_layout_rows.len() != incidence.len()
+                || reference_bonds != incidence || reference_bond_count != incidence.len()
+                || center.root_layout_rows.len() != pattern_count
+                || center.entry_layout_rows.iter().any(|(_, rows)| rows.len() != pattern_count) {
+                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center incidence or rows"));
+            }
+            let order = domain(center.order_variable)?;
+            let expected_pattern = Domain::from_bits((1_u64 << pattern_count) - 1);
+            if domain(center.role_pattern_variable)? != expected_pattern
+                || center.root_layout_rows.iter().chain(center.entry_layout_rows.iter()
+                    .flat_map(|(_, rows)| rows.iter())).any(|row| !row.is_subset_of(order)) {
+                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center domain or row"));
+            }
+        }
+        for center in factor.ordinary_centers.iter() {
+            let incidence = factor.edges.iter().filter(|edge| edge.a == center.atom || edge.b == center.atom)
                 .map(|edge| edge.bond).collect::<Vec<_>>();
+            if !covered.insert(center.atom) || center.atom.index() >= count {
+                return Err(ConstraintModelError::InvalidEventSchedule("ordinary center identity"));
+            }
             assert_complete_ordinary_pairs(&incidence, &center.pairs);
-            for pair in center.pairs.iter() {
-                let domain = self.variables.get(pair.variable.index())
-                    .ok_or(ConstraintModelError::UnknownVariable(pair.variable))?.initial_domain;
-                assert!(domain.is_subset_of(Domain::from_bits(3)),
-                    "ordinary schedule direction must be binary");
+        }
+        if covered.len() != count {
+            return Err(ConstraintModelError::InvalidEventSchedule("missing center"));
+        }
+        let mut event_variables = BTreeSet::new();
+        for visit in factor.visits.iter() {
+            for variable in visit.rank_bits.iter().chain([&visit.kind]).chain(visit.end_bits.iter()) {
+                if !event_variables.insert(*variable) || !domain(*variable)?.is_subset_of(if *variable == visit.kind {
+                    crate::event_schedule::EntryKind::domain()
+                } else { binary }) {
+                    return Err(ConstraintModelError::InvalidEventSchedule("event variable or domain"));
+                }
             }
         }
-        let variables = edges.iter().map(|edge| edge.decision_variable)
-            .chain(centers.iter().map(|center| center.order_variable))
-            .chain(ordinary_centers.iter().flat_map(|center| center.pairs.iter().map(|pair| pair.variable)))
-            .chain(capacity_bits.iter().copied())
-            .chain(root_bits.iter().copied())
-            .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
-        for variable in &variables {
-            if self.variables.get(variable.index()).is_none() {
-                return Err(ConstraintModelError::UnknownVariable(*variable));
+        for variable in factor.capacity_bits.iter().chain(factor.forest_roots.iter())
+            .chain(factor.ordinary_centers.iter().flat_map(|center| center.pairs.iter().map(|pair| &pair.variable))) {
+            if !domain(*variable)?.is_subset_of(binary) {
+                return Err(ConstraintModelError::InvalidEventSchedule("binary fact domain"));
             }
         }
-        self.push_factor(FactorDefinition::FixedSchedule(FixedScheduleFactor {
-            root_bits, edges, centers, ordinary_centers, capacity_bits, variables: variables.into_boxed_slice(),
-        }), FactorActivation::Latent)
+        for &variable in factor.variables() { let _ = domain(variable)?; }
+        self.push_factor(FactorDefinition::EventSchedule(factor), FactorActivation::Latent)
     }
 
     pub fn add_latent_ordinary_order(
@@ -1390,7 +1346,7 @@ impl ConstraintModelBuilder {
                 | FactorDefinition::RingCountAtMost(_) => None,
                 FactorDefinition::OrderedRingPhase(_) => None,
                 FactorDefinition::OrdinaryOrder(_) => None,
-                FactorDefinition::FixedSchedule(schedule) => schedule.edges().iter()
+                FactorDefinition::EventSchedule(schedule) => schedule.edges.iter()
                     .find(|edge| edge.decision_variable == variable)
                     .map(|edge| edge.role_partition),
                 FactorDefinition::TraversalTopology(spanning) => spanning
@@ -1409,6 +1365,7 @@ impl ConstraintModelBuilder {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConstraintModelError {
+    InvalidEventSchedule(&'static str),
     InvalidAromaticMatchingGraph(&'static str),
     InvalidAromaticMatchingDomain(VariableId),
     EmptyInitialDomain,
@@ -1448,6 +1405,7 @@ pub enum ConstraintModelError {
 impl fmt::Display for ConstraintModelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidEventSchedule(reason) => write!(formatter, "cannot build event schedule: {reason}"),
             Self::InvalidAromaticMatchingGraph(reason) => write!(
                 formatter, "cannot build aromatic matching component: {reason}"),
             Self::InvalidAromaticMatchingDomain(variable) => write!(

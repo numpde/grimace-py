@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
+use crate::event_schedule::EventScheduleFactor;
 use crate::model::{
     BinaryRelationFactor, ConstraintModel, DirectionalRingPlacementFactor, EdgeRolePartition,
-    FactorActivation, FactorDefinition, FixedScheduleFactor, TetrahedralLayoutFactor, TraversalTopologyFactor,
+    FactorActivation, FactorDefinition, TetrahedralLayoutFactor, TraversalTopologyFactor,
 };
 use crate::persistent::PagedStore;
 
@@ -26,6 +27,8 @@ pub(crate) struct NativeSolverState {
     domains: PagedStore<Domain>,
     active_factors: PagedStore<bool>,
     activated_factors_by_variable: PagedStore<Arc<[FactorId]>>,
+    /// Feasible writer transitions may retain unsupported future values.
+    projected_exact: bool,
     #[cfg(test)]
     mixed_search_branches: Arc<AtomicUsize>,
     #[cfg(test)]
@@ -87,6 +90,7 @@ impl NativeSolverState {
                 variable_count,
                 Arc::<[FactorId]>::from([]),
             ),
+            projected_exact: true,
             #[cfg(test)]
             mixed_search_branches: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
@@ -113,7 +117,7 @@ impl NativeSolverState {
         Ok(state)
     }
 
-    pub(crate) fn domain(&self, variable: VariableId) -> Option<Domain> {
+    pub(crate) fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }
 
@@ -218,11 +222,28 @@ impl NativeSolverState {
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
         activate: impl IntoIterator<Item = FactorId>,
     ) -> Result<Self, NativeSolverError> {
+        self.with_transition_mode(restrictions, activate, false)
+    }
+
+    pub(crate) fn with_feasible_transition(
+        &self,
+        restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
+        activate: impl IntoIterator<Item = FactorId>,
+    ) -> Result<Self, NativeSolverError> {
+        self.with_transition_mode(restrictions, activate, true)
+    }
+
+    fn with_transition_mode(
+        &self,
+        restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
+        activate: impl IntoIterator<Item = FactorId>,
+        feasibility_only: bool,
+    ) -> Result<Self, NativeSolverError> {
         let mut domains_by_variable = BTreeMap::new();
         let mut contradictory = false;
         for (variable, allowed) in restrictions {
             let current = self
-                .domain(variable)
+                .domain_bound(variable)
                 .ok_or(NativeSolverError::UnknownVariable(variable))?;
             let entry = domains_by_variable.entry(variable).or_insert(current);
             *entry = (*entry).intersect(allowed);
@@ -273,11 +294,23 @@ impl NativeSolverState {
             changed_variables.extend(variables);
         }
 
+        if !feasibility_only && !successor.projected_exact {
+            changed_variables.extend(successor.exact_plan.components.iter()
+                .flat_map(|component| component.projected_variables().iter().copied()));
+        }
         if changed_variables.is_empty() && seed_factors.is_empty() {
             return Ok(successor);
         }
 
-        successor.enforce_consistency(seed_factors, changed_variables)?;
+        if feasibility_only && (0..successor.model.factor_count()).any(|index|
+            successor.active_factors[index] && matches!(successor.model.factor(factor_id_from_index(index)),
+                Some(FactorDefinition::EventSchedule(_)))) {
+            successor.enforce_feasibility(seed_factors, changed_variables)?;
+            successor.projected_exact = false;
+        } else {
+            successor.enforce_consistency(seed_factors, changed_variables)?;
+            successor.projected_exact = true;
+        }
         Ok(successor)
     }
 
@@ -323,6 +356,16 @@ impl NativeSolverState {
         }
 
         Ok(())
+    }
+
+    fn enforce_feasibility(
+        &mut self,
+        factor_seeds: impl IntoIterator<Item = FactorId>,
+        component_seeds: impl IntoIterator<Item = VariableId>,
+    ) -> Result<(), NativeSolverError> {
+        let mut seeds = component_seeds.into_iter().collect::<BTreeSet<_>>();
+        seeds.extend(self.propagate(factor_seeds)?);
+        self.check_exact_components_feasible(seeds)
     }
 
     fn propagate(
@@ -394,8 +437,8 @@ impl NativeSolverState {
                 FactorDefinition::OrdinaryOrder(order) => {
                     revise_ordinary_order(order, &mut self.domains)?
                 }
-                FactorDefinition::FixedSchedule(schedule) => {
-                    revise_fixed_schedule(schedule, &mut self.domains)?
+                FactorDefinition::EventSchedule(schedule) => {
+                    revise_event_schedule(schedule, &mut self.domains)?
                 }
             };
 
@@ -429,12 +472,33 @@ impl NativeSolverState {
                     reductions.extend(self.complete_filter_binary_component(component)?);
                 }
                 ExactComponent::Mixed(component) => {
-                    reductions.extend(self.complete_filter_mixed_component(component)?);
+                    reductions.extend(self.complete_filter_mixed_component(component, false)?);
                 }
             }
         }
 
         Ok(reductions)
+    }
+
+    fn check_exact_components_feasible(
+        &mut self,
+        seeds: impl IntoIterator<Item = VariableId>,
+    ) -> Result<(), NativeSolverError> {
+        let component_ids = seeds.into_iter()
+            .filter_map(|variable| self.exact_plan.component_for(variable))
+            .collect::<BTreeSet<_>>();
+        let plan = Arc::clone(&self.exact_plan);
+        for component_id in component_ids {
+            match &plan.components[component_id] {
+                ExactComponent::Mixed(component) => {
+                    self.complete_filter_mixed_component(component, true)?;
+                }
+                ExactComponent::Binary(component) => {
+                    self.complete_filter_binary_component(component)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn complete_filter_binary_component(
@@ -473,6 +537,7 @@ impl NativeSolverState {
     fn complete_filter_mixed_component(
         &mut self,
         component: &MixedExactComponent,
+        first_solution_only: bool,
     ) -> Result<Vec<VariableId>, NativeSolverError> {
         let active_layouts = component
             .potential_layout_factors
@@ -518,12 +583,8 @@ impl NativeSolverState {
                     core_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
                     core_variables.extend(phase.bonds().iter().map(|(_, edge)| edge.decision_variable()));
                 }
-                FactorDefinition::FixedSchedule(schedule) => {
-                    core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
-                    core_variables.extend(schedule.ordinary_centers().iter()
-                        .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
-                    core_variables.extend(schedule.capacity_bits().iter().copied());
-                    core_variables.extend(schedule.root_bits().iter().copied());
+                FactorDefinition::EventSchedule(schedule) => {
+                    core_variables.extend(schedule.variables().iter().copied());
                 }
                 FactorDefinition::OrdinaryOrder(order) => {
                     core_variables.extend(order.variables().iter().copied());
@@ -576,19 +637,17 @@ impl NativeSolverState {
             };
             projected_variables.extend([layout.order_variable(), layout.role_pattern_variable()]);
         }
-        for factor in active_resources {
-            match self.model.factor(factor).expect("active resource factor must exist") {
+        for factor in &active_resources {
+            match self.model.factor(*factor).expect("active resource factor must exist") {
                 FactorDefinition::RingCountAtMost(count) => projected_variables.extend(count.budget_bits().iter().copied()),
                 FactorDefinition::OrderedRingPhase(phase) => {
                     projected_variables.extend(phase.free_bits().iter().copied());
                     projected_variables.extend([phase.waiting_mask_variable(), phase.order_variable()]);
                 }
-                FactorDefinition::FixedSchedule(schedule) => {
-                    projected_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
-                    projected_variables.extend(schedule.ordinary_centers().iter()
-                        .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
-                    projected_variables.extend(schedule.capacity_bits().iter().copied());
-                    projected_variables.extend(schedule.root_bits().iter().copied());
+                FactorDefinition::EventSchedule(schedule) => {
+                    if !first_solution_only {
+                        projected_variables.extend(schedule.variables().iter().copied());
+                    }
                 }
                 FactorDefinition::OrdinaryOrder(order) => {
                     projected_variables.extend(order.variables().iter().copied());
@@ -606,8 +665,49 @@ impl NativeSolverState {
         let mut supported = vec![Domain::empty(); projected_variables.len()];
         let mut stack = vec![self.clone()];
         let mut found_solution = false;
+        let event_schedule = active_resources.iter().find_map(|factor|
+            match self.model.factor(*factor) {
+                Some(FactorDefinition::EventSchedule(schedule)) => Some(schedule),
+                _ => None,
+            });
 
         while let Some(candidate) = stack.pop() {
+            if event_schedule.is_some() {
+                if let Some(edge) = component.structural_variables.iter().find(|edge| {
+                    let domain = candidate.domains[edge.variable.index()];
+                    !domain.intersect(edge.role_partition.traversal_values()).is_empty()
+                        && !domain.intersect(edge.role_partition.ring_values()).is_empty()
+                }) {
+                    #[cfg(test)]
+                    candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
+                    for role in [edge.role_partition.ring_values(), edge.role_partition.traversal_values()] {
+                        match candidate.restricted_and_propagated(edge.variable, role) {
+                            Ok(child) => stack.push(child),
+                            Err(NativeSolverError::Contradiction) => {}
+                            Err(failure) => return Err(failure),
+                        }
+                    }
+                    continue;
+                }
+            }
+            if let Some(branches) = event_schedule.and_then(|schedule|
+                event_rank_branches(schedule, &candidate.domains)) {
+                #[cfg(test)]
+                candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
+                for restrictions in branches.into_iter().rev() {
+                    match candidate.restricted_many_and_propagated(&restrictions) {
+                        Ok(child) => {
+                            debug_assert!(restrictions.iter().any(|(variable, _)|
+                                child.domains[variable.index()] != candidate.domains[variable.index()]),
+                                "event rank branch must narrow its parent");
+                            stack.push(child)
+                        }
+                        Err(NativeSolverError::Contradiction) => {}
+                        Err(failure) => return Err(failure),
+                    }
+                }
+                continue;
+            }
             let Some(variable) = core_variables
                 .iter()
                 .copied()
@@ -615,6 +715,7 @@ impl NativeSolverState {
                 .min_by_key(|variable| candidate.domains[variable.index()].len())
             else {
                 found_solution = true;
+                if first_solution_only { break; }
                 for (accumulator, variable) in supported
                     .iter_mut()
                     .zip(projected_variables.iter().copied())
@@ -628,9 +729,7 @@ impl NativeSolverState {
             };
 
             #[cfg(test)]
-            candidate
-                .mixed_search_branches
-                .fetch_add(1, Ordering::Relaxed);
+            candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
 
             let mut values = candidate.domains[variable.index()]
                 .iter()
@@ -651,6 +750,8 @@ impl NativeSolverState {
             return Err(NativeSolverError::Contradiction);
         }
 
+        if first_solution_only { return Ok(Vec::new()); }
+
         let mut reductions = Vec::new();
         for (variable, supported_domain) in projected_variables.iter().copied().zip(supported) {
             let current = self.domains[variable.index()];
@@ -669,7 +770,7 @@ impl NativeSolverState {
         allowed: Domain,
     ) -> Result<Self, NativeSolverError> {
         let current = self
-            .domain(variable)
+            .domain_bound(variable)
             .ok_or(NativeSolverError::UnknownVariable(variable))?;
         let restricted = current.intersect(allowed);
         if restricted.is_empty() {
@@ -685,6 +786,71 @@ impl NativeSolverState {
         successor.propagate(seed_factors)?;
         Ok(successor)
     }
+
+    fn restricted_many_and_propagated(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+    ) -> Result<Self, NativeSolverError> {
+        let mut successor = self.clone();
+        let mut seed_factors = BTreeSet::new();
+        for &(variable, allowed) in restrictions {
+            let narrowed = successor.domains[variable.index()].intersect(allowed);
+            if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+            if narrowed != successor.domains[variable.index()] {
+                successor.domains[variable.index()] = narrowed;
+                seed_factors.extend(successor.active_factors_for_variable(variable));
+            }
+        }
+        successor.propagate(seed_factors)?;
+        Ok(successor)
+    }
+}
+
+fn event_rank_branches(
+    schedule: &EventScheduleFactor,
+    domains: &PagedStore<Domain>,
+) -> Option<Vec<Vec<(VariableId, Domain)>>> {
+    let count = schedule.visits.len();
+    for rank in 0..count {
+        let mut candidate_visits = schedule.visits.iter().filter(|visit|
+            visit.rank_bits.iter().enumerate().all(|(bit, variable)|
+                domains[variable.index()].contains(((rank >> bit) & 1) as u8)))
+            .collect::<Vec<_>>();
+        if let Some(fixed) = candidate_visits.iter().find(|visit|
+            visit.rank_bits.iter().all(|variable| domains[variable.index()].is_singleton())) {
+            candidate_visits = vec![*fixed];
+        }
+        if candidate_visits.len() == 1 {
+            let visit = candidate_visits[0];
+            if visit.rank_bits.iter().all(|variable| domains[variable.index()].is_singleton())
+                && domains[visit.kind.index()].is_singleton()
+                && visit.end_bits.iter().all(|variable| domains[variable.index()].is_singleton()) {
+                continue;
+            }
+        }
+        let mut branches = Vec::new();
+        for visit in candidate_visits {
+            for kind in domains[visit.kind.index()].iter() {
+                let branch = kind == 1 || kind == 3;
+                let ends = if branch { rank..count } else { 0..1 };
+                for end in ends {
+                    if !visit.end_bits.iter().enumerate().all(|(bit, variable)|
+                        domains[variable.index()].contains(u8::from(branch && bit <= end))) {
+                        continue;
+                    }
+                    let restrictions = visit.rank_bits.iter().enumerate().map(|(bit, variable)|
+                        (*variable, Domain::singleton(((rank >> bit) & 1) as u8).unwrap()))
+                        .chain(std::iter::once((visit.kind, Domain::singleton(kind).unwrap())))
+                        .chain(visit.end_bits.iter().enumerate().map(|(bit, variable)|
+                            (*variable, Domain::singleton(u8::from(branch && bit <= end)).unwrap())))
+                        .collect::<Vec<_>>();
+                    branches.push(restrictions);
+                }
+            }
+        }
+        return Some(branches);
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -782,15 +948,11 @@ impl NativeExactPlan {
                         }
                         phase.variables()
                     }
-                    FactorDefinition::FixedSchedule(schedule) => {
+                    FactorDefinition::EventSchedule(schedule) => {
                         visited_semantic[factor_id.index()] = true;
                         potential_resource_factors.insert(factor_id);
-                        potential_core_variables.extend(schedule.centers().iter().map(|center| center.order_variable));
-                        potential_core_variables.extend(schedule.ordinary_centers().iter()
-                            .flat_map(|center| center.pairs.iter().map(|pair| pair.variable)));
-                        potential_core_variables.extend(schedule.capacity_bits().iter().copied());
-                        potential_core_variables.extend(schedule.root_bits().iter().copied());
-                        for edge in schedule.edges() {
+                        potential_core_variables.extend(schedule.variables().iter().copied());
+                        for edge in schedule.edges.iter() {
                             structural_partitions.entry(edge.decision_variable)
                                 .and_modify(|existing| assert_eq!(*existing, edge.role_partition))
                                 .or_insert(edge.role_partition);
@@ -827,7 +989,7 @@ impl NativeExactPlan {
                             | FactorDefinition::RingCountAtMost(_)
                             | FactorDefinition::OrderedRingPhase(_)
                             | FactorDefinition::OrdinaryOrder(_)
-                            | FactorDefinition::FixedSchedule(_) => {
+                            | FactorDefinition::EventSchedule(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
                                 }
@@ -862,7 +1024,7 @@ impl NativeExactPlan {
                                                 | FactorDefinition::RingCountAtMost(_)
                                                 | FactorDefinition::OrderedRingPhase(_)
                                                 | FactorDefinition::OrdinaryOrder(_)
-                                                | FactorDefinition::FixedSchedule(_)
+                                                | FactorDefinition::EventSchedule(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
                                             pending.push_back(candidate);
@@ -1375,31 +1537,273 @@ fn revise_tetrahedral_layout(
     Ok(reductions)
 }
 
-fn revise_fixed_schedule(
-    factor: &FixedScheduleFactor,
+fn event_partial_local_order_feasible(
+    factor: &EventScheduleFactor,
+    domains: &PagedStore<Domain>,
+    atom: crate::ids::AtomId,
+    incoming: Option<crate::ids::BondId>,
+    children: &[(usize, crate::ids::BondId, u8)],
+) -> bool {
+    let incidences = factor.edges.iter().filter(|edge| edge.a == atom || edge.b == atom)
+        .map(|edge| edge.bond).collect::<Vec<_>>();
+    let ring = factor.edges.iter().filter(|edge| (edge.a == atom || edge.b == atom)
+        && domains[edge.decision_variable.index()].is_subset_of(edge.role_partition.ring_values()))
+        .map(|edge| edge.bond).collect::<Vec<_>>();
+    let mut before = Vec::new();
+    if let Some(entry) = incoming {
+        before.extend(incidences.iter().copied().filter(|bond| *bond != entry)
+            .map(|bond| (entry, bond)));
+    }
+    for ring_bond in ring {
+        before.extend(children.iter().map(|(_, child, _)| (ring_bond, *child)));
+    }
+    before.extend(children.windows(2).map(|pair| (pair[0].1, pair[1].1)));
+    if children.windows(2).any(|pair| pair[0].2 == 2) { return false; }
+
+    if let Some(center) = factor.centers.iter().find(|center| center.atom == atom) {
+        let rows = match incoming {
+            Some(entry) => center.entry_layout_rows.iter()
+                .find_map(|(bond, rows)| (*bond == entry).then_some(rows)),
+            None => Some(&center.root_layout_rows),
+        };
+        let Some(rows) = rows else { return false; };
+        return domains[center.order_variable.index()].iter().any(|value| {
+            let Some(order) = crate::tetrahedral::order_for_value(&center.reference_order, value) else {
+                return false;
+            };
+            let position = |bond| order.iter().position(|ligand|
+                *ligand == crate::tetrahedral::TetrahedralLigand::Bond(bond));
+            domains[center.role_pattern_variable.index()].iter().any(|pattern| {
+                rows[pattern as usize].contains(value)
+                    && center.bond_pattern_bits.iter().all(|(bond, bit)| {
+                        let edge = factor.edges.iter().find(|edge| edge.bond == *bond)
+                            .expect("prepared center bond must have a role");
+                        let role = if pattern & (1 << bit) != 0 {
+                            edge.role_partition.ring_values()
+                        } else { edge.role_partition.traversal_values() };
+                        !domains[edge.decision_variable.index()].intersect(role).is_empty()
+                    })
+                    && before.iter().all(|(first, second)|
+                        position(*first).zip(position(*second)).is_some_and(|(a, b)| a < b))
+            })
+        });
+    }
+    let Some(center) = factor.ordinary_centers.iter().find(|center| center.atom == atom) else {
+        return false;
+    };
+    before.into_iter().all(|(first, second)| {
+        let Some(pair) = center.pairs.iter().find(|pair|
+            (pair.first == first && pair.second == second)
+                || (pair.first == second && pair.second == first)) else { return false; };
+        domains[pair.variable.index()].contains(u8::from(pair.first == second))
+    })
+}
+
+fn revise_event_schedule(
+    factor: &EventScheduleFactor,
     domains: &mut PagedStore<Domain>,
 ) -> Result<Vec<VariableId>, NativeSolverError> {
-    if factor.capacity_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
-        || factor.root_bits().iter().any(|bit| !domains[bit.index()].is_singleton())
-        || factor.centers().iter().any(|center| !domains[center.order_variable.index()].is_singleton())
-        || factor.ordinary_centers().iter().flat_map(|center| center.pairs.iter())
-            .any(|pair| !domains[pair.variable.index()].is_singleton()) {
-        return Ok(Vec::new());
+    let count = factor.visits.len();
+    let possible = factor.visits.iter().map(|visit| {
+        (0..count).filter(|rank| visit.rank_bits.iter().enumerate().all(|(bit, variable)|
+            domains[variable.index()].contains(((rank >> bit) & 1) as u8)))
+            .collect::<Vec<_>>()
+    }).collect::<Vec<_>>();
+    if possible.iter().any(Vec::is_empty) { return Err(NativeSolverError::Contradiction); }
+    let fixed = possible.iter().filter(|ranks| ranks.len() == 1)
+        .map(|ranks| ranks[0]).collect::<Vec<_>>();
+    if fixed.iter().copied().collect::<BTreeSet<_>>().len() != fixed.len() {
+        return Err(NativeSolverError::Contradiction);
     }
-    for edge in factor.edges() {
-        let current = domains[edge.decision_variable.index()];
-        if !current.intersect(edge.role_partition.traversal_values()).is_empty()
-            && !current.intersect(edge.role_partition.ring_values()).is_empty() {
-            return Ok(Vec::new());
+    let mut reductions = Vec::new();
+    for (visit, ranks) in factor.visits.iter().zip(&possible) {
+        let supported = ranks.iter().copied().filter(|rank|
+            ranks.len() == 1 || !fixed.contains(rank)).collect::<Vec<_>>();
+        if supported.is_empty() { return Err(NativeSolverError::Contradiction); }
+        if supported.len() == 1 {
+            let rank = supported[0];
+            let allowed_kind = if rank == 0 { Domain::singleton(0).unwrap() }
+                else if factor.segments { Domain::from_indices(1..=4).unwrap() }
+                else { crate::event_schedule::EntryKind::domain() };
+            let narrowed = domains[visit.kind.index()].intersect(allowed_kind);
+            if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+            if narrowed != domains[visit.kind.index()] {
+                domains[visit.kind.index()] = narrowed;
+                reductions.push(visit.kind);
+            }
+        }
+        if let Some(root) = factor.forest_roots.get(visit.atom.index()) {
+            let bonded = Domain::from_indices([1, 2]).unwrap();
+            let nonbonded = Domain::from_indices([0, 3, 4]).unwrap();
+            let kind_domain = domains[visit.kind.index()];
+            let root_domain = domains[root.index()];
+            let supported_roots = (if kind_domain.intersect(bonded).is_empty() {
+                Domain::empty()
+            } else { Domain::singleton(0).unwrap() }).union(
+                if kind_domain.intersect(nonbonded).is_empty() {
+                    Domain::empty()
+                } else { Domain::singleton(1).unwrap() });
+            let narrowed_root = root_domain.intersect(supported_roots);
+            if narrowed_root.is_empty() { return Err(NativeSolverError::Contradiction); }
+            if narrowed_root != root_domain {
+                domains[root.index()] = narrowed_root;
+                reductions.push(*root);
+            }
+            let supported_kinds = (if narrowed_root.contains(0) { bonded } else { Domain::empty() })
+                .union(if narrowed_root.contains(1) { nonbonded } else { Domain::empty() });
+            let narrowed_kind = kind_domain.intersect(supported_kinds);
+            if narrowed_kind.is_empty() { return Err(NativeSolverError::Contradiction); }
+            if narrowed_kind != kind_domain {
+                domains[visit.kind.index()] = narrowed_kind;
+                reductions.push(visit.kind);
+            }
+        }
+        let kinds = domains[visit.kind.index()];
+        let branch_kinds = Domain::from_indices([1, 3]).unwrap();
+        if kinds.intersect(branch_kinds).is_empty() {
+            for variable in visit.end_bits.iter().copied() {
+                let narrowed = domains[variable.index()].intersect(Domain::singleton(0).unwrap());
+                if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+                if narrowed != domains[variable.index()] {
+                    domains[variable.index()] = narrowed;
+                    reductions.push(variable);
+                }
+            }
+        } else if kinds.is_subset_of(branch_kinds) && supported.len() == 1 {
+            for variable in visit.end_bits.iter().take(supported[0] + 1).copied() {
+                let narrowed = domains[variable.index()].intersect(Domain::singleton(1).unwrap());
+                if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+                if narrowed != domains[variable.index()] {
+                    domains[variable.index()] = narrowed;
+                    reductions.push(variable);
+                }
+            }
+        }
+        let mut forced_one = false;
+        for variable in visit.end_bits.iter().rev().copied() {
+            forced_one |= domains[variable.index()] == Domain::singleton(1).unwrap();
+            if forced_one && domains[variable.index()] != Domain::singleton(1).unwrap() {
+                let narrowed = domains[variable.index()].intersect(Domain::singleton(1).unwrap());
+                if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+                domains[variable.index()] = narrowed;
+                reductions.push(variable);
+            }
+        }
+        let mut forced_zero = false;
+        for variable in visit.end_bits.iter().copied() {
+            forced_zero |= domains[variable.index()] == Domain::singleton(0).unwrap();
+            if forced_zero && domains[variable.index()] != Domain::singleton(0).unwrap() {
+                let narrowed = domains[variable.index()].intersect(Domain::singleton(0).unwrap());
+                if narrowed.is_empty() { return Err(NativeSolverError::Contradiction); }
+                domains[variable.index()] = narrowed;
+                reductions.push(variable);
+            }
+        }
+        for (bit, variable) in visit.rank_bits.iter().copied().enumerate() {
+            let bit_domain = Domain::from_indices(supported.iter()
+                .map(|rank| ((rank >> bit) & 1) as u8)).unwrap();
+            let narrowed = domains[variable.index()].intersect(bit_domain);
+            if narrowed != domains[variable.index()] {
+                domains[variable.index()] = narrowed;
+                reductions.push(variable);
+            }
         }
     }
-    let assignment = (0..domains.len()).map(|index| domains[index].iter().next()
-        .expect("consistent domain must be nonempty")).collect::<Vec<_>>();
-    if factor.permits(|variable| assignment[variable.index()]) {
-        Ok(Vec::new())
-    } else {
-        Err(NativeSolverError::Contradiction)
+    let capacity_upper = factor.capacity_bits.iter().enumerate().fold(0_usize, |upper, (bit, variable)|
+        upper | (usize::from(domains[variable.index()].contains(1)) << bit));
+    let mut prefix = BTreeSet::new();
+    let mut source = None;
+    let mut returns = Vec::<(crate::ids::AtomId, usize)>::new();
+    let mut incoming = vec![None; count];
+    let mut children = vec![Vec::<(usize, crate::ids::BondId, u8)>::new(); count];
+    for rank in 0..count {
+        let Some(visit) = factor.visits.iter().find(|visit|
+            possible[visit.atom.index()].len() == 1 && possible[visit.atom.index()][0] == rank)
+        else { break; };
+        let kind_domain = domains[visit.kind.index()];
+        if !kind_domain.is_singleton() { break; }
+        let kind = kind_domain.iter().next().unwrap();
+        let branch = kind == 1 || kind == 3;
+        let end = if branch {
+            if visit.end_bits.iter().any(|variable| !domains[variable.index()].is_singleton()) {
+                break;
+            }
+            visit.end_bits.iter().take_while(|variable| domains[variable.index()].contains(1))
+                .count().checked_sub(1).ok_or(NativeSolverError::Contradiction)?
+        } else { 0 };
+        while returns.last().is_some_and(|(_, end)| *end < rank) {
+            source = Some(returns.pop().unwrap().0);
+        }
+        if kind == 0 {
+            if rank != 0 && (factor.segments || !returns.is_empty()) {
+                return Err(NativeSolverError::Contradiction);
+            }
+        } else {
+            let parent = source.ok_or(NativeSolverError::Contradiction)?;
+            if kind == 1 || kind == 2 {
+                let edge = factor.edges.iter().find(|edge|
+                    (edge.a == parent && edge.b == visit.atom)
+                        || (edge.b == parent && edge.a == visit.atom))
+                    .ok_or(NativeSolverError::Contradiction)?;
+                if domains[edge.decision_variable.index()]
+                    .intersect(edge.role_partition.traversal_values()).is_empty() {
+                    return Err(NativeSolverError::Contradiction);
+                }
+                incoming[visit.atom.index()] = Some(edge.bond);
+                children[parent.index()].push((rank, edge.bond, kind));
+                if !event_partial_local_order_feasible(factor, domains, parent,
+                    incoming[parent.index()], &children[parent.index()]) {
+                    return Err(NativeSolverError::Contradiction);
+                }
+                if let Some(root) = factor.forest_roots.get(visit.atom.index()) {
+                    if !domains[root.index()].contains(0) { return Err(NativeSolverError::Contradiction); }
+                }
+            } else {
+                if !factor.segments { return Err(NativeSolverError::Contradiction); }
+                if let Some(root) = factor.forest_roots.get(visit.atom.index()) {
+                    if !domains[root.index()].contains(1) { return Err(NativeSolverError::Contradiction); }
+                }
+            }
+            if branch {
+                if end < rank || returns.last().is_some_and(|(_, parent_end)| end > *parent_end) {
+                    return Err(NativeSolverError::Contradiction);
+                }
+                returns.push((parent, end));
+            }
+        }
+        source = Some(visit.atom);
+        prefix.insert(visit.atom);
+        if !event_partial_local_order_feasible(factor, domains, visit.atom,
+            incoming[visit.atom.index()], &children[visit.atom.index()]) {
+            return Err(NativeSolverError::Contradiction);
+        }
+        let mut next_source = source;
+        let mut pending_returns = returns.clone();
+        while pending_returns.last().is_some_and(|(_, end)| *end <= rank) {
+            next_source = Some(pending_returns.pop().unwrap().0);
+        }
+        let accessible = pending_returns.iter().map(|(atom, _)| *atom)
+            .chain(next_source).collect::<BTreeSet<_>>();
+        if factor.edges.iter().any(|edge| {
+            let role = domains[edge.decision_variable.index()];
+            if !role.is_subset_of(edge.role_partition.traversal_values()) { return false; }
+            let visited_a = prefix.contains(&edge.a);
+            let visited_b = prefix.contains(&edge.b);
+            visited_a != visited_b
+                && !accessible.contains(&if visited_a { edge.a } else { edge.b })
+        }) { return Err(NativeSolverError::Contradiction); }
+        let forced_live = factor.edges.iter().filter(|edge| {
+            let domain = domains[edge.decision_variable.index()];
+            domain.is_subset_of(edge.role_partition.ring_values())
+                && prefix.contains(&edge.a) != prefix.contains(&edge.b)
+        }).count();
+        if forced_live > capacity_upper { return Err(NativeSolverError::Contradiction); }
     }
+    if factor.variables().iter().all(|variable| domains[variable.index()].is_singleton()) {
+        let assignment = |variable: VariableId| domains[variable.index()].iter().next().unwrap();
+        if !factor.permits(assignment) { return Err(NativeSolverError::Contradiction); }
+    }
+    Ok(reductions)
 }
 
 fn revise_ordinary_order(
@@ -1774,7 +2178,7 @@ mod tests {
         let factor = builder.add_latent_ring_count_at_most(bonds, [budget]).unwrap();
         let model = Arc::new(builder.build());
         let initial = NativeSolverState::initial(Arc::clone(&model)).unwrap();
-        assert!(roles.iter().all(|&role| initial.domain(role) == Some(BondRole::role_domain())));
+        assert!(roles.iter().all(|&role| initial.domain_bound(role) == Some(BondRole::role_domain())));
         let native = NativeSolverState::with_transition(&initial,
             [(budget, Domain::singleton(1).unwrap())], [factor]).unwrap();
         let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
@@ -1782,8 +2186,8 @@ mod tests {
                 &[(budget, Domain::singleton(1).unwrap())], &[factor]
             ).unwrap().unwrap_consistent();
         for (variable, expected) in roles.into_iter().zip([0, 0, 1]) {
-            assert_eq!(native.domain(variable), Some(Domain::singleton(expected).unwrap()));
-            assert_eq!(native.domain(variable), oracle.domain(variable));
+            assert_eq!(native.domain_bound(variable), Some(Domain::singleton(expected).unwrap()));
+            assert_eq!(native.domain_bound(variable), oracle.domain_bound(variable));
         }
     }
 
@@ -1824,8 +2228,8 @@ mod tests {
         let oracle = <crate::native_oracle::ExhaustiveSolverState as ConstraintSolver>::initial(model)
             .unwrap().unwrap_consistent().transitioned(&[], &[factor])
             .unwrap().unwrap_consistent();
-        assert_eq!(native.domain(budget), Some(Domain::singleton(1).unwrap()));
-        assert_eq!(native.domain(budget), oracle.domain(budget));
+        assert_eq!(native.domain_bound(budget), Some(Domain::singleton(1).unwrap()));
+        assert_eq!(native.domain_bound(budget), oracle.domain_bound(budget));
     }
 
     fn two_values() -> Domain {
@@ -1893,7 +2297,7 @@ mod tests {
     fn domains_for(state: &NativeSolverState, variables: &[VariableId]) -> Vec<Domain> {
         variables
             .iter()
-            .map(|variable| state.domain(*variable).unwrap())
+            .map(|variable| state.domain_bound(*variable).unwrap())
             .collect()
     }
 
@@ -1903,24 +2307,24 @@ mod tests {
         let source = NativeSolverState::initial(model).unwrap();
 
         assert_eq!(source.factor_is_active(factor), Some(false));
-        assert_eq!(source.domain(pattern).unwrap().len(), 8);
-        assert_eq!(source.domain(bonds[1]).unwrap().len(), 3);
+        assert_eq!(source.domain_bound(pattern).unwrap().len(), 8);
+        assert_eq!(source.domain_bound(bonds[1]).unwrap().len(), 3);
 
         let successor = source
             .with_transition([(order, Domain::singleton(0).unwrap())], [factor])
             .unwrap();
         assert_eq!(successor.factor_is_active(factor), Some(true));
-        assert_eq!(successor.domain(order), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(successor.domain_bound(order), Some(Domain::singleton(0).unwrap()));
         assert_eq!(
-            successor.domain(pattern),
+            successor.domain_bound(pattern),
             Some(Domain::singleton(0).unwrap())
         );
         for bond in bonds {
-            assert_eq!(successor.domain(bond), Some(Domain::singleton(0).unwrap()));
+            assert_eq!(successor.domain_bound(bond), Some(Domain::singleton(0).unwrap()));
         }
 
         assert_eq!(source.factor_is_active(factor), Some(false));
-        assert_eq!(source.domain(order), Some(two_values()));
+        assert_eq!(source.domain_bound(order), Some(two_values()));
     }
 
     #[test]
@@ -1935,7 +2339,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            successor.domain(bonds[0]),
+            successor.domain_bound(bonds[0]),
             Some(Domain::singleton(1).unwrap())
         );
         assert_eq!(successor.exact_run_counts(), (0, 0));
@@ -2009,9 +2413,9 @@ mod tests {
             .with_transition(std::iter::empty::<(VariableId, Domain)>(), [factor])
             .unwrap();
 
-        assert_eq!(successor.domain(order), Some(two_values()));
+        assert_eq!(successor.domain_bound(order), Some(two_values()));
         assert_eq!(
-            successor.domain(pattern),
+            successor.domain_bound(pattern),
             Some(Domain::singleton(0).unwrap())
         );
         assert_eq!(successor.exact_run_counts(), (0, 0));
@@ -2087,11 +2491,11 @@ mod tests {
             .unwrap();
 
         for order in orders {
-            assert_eq!(successor.domain(order), Some(two_values()));
+            assert_eq!(successor.domain_bound(order), Some(two_values()));
         }
         for pattern in patterns {
             assert_eq!(
-                successor.domain(pattern),
+                successor.domain_bound(pattern),
                 Some(Domain::singleton(0).unwrap())
             );
         }
@@ -2108,8 +2512,8 @@ mod tests {
 
         let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
 
-        assert_eq!(state.domain(left), Some(Domain::singleton(0).unwrap()));
-        assert_eq!(state.domain(right), Some(Domain::singleton(1).unwrap()));
+        assert_eq!(state.domain_bound(left), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(state.domain_bound(right), Some(Domain::singleton(1).unwrap()));
     }
 
     #[test]
@@ -2138,12 +2542,12 @@ mod tests {
 
         for variable in &variables[..3] {
             assert_eq!(
-                successor.domain(*variable),
+                successor.domain_bound(*variable),
                 Some(Domain::singleton(0).unwrap())
             );
         }
         for variable in &variables[3..] {
-            assert_eq!(successor.domain(*variable), Some(two_values()));
+            assert_eq!(successor.domain_bound(*variable), Some(two_values()));
         }
     }
 
@@ -2161,13 +2565,13 @@ mod tests {
 
         for variable in &variables[..3] {
             assert_eq!(
-                successor.domain(*variable),
+                successor.domain_bound(*variable),
                 Some(Domain::singleton(0).unwrap())
             );
         }
         for variable in &variables[3..] {
             assert_eq!(
-                successor.domain(*variable),
+                successor.domain_bound(*variable),
                 Some(Domain::singleton(1).unwrap())
             );
         }
@@ -2189,7 +2593,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            successor.domain(variable),
+            successor.domain_bound(variable),
             Some(Domain::singleton(1).unwrap())
         );
     }
@@ -2199,7 +2603,7 @@ mod tests {
         let mut builder = ConstraintModelBuilder::new();
         let variable = builder.add_variable(two_values()).unwrap();
         let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
-        let before = source.domain(variable);
+        let before = source.domain_bound(variable);
 
         assert!(matches!(
             source.with_restrictions([
@@ -2208,7 +2612,7 @@ mod tests {
             ]),
             Err(NativeSolverError::Contradiction)
         ));
-        assert_eq!(source.domain(variable), before);
+        assert_eq!(source.domain_bound(variable), before);
     }
 
     #[test]
@@ -2224,8 +2628,8 @@ mod tests {
             .with_restrictions([(variable, two_values())])
             .unwrap();
 
-        assert_eq!(empty_successor.domain(variable), source.domain(variable));
-        assert_eq!(noop_successor.domain(variable), source.domain(variable));
+        assert_eq!(empty_successor.domain_bound(variable), source.domain_bound(variable));
+        assert_eq!(noop_successor.domain_bound(variable), source.domain_bound(variable));
     }
 
     #[test]
@@ -2261,9 +2665,9 @@ mod tests {
         assert!(source
             .domains
             .shares_value_page_with(&successor.domains, variables[129].index()));
-        assert_eq!(source.domain(variables[0]), Some(two_values()));
+        assert_eq!(source.domain_bound(variables[0]), Some(two_values()));
         assert_eq!(
-            successor.domain(variables[0]),
+            successor.domain_bound(variables[0]),
             Some(Domain::singleton(0).unwrap())
         );
     }
@@ -2286,14 +2690,14 @@ mod tests {
         assert!(Arc::ptr_eq(&source.model, &successor.model));
         for &variable in &variables {
             let prepared = model.variable(variable).unwrap().initial_domain();
-            let source_domain = source.domain(variable).unwrap();
-            let successor_domain = successor.domain(variable).unwrap();
+            let source_domain = source.domain_bound(variable).unwrap();
+            let successor_domain = successor.domain_bound(variable).unwrap();
             assert!(!successor_domain.is_empty());
             assert!(successor_domain.is_subset_of(prepared));
             assert!(successor_domain.is_subset_of(source_domain));
         }
         assert!(successor
-            .domain(variables[0])
+            .domain_bound(variables[0])
             .unwrap()
             .is_subset_of(allowed));
     }
@@ -2319,9 +2723,9 @@ mod tests {
         ));
 
         assert_eq!(source.domains.copy_counts(), (1, 2));
-        assert_eq!(source.domain(variables[0]), Some(two_values()));
-        assert_eq!(source.domain(variables[64]), Some(two_values()));
-        assert_eq!(source.domain(variables[129]), Some(two_values()));
+        assert_eq!(source.domain_bound(variables[0]), Some(two_values()));
+        assert_eq!(source.domain_bound(variables[64]), Some(two_values()));
+        assert_eq!(source.domain_bound(variables[129]), Some(two_values()));
     }
 
     #[test]
@@ -2446,11 +2850,11 @@ mod tests {
         let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
 
         assert_eq!(
-            state.domain(variables[0]),
+            state.domain_bound(variables[0]),
             Some(BondRole::Traversal.singleton_domain())
         );
         assert_eq!(
-            state.domain(variables[50]),
+            state.domain_bound(variables[50]),
             Some(BondRole::Traversal.singleton_domain())
         );
         assert_eq!(state.mixed_search_branch_count(), 1);
@@ -2575,10 +2979,10 @@ mod tests {
 
         let forced_traversal = crate::solver::ConstraintSolver::restricted(&state, &[(bond, BondRole::Traversal.singleton_domain())])
             .unwrap().unwrap_consistent();
-        assert_eq!(forced_traversal.domain(signal), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(forced_traversal.domain_bound(signal), Some(Domain::singleton(0).unwrap()));
         let selected = crate::solver::ConstraintSolver::restricted(&state, &[(signal, Domain::singleton(1).unwrap())])
             .unwrap().unwrap_consistent();
-        assert_eq!(selected.domain(bond), Some(BondRole::Ring.singleton_domain()));
+        assert_eq!(selected.domain_bound(bond), Some(BondRole::Ring.singleton_domain()));
     }
 
     #[test]
@@ -2678,7 +3082,7 @@ mod tests {
 
         assert_eq!(successor.exact_run_counts(), (0, 1));
         assert_eq!(
-            successor.domain(variables[3]),
+            successor.domain_bound(variables[3]),
             Some(BondRole::role_domain())
         );
 
@@ -2707,9 +3111,9 @@ mod tests {
 
         let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
 
-        assert_eq!(state.domain(x), Some(Domain::from_indices([0, 1]).unwrap()));
-        assert_eq!(state.domain(y), Some(two_values()));
-        assert_eq!(state.domain(z), Some(two_values()));
+        assert_eq!(state.domain_bound(x), Some(Domain::from_indices([0, 1]).unwrap()));
+        assert_eq!(state.domain_bound(y), Some(two_values()));
+        assert_eq!(state.domain_bound(z), Some(two_values()));
     }
 
     #[test]
@@ -2733,9 +3137,9 @@ mod tests {
             .with_restrictions([(x, Domain::singleton(0).unwrap())])
             .unwrap();
 
-        assert_eq!(successor.domain(x), Some(Domain::singleton(0).unwrap()));
-        assert_eq!(successor.domain(y), Some(Domain::singleton(0).unwrap()));
-        assert_eq!(successor.domain(z), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(successor.domain_bound(x), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(successor.domain_bound(y), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(successor.domain_bound(z), Some(Domain::singleton(0).unwrap()));
     }
 
     #[test]
@@ -2798,11 +3202,11 @@ mod aromatic_matching_plan_tests {
         let next = initial
             .with_restrictions([(edges[0], Domain::from_bits(4))])
             .unwrap();
-        assert_eq!(next.domain(modes[0]), Some(Domain::from_bits(2)));
-        assert_eq!(next.domain(edges[1]), Some(Domain::from_bits(2)));
+        assert_eq!(next.domain_bound(modes[0]), Some(Domain::from_bits(2)));
+        assert_eq!(next.domain_bound(edges[1]), Some(Domain::from_bits(2)));
         assert_eq!(next.binary_exact_runs.load(Ordering::Relaxed), 0);
         assert_eq!(next.mixed_exact_runs.load(Ordering::Relaxed), 0);
         assert_eq!(next.mixed_search_branches.load(Ordering::Relaxed), 0);
-        assert_eq!(initial.domain(modes[0]), Some(Domain::from_bits(3)));
+        assert_eq!(initial.domain_bound(modes[0]), Some(Domain::from_bits(3)));
     }
 }

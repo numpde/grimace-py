@@ -113,7 +113,7 @@ impl ConstraintSolver for ExhaustiveSolverState {
         )
     }
 
-    fn domain(&self, variable: VariableId) -> Option<Domain> {
+    fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }
 
@@ -303,7 +303,7 @@ fn assignment_satisfies(
             FactorDefinition::OrdinaryOrder(order) => {
                 order.permits(|variable| assignment[variable.index()])
             }
-            FactorDefinition::FixedSchedule(schedule) => {
+            FactorDefinition::EventSchedule(schedule) => {
                 schedule.permits(|variable| assignment[variable.index()])
             }
         }
@@ -410,80 +410,6 @@ fn assignment_satisfies_traversal_topology(
 }
 
 #[cfg(test)]
-mod fixed_schedule_tests {
-    use super::*;
-    use crate::ids::BondId;
-    use crate::model::{FixedScheduleCenter, FixedScheduleEdge, FixedScheduleOrdinaryCenter, OrdinaryOrderPair};
-    use crate::tetrahedral::{full_order_domain, TetrahedralLigand};
-
-    #[test]
-    fn fixed_diamond_schedule_native_projection_matches_exhaustive() {
-        let mut builder = ConstraintModelBuilder::new();
-        let bonds: [BondId; 5] = std::array::from_fn(|index| BondId::new(index as u32));
-        let ends = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)];
-        let edges: Arc<[FixedScheduleEdge]> = ends.into_iter().enumerate().map(|(index, (a, b))| {
-            let role = if index < 3 { BondRole::Traversal } else { BondRole::Ring };
-            FixedScheduleEdge {
-                bond: bonds[index], a: AtomId::new(a), b: AtomId::new(b),
-                decision_variable: builder.add_variable(role.singleton_domain()).unwrap(),
-                role_partition: EdgeRolePartition::bond_role(),
-            }
-        }).collect::<Vec<_>>().into();
-        let parent = builder.add_variable(full_order_domain()).unwrap();
-        let child = builder.add_variable(full_order_domain()).unwrap();
-        let centers: Arc<[FixedScheduleCenter]> = vec![
-            FixedScheduleCenter { atom: AtomId::new(0), order_variable: parent,
-                reference_order: [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::Bond(bonds[1]),
-                    TetrahedralLigand::Bond(bonds[2]), TetrahedralLigand::VirtualHydrogen] },
-            FixedScheduleCenter { atom: AtomId::new(1), order_variable: child,
-                reference_order: [TetrahedralLigand::Bond(bonds[0]), TetrahedralLigand::Bond(bonds[3]),
-                    TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::VirtualHydrogen] },
-        ].into();
-        let capacity: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(1).unwrap()).unwrap()].into();
-        let root_bits: Arc<[VariableId]> = vec![builder.add_variable(Domain::singleton(0).unwrap()).unwrap(),
-            builder.add_variable(Domain::singleton(0).unwrap()).unwrap()].into();
-        let ordinary_centers: Arc<[FixedScheduleOrdinaryCenter]> = [
-            (AtomId::new(2), bonds[1], bonds[3]),
-            (AtomId::new(3), bonds[2], bonds[4]),
-        ].into_iter().map(|(atom, first, second)| FixedScheduleOrdinaryCenter {
-            atom,
-            pairs: Arc::from([OrdinaryOrderPair { first, second,
-                variable: builder.add_variable(Domain::singleton(0).unwrap()).unwrap() }]),
-        }).collect::<Vec<_>>().into();
-        let factor_id = builder.add_latent_fixed_schedule(root_bits, edges, centers, ordinary_centers, capacity).unwrap();
-        let model = Arc::new(builder.build());
-        let native = <NativeSolverState as ConstraintSolver>::initial(Arc::clone(&model)).unwrap().unwrap_consistent()
-            .transitioned(&[], &[factor_id]).unwrap().unwrap_consistent();
-        let exhaustive = ExhaustiveSolverState::initial(model).unwrap().unwrap_consistent()
-            .transitioned(&[], &[factor_id]).unwrap().unwrap_consistent();
-        for variable in [parent, child] {
-            assert_eq!(native.domain(variable), exhaustive.domain(variable));
-        }
-        let mut supported = Vec::new();
-        let mut rejected = None;
-        for a in 0..24 {
-            for b in 0..24 {
-                let restrictions = [(parent, Domain::singleton(a).unwrap()),
-                    (child, Domain::singleton(b).unwrap())];
-                if matches!(native.transitioned(&restrictions, &[]).unwrap(), Consistency::Consistent(_)) {
-                    supported.push((a, b));
-                } else if rejected.is_none() {
-                    rejected = Some((a, b));
-                }
-            }
-        }
-        assert!(!supported.is_empty());
-        assert!(supported.len() < 24 * 24);
-        for ((a, b), expected) in [(supported[0], true), (rejected.unwrap(), false)] {
-            let restrictions = [(parent, Domain::singleton(a).unwrap()),
-                (child, Domain::singleton(b).unwrap())];
-            assert_eq!(matches!(exhaustive.transitioned(&restrictions, &[]).unwrap(),
-                Consistency::Consistent(_)), expected);
-        }
-    }
-}
-
-#[cfg(test)]
 mod ordinary_order_tests {
     use super::*;
     use crate::ids::BondId;
@@ -523,7 +449,7 @@ mod ordinary_order_tests {
             .transitioned(&[], &[id]).unwrap().unwrap_consistent();
         let exhaustive = ExhaustiveSolverState::initial(model).unwrap().unwrap_consistent()
             .transitioned(&[], &[id]).unwrap().unwrap_consistent();
-        for pair in &pairs { assert_eq!(native.domain(pair.variable), exhaustive.domain(pair.variable)); }
+        for pair in &pairs { assert_eq!(native.domain_bound(pair.variable), exhaustive.domain_bound(pair.variable)); }
         let precedence = [(0, 1), (1, 2)].into_iter().map(|(a, b)| {
             let pair = pairs.iter().find(|pair| pair.first.index() == a && pair.second.index() == b).unwrap();
             (pair.variable, Domain::singleton(0).unwrap())
@@ -531,8 +457,8 @@ mod ordinary_order_tests {
         let native_partial = native.transitioned(&precedence, &[]).unwrap().unwrap_consistent();
         let exhaustive_partial = exhaustive.transitioned(&precedence, &[]).unwrap().unwrap_consistent();
         let implied = pairs.iter().find(|pair| pair.first.index() == 0 && pair.second.index() == 2).unwrap();
-        assert_eq!(native_partial.domain(implied.variable), Some(Domain::singleton(0).unwrap()));
-        assert_eq!(native_partial.domain(implied.variable), exhaustive_partial.domain(implied.variable));
+        assert_eq!(native_partial.domain_bound(implied.variable), Some(Domain::singleton(0).unwrap()));
+        assert_eq!(native_partial.domain_bound(implied.variable), exhaustive_partial.domain_bound(implied.variable));
         let cycle = [(0, 1), (1, 2), (0, 2)];
         let restrictions = cycle.into_iter().map(|(a, b)| {
             let pair = pairs.iter().find(|pair| pair.first.index() == a && pair.second.index() == b).unwrap();
@@ -667,8 +593,8 @@ fn latent_directional_ring_projection_matches_exhaustive_for_every_partial_domai
             match (native, exhaustive) {
                 (Consistency::Contradiction, Consistency::Contradiction) => {}
                 (Consistency::Consistent(native), Consistency::Consistent(exhaustive)) => {
-                    assert_eq!(native.domain(mark), exhaustive.domain(mark));
-                    assert_eq!(native.domain(plan), exhaustive.domain(plan));
+                    assert_eq!(native.domain_bound(mark), exhaustive.domain_bound(mark));
+                    assert_eq!(native.domain_bound(plan), exhaustive.domain_bound(plan));
                     assert_eq!(native.factor_is_active(factor), Some(true));
                     assert_eq!(native.exact_run_counts(), (0, 0));
                 }
@@ -693,7 +619,7 @@ fn latent_directional_ring_factor_does_no_work_before_activation() {
     assert_eq!(restricted.factor_is_active(factor), Some(false));
     assert_eq!(restricted.directional_ring_factor_revision_count(), 0);
     assert_eq!(
-        restricted.domain(plan),
+        restricted.domain_bound(plan),
         Some(Domain::from_indices(0_u8..8).unwrap())
     );
 
@@ -704,7 +630,7 @@ fn latent_directional_ring_factor_does_no_work_before_activation() {
     assert!(activated.directional_ring_factor_revision_count() > 0);
     assert_eq!(activated.exact_run_counts(), (0, 0));
     assert_eq!(
-        activated.domain(plan),
+        activated.domain_bound(plan),
         Some(Domain::from_indices([4, 5]).unwrap())
     );
 }
@@ -714,7 +640,7 @@ fn projected_domains<S: ConstraintSolver>(state: &S, variables: &[VariableId]) -
         .iter()
         .map(|variable| {
             state
-                .domain(*variable)
+                .domain_bound(*variable)
                 .expect("qualified variable must exist")
         })
         .collect()
@@ -896,7 +822,7 @@ fn native_and_exhaustive_backends_share_atomic_activation_semantics() {
         .chain(std::iter::once(pattern))
         .chain(bonds)
     {
-        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+        assert_eq!(native.domain_bound(variable), exhaustive.domain_bound(variable));
     }
 
     for restriction in [None, Some((order, Domain::singleton(0).unwrap()))] {
@@ -916,8 +842,8 @@ fn native_and_exhaustive_backends_share_atomic_activation_semantics() {
             .chain(bonds)
         {
             assert_eq!(
-                native_successor.domain(variable),
-                exhaustive_successor.domain(variable)
+                native_successor.domain_bound(variable),
+                exhaustive_successor.domain_bound(variable)
             );
         }
     }
@@ -991,15 +917,15 @@ fn activated_layout_searches_jointly_through_the_spanning_projector() {
         .unwrap()
         .unwrap_consistent();
 
-    assert_eq!(native.domain(order), Some(Domain::singleton(1).unwrap()));
-    assert_eq!(native.domain(pattern), Some(Domain::singleton(1).unwrap()));
+    assert_eq!(native.domain_bound(order), Some(Domain::singleton(1).unwrap()));
+    assert_eq!(native.domain_bound(pattern), Some(Domain::singleton(1).unwrap()));
     assert_eq!(
-        native.domain(bonds[0]),
+        native.domain_bound(bonds[0]),
         Some(BondRole::Ring.singleton_domain())
     );
     for bond in &bonds[1..] {
         assert_eq!(
-            native.domain(*bond),
+            native.domain_bound(*bond),
             Some(BondRole::Traversal.singleton_domain())
         );
     }
@@ -1007,7 +933,7 @@ fn activated_layout_searches_jointly_through_the_spanning_projector() {
         .chain(std::iter::once(pattern))
         .chain(bonds)
     {
-        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+        assert_eq!(native.domain_bound(variable), exhaustive.domain_bound(variable));
     }
 }
 
@@ -1370,7 +1296,7 @@ fn solve_triangle<S: ConstraintSolver>(
     };
     Some(std::array::from_fn(|index| {
         state
-            .domain(variables[index])
+            .domain_bound(variables[index])
             .expect("triangle variable must exist")
     }))
 }
@@ -1518,7 +1444,7 @@ fn solve_role_domains<S: ConstraintSolver>(
             .iter()
             .map(|variable| {
                 state
-                    .domain(*variable)
+                    .domain_bound(*variable)
                     .expect("spanning-tree variable must exist")
             })
             .collect(),
@@ -1618,7 +1544,7 @@ fn restricted_domains<S: ConstraintSolver>(
             .iter()
             .map(|variable| {
                 restricted
-                    .domain(*variable)
+                    .domain_bound(*variable)
                     .expect("spanning-tree variable must exist")
             })
             .collect(),
@@ -1927,15 +1853,15 @@ fn contraction_preserves_parallel_quotient_edges() {
         .unwrap_consistent();
 
     assert_eq!(
-        successor.domain(variables[0]),
+        successor.domain_bound(variables[0]),
         Some(BondRole::Traversal.singleton_domain())
     );
     assert_eq!(
-        successor.domain(variables[1]),
+        successor.domain_bound(variables[1]),
         Some(BondRole::role_domain())
     );
     assert_eq!(
-        successor.domain(variables[2]),
+        successor.domain_bound(variables[2]),
         Some(BondRole::role_domain())
     );
 }
@@ -1956,7 +1882,7 @@ fn contracted_internal_edge_is_forced_to_ring() {
         .unwrap_consistent();
 
     assert_eq!(
-        successor.domain(variables[2]),
+        successor.domain_bound(variables[2]),
         Some(BondRole::Ring.singleton_domain())
     );
 }

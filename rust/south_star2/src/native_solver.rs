@@ -74,8 +74,20 @@ impl ConstraintSolver for NativeSolverState {
         ))
     }
 
-    fn domain(&self, variable: VariableId) -> Option<Domain> {
-        NativeSolverState::domain(self, variable)
+    fn transitioned_feasible(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        classify(NativeSolverState::with_feasible_transition(
+            self,
+            restrictions.iter().copied(),
+            activate.iter().copied(),
+        ))
+    }
+
+    fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
+        NativeSolverState::domain_bound(self, variable)
     }
 
     fn factor_is_active(&self, factor: FactorId) -> Option<bool> {

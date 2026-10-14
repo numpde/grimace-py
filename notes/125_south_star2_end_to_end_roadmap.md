@@ -2122,3 +2122,112 @@ cleanup. Logs: `/tmp/grimace-ordinary-schedule-integrated-ordinary.log`,
 `/tmp/grimace-ordinary-schedule-wheel-build.log`,
 `/tmp/grimace-ordinary-schedule-wheel-public.log`, and
 `/tmp/grimace-ordinary-schedule-checkout-public.log`.
+### General event schedule after the disconnected spectator witness
+
+The one-label subdivided diamond remains impossible when an isolated O
+spectator is added: A-X first makes B open both B-C and B-D before C or D can
+close either, while C-first and D-first each have a complete schedule. X is N
+in both focused fixtures, so B has distinct N, C, O, and H ligands. The
+disconnected test is a conditional private writer regression, not default
+public or RDKit-parity evidence.
+
+Replace the connected fixed-tree schedule with one event relation over the
+existing topology roles and ordinary/tetrahedral order variables. Each atom
+has a visit rank, incoming syntax kind (top-level root, bonded branch, bonded
+inline, dot branch, or dot continuation), and a conditional branch-end rank
+encoded by monotone unary bits. Fixing bit `r` asserts that an open branch
+contains reserved visit `r`; a closed branch fixes its entire end pattern.
+The rank-ordered fold reconstructs source frames and chemically incoming
+bonds; no independent parent or root authority is needed. It checks traversal
+orientation, ring-before-child local order, conditional tetrahedral layout,
+and peak live ring identities. Forest roots must agree with the existing
+topology root variables; segment-mode resource preparation uses the safe edge
+count bound rather than connected-tree cycle rank.
+
+The writer binds rank and syntax kind when it reserves an atom, including
+before `(` or dot text, raises every open branch end to include the new rank,
+and fixes a branch's end in the same checked transition that publishes `)`.
+Its return frame carries the branch root's identity. Native search groups ambiguous bond roles before earliest-rank and
+branch-end choices, then checks a forced source prefix, closed branch
+intervals, local incidence order, and live ring cuts before the complete
+event predicate. The writer's candidate transition needs one joint witness
+across the active component and keeps conservative bounds for future facts;
+every structural event candidate is checked again after its own facts are bound;
+pending atom spelling inherits that checked state. The
+solver names the conservative accessor `domain_bound`; an explicit exact
+`transitioned` call projects all active event variables, including when the
+source is a feasible writer state and the transition adds no new fact. The selected
+tetrahedral entry uses the same immutable layout row allocation as its
+prepared layout factor, so the event relation does not reconstruct future
+layout rules. The search does not walk writer suffixes or materialize output.
+Its cost can still be exponential. The connected/disconnected regressions,
+held-label dot rescue, unresolved-role projection, early-return rejection,
+and exhaustive three-atom dot grammar comparison are required proof points.
+A fixed-forest guard or an independent parent selector would preserve the
+wrong ownership boundary.
+
+The prepared schedule is conditional on the actual visible ring-label
+namespace: the normal generic MAXIMAL and COMPACT writer uses indices 0..99,
+and the RDKit policy uses 1..99. A focused test constructor supplies a smaller
+namespace before preparation and initializes its runtime labels to the same
+maximum. Forest preparation uses `E` as a safe possible-ring upper bound;
+the same path skips the event factor when that bound fits the namespace. This
+avoids activating a 12-atom event relation in ordinary aromatic-mode tests
+whose normal namespace has ample labels. The disconnected two-edge plus
+isolated-atom test prepares a factor with a one-label namespace; the same
+graph skips it with the normal namespace.
+
+Focused offline native qualification: production `cargo check`,
+`event_schedule` 5/5, `diamond_` 8/8, `ordinary_` 9/9,
+`tetrahedral_` 32/32, and the preparation-boundary test pass under the
+90-second bounded runner with verified process-tree cleanup. A four-atom independent syntax-tree assignment checks
+feasible-to-exact no-op and redundant transitions against the exhaustive
+solver for all event and physical variables; an exhaustive three-atom dot
+grammar comparison covers event encodings. The visible branch-close test
+checks that the returned `)` state fixes the branch end bits. Initial six-atom
+spectator search diagnostics before root/kind propagation counted 16,363
+mixed branches for the isolated O root and 114 for A; after propagation, the
+eight diamond regressions together run in under a second. These are local
+diagnostics, not asymptotic bounds or full public-support proof. The event
+relation is prepared only when the ring bound requires it; complete generic
+MAXIMAL support and default RDKit parity remain separate obligations.
+
+Integrated conditional-entry qualification at `d03e59a3`: the 13 reviewed
+candidate paths were copied byte-for-byte from
+`/tmp/grimace-conditional-entry-d03e59a3`. Bounded offline native filters
+passed: `event_schedule` (5), `diamond_` (8), `ordinary_` (9),
+`tetrahedral_` (32), and the exact
+`event_preparation_uses_the_actual_writer_label_namespace` (1). The earlier
+short namespace filter matched zero tests; the exact rerun passed. The offline
+release wheel SHA-256 is
+`abe73854e38d26db5326dc4e46b7dcce1dee5164036a21502728174c4748ecec`;
+its extracted extension SHA-256 is
+`b816afcdd7404b54f88d592f68f5df4582619b141e2cfd6ab94c26a27a496661`.
+The extracted wheel and refreshed checkout extension each passed all 16 public
+prefix tests. The previous checkout extension is backed up at
+`/tmp/grimace-conditional-entry-integrated-d03e59a3/checkout-core-before.so`;
+the checkout bytes match the wheel extension. The maintained
+`tests.run_south_star_semantics -q` attempt hit its 120-second wall limit
+(exit 124), so this suite is **not qualified** by this run. Every bounded run,
+including that timeout, reported `verified_no_live_members`. Persistent logs
+and the wheel are under `/tmp/grimace-conditional-entry-integrated-d03e59a3/`
+(`native-*.log`, `wheel-build.log`, `wheel-public.log`,
+`checkout-public.log`, and `south-star-semantics.log`). This local event-schedule
+slice still does not prove lexical prefix lifting, broader forest schedules,
+full admitted-graph completeness, or exact RDKit writer parity.
+
+Follow-up qualification isolated the maintained semantics runner: it aggregates
+legacy South Star 1 tests, so its 120-second timeout above remains unresolved
+for that full suite. A focused South Star 2 semantic selection
+(`test_standard_smiles_semantics`, `test_compact_language`,
+`test_leading_dot_tetra_semantics`, and `test_kekule_semantics`) passed 37 tests
+in 49.030 seconds with verified cleanup; log:
+`/tmp/grimace-conditional-entry-integrated-d03e59a3/south-star2-focused-semantics.log`.
+A verbose 90-second legacy run reached the online ring decoder test; that test
+passed alone in 12.944 seconds. The legacy fact-relabeling test reproduced two
+implicit-H mismatch errors with both the current and backed-up pre-change
+extension. Logs in the same directory are
+`south-star-semantics-verbose-diagnosis.log`, `online-ring-current.log`,
+`fact-relabel-current.log`, and `fact-relabel-old-abi.log`. These observations
+show no new failure in the focused South Star 2 selection, but do not qualify
+the full maintained semantics suite.

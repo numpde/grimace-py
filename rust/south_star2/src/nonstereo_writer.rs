@@ -14,7 +14,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::domain::Domain;
 use crate::atom_spelling::{AromaticSpelling, AtomBondContext, AtomFacts, AtomSpellingContext, AtomSpellingField, AtomSpellingPolicy, AtomSpellingState, ElementSymbol, TetrahedralMarker};
 use crate::ids::{AtomId, BondId, FactorId, VariableId};
-use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefinition, FixedScheduleCenter, FixedScheduleEdge, FixedScheduleOrdinaryCenter, OrdinaryOrderPair, SpanningTreeEdge, TetrahedralLayoutBond};
+use crate::event_schedule::{EntryKind, EventVisit};
+use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefinition, ScheduleCenter, ScheduleEdge, ScheduleOrdinaryCenter, OrdinaryOrderPair, SpanningTreeEdge, TetrahedralLayoutBond};
 use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
@@ -382,13 +383,14 @@ pub(crate) struct PreparedNonStereo {
     directional_sides: Arc<[PreparedDirectionalSide]>,
     ring_count_factors: Arc<[Option<(FactorId, Box<[VariableId]>)>]>,
     ordered_ring_factors: Arc<[Option<(FactorId, VariableId, Box<[VariableId]>)>]>,
-    fixed_schedule_factor: Option<FactorId>,
-    fixed_schedule_root_bits: Arc<[VariableId]>,
-    fixed_schedule_capacity_bits: Arc<[VariableId]>,
-    ordinary_order_factors: Arc<[Option<FactorId>]>,
+    event_schedule_factor: Option<FactorId>,
+    event_schedule_visits: Arc<[EventVisit]>,
+    event_schedule_capacity_bits: Arc<[VariableId]>,
     ordinary_order_pairs: Arc<[Arc<[OrdinaryOrderPair]>]>,
     #[cfg(test)]
     test_atom_labels: Arc<[String]>,
+    #[cfg(test)]
+    test_maximum_spelling_label: usize,
     #[cfg(test)]
     work_counters: Arc<WriterWorkCounters>,
 }
@@ -400,8 +402,8 @@ fn schedule_namespace_capacity(regime: WriterRegime, maximum: usize) -> usize {
     maximum.saturating_add(1).saturating_sub(first)
 }
 
-fn cycle_count_exceeds_schedule_capacity(cycle_count: usize, regime: WriterRegime) -> bool {
-    cycle_count > schedule_namespace_capacity(regime, MAX_RING_LABEL_INDEX)
+fn ring_count_exceeds_schedule_capacity(ring_count: usize, regime: WriterRegime, maximum: usize) -> bool {
+    ring_count > schedule_namespace_capacity(regime, maximum)
 }
 
 #[cfg(test)]
@@ -462,6 +464,8 @@ struct PreparedTetrahedralCenter {
     bond_pattern_bits: Box<[(BondId, u8)]>,
     root_layout_factor: FactorId,
     entry_layout_factors: Box<[(BondId, FactorId)]>,
+    root_layout_rows: Arc<[Domain]>,
+    entry_layout_rows: Box<[(BondId, Arc<[Domain]>)]>,
 }
 
 impl PreparedTetrahedralCenter {
@@ -576,6 +580,33 @@ impl PreparedNonStereo {
         directional_relations: Vec<PreparedDirectionalRelation>,
         regime: WriterRegime,
         allow_segments: bool,
+    ) -> Result<Self, PreparedNonStereoError> {
+        Self::prepare_for_writer(molecule, atoms, bond_tokens, directional_relations,
+            regime, allow_segments, MAX_RING_LABEL_INDEX)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_ring_label_maximum_for_test(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+        directional_relations: Vec<PreparedDirectionalRelation>,
+        regime: WriterRegime,
+        allow_segments: bool,
+        maximum_spelling_label: usize,
+    ) -> Result<Self, PreparedNonStereoError> {
+        Self::prepare_for_writer(molecule, atoms, bond_tokens, directional_relations,
+            regime, allow_segments, maximum_spelling_label)
+    }
+
+    fn prepare_for_writer(
+        molecule: PreparedMolecule,
+        atoms: Vec<PreparedAtomToken>,
+        bond_tokens: Vec<NonStereoBondToken>,
+        directional_relations: Vec<PreparedDirectionalRelation>,
+        regime: WriterRegime,
+        allow_segments: bool,
+        maximum_spelling_label: usize,
     ) -> Result<Self, PreparedNonStereoError> {
         let compact = regime == WriterRegime::GenericCompact;
         #[cfg(test)]
@@ -749,27 +780,32 @@ impl PreparedNonStereo {
         }).collect::<Vec<_>>();
         let (directional_bonds, directional_sides) =
             prepare_directional_bonds(&mut assembly, graph, &bond_tokens, &directional_relations)?;
-        let cycle_count = graph.bond_count().saturating_add(1).saturating_sub(graph.atom_count());
-        let prepare_schedule = graph.components().len() == 1 && cycle_count > 0
-            && (cfg!(test) || cycle_count_exceeds_schedule_capacity(cycle_count, regime));
-        let (fixed_schedule_factor, fixed_schedule_root_bits, fixed_schedule_capacity_bits,
-            ordinary_order_factors, ordinary_order_pairs) = if prepare_schedule {
-            let edges: Arc<[FixedScheduleEdge]> = graph.bond_ids().map(|bond| {
+        let cycle_count = graph.bond_count().saturating_add(graph.components().len())
+            .saturating_sub(graph.atom_count());
+        let possible_ring_count = if allow_segments { graph.bond_count() } else { cycle_count };
+        let prepare_schedule = graph.bond_count() > 0 &&
+            ring_count_exceeds_schedule_capacity(possible_ring_count, regime, maximum_spelling_label);
+        let (event_schedule_factor, event_schedule_visits, event_schedule_capacity_bits,
+            ordinary_order_pairs) = if prepare_schedule {
+            let edges: Arc<[ScheduleEdge]> = graph.bond_ids().map(|bond| {
                 let edge = graph.bond(bond).expect("prepared schedule bond must exist");
-                FixedScheduleEdge { bond, a: edge.a(), b: edge.b(),
+                ScheduleEdge { bond, a: edge.a(), b: edge.b(),
                     decision_variable: assembly.bond_decision_variable(bond),
                     role_partition: assembly.bond_role_partition(bond) }
             }).collect::<Vec<_>>().into();
-            let centers: Arc<[FixedScheduleCenter]> = graph.atom_ids().filter_map(|atom| {
+            let centers: Arc<[ScheduleCenter]> = graph.atom_ids().filter_map(|atom| {
                 match &atoms[atom.index()] {
-                    PreparedAtom::Facts { tetrahedral: Some(center), .. } => Some(FixedScheduleCenter {
+                    PreparedAtom::Facts { tetrahedral: Some(center), .. } => Some(ScheduleCenter {
                         atom, order_variable: center.order_variable,
+                        role_pattern_variable: center.role_pattern_variable,
                         reference_order: center.reference_order,
+                        bond_pattern_bits: center.bond_pattern_bits.iter().copied().collect::<Vec<_>>().into(),
+                        root_layout_rows: Arc::clone(&center.root_layout_rows),
+                        entry_layout_rows: center.entry_layout_rows.iter().cloned().collect::<Vec<_>>().into(),
                     }),
                     _ => None,
                 }
             }).collect::<Vec<_>>().into();
-            let mut ordinary_factors = vec![None; graph.atom_count()];
             let mut ordinary_pairs = vec![Arc::<[OrdinaryOrderPair]>::from(Vec::new()); graph.atom_count()];
             let mut ordinary_centers = Vec::new();
             for atom in graph.atom_ids() {
@@ -786,25 +822,30 @@ impl PreparedNonStereo {
                     }
                 }
                 let pairs: Arc<[OrdinaryOrderPair]> = pairs.into();
-                if !pairs.is_empty() {
-                    ordinary_factors[atom.index()] = Some(assembly.add_latent_ordinary_order(atom, Arc::clone(&pairs)));
-                }
                 ordinary_pairs[atom.index()] = Arc::clone(&pairs);
-                ordinary_centers.push(FixedScheduleOrdinaryCenter { atom, pairs });
+                ordinary_centers.push(ScheduleOrdinaryCenter { atom, pairs });
             }
             let capacity_bits: Arc<[VariableId]> = (0..7).map(|_| {
                 assembly.add_isolated_variable(Domain::from_bits(3))
             }).collect::<Vec<_>>().into();
-            let root_width = (usize::BITS - (graph.atom_count() - 1).leading_zeros()) as usize;
-            let root_bits: Arc<[VariableId]> = (0..root_width).map(|_| {
-                assembly.add_isolated_variable(Domain::from_bits(3))
+            let rank_width = (usize::BITS - (graph.atom_count() - 1).leading_zeros()) as usize;
+            let visits: Arc<[EventVisit]> = (0..graph.atom_count()).map(|index| EventVisit {
+                atom: AtomId::new(u32::try_from(index).unwrap()),
+                rank_bits: (0..rank_width).map(|_|
+                    assembly.add_isolated_variable(Domain::from_bits(3)))
+                    .collect::<Vec<_>>().into(),
+                kind: assembly.add_isolated_variable(EntryKind::domain()),
+                end_bits: (0..graph.atom_count()).map(|_|
+                    assembly.add_isolated_variable(Domain::from_bits(3)))
+                    .collect::<Vec<_>>().into(),
             }).collect::<Vec<_>>().into();
-            let factor = assembly.add_latent_fixed_schedule(
-                Arc::clone(&root_bits), edges, centers, ordinary_centers.into(), Arc::clone(&capacity_bits),
-            );
-            (Some(factor), root_bits, capacity_bits, ordinary_factors.into(), ordinary_pairs.into())
-        } else { (None, Arc::from(Vec::<VariableId>::new()), Arc::from(Vec::<VariableId>::new()),
-            vec![None; graph.atom_count()].into(),
+            let forest_roots = if allow_segments {
+                assembly.prepare_forest_root_variables()
+            } else { Arc::from(Vec::<VariableId>::new()) };
+            let factor = assembly.add_latent_event_schedule(visits.clone(), edges, centers,
+                ordinary_centers.into(), Arc::clone(&capacity_bits), forest_roots, allow_segments);
+            (Some(factor), visits, capacity_bits, ordinary_pairs.into())
+        } else { (None, Arc::from(Vec::<EventVisit>::new()), Arc::from(Vec::<VariableId>::new()),
             vec![Arc::<[OrdinaryOrderPair]>::from(Vec::new()); graph.atom_count()].into()) };
         let segment_topology = allow_segments;
         let molecule = if segment_topology {
@@ -823,11 +864,12 @@ impl PreparedNonStereo {
             directional_sides: Arc::from(directional_sides.into_boxed_slice()),
             ring_count_factors: Arc::from(ring_count_factors.into_boxed_slice()),
             ordered_ring_factors: Arc::from(ordered_ring_factors.into_boxed_slice()),
-            fixed_schedule_factor,
-            fixed_schedule_root_bits,
-            fixed_schedule_capacity_bits,
-            ordinary_order_factors,
+            event_schedule_factor,
+            event_schedule_visits,
+            event_schedule_capacity_bits,
             ordinary_order_pairs,
+            #[cfg(test)]
+            test_maximum_spelling_label: maximum_spelling_label,
             #[cfg(test)]
             test_atom_labels: Arc::from(test_atom_labels.into_boxed_slice()),
             #[cfg(test)]
@@ -1103,29 +1145,27 @@ fn prepare_tetrahedral_center(
             )
         })
         .collect::<Vec<_>>();
-    let add_factor = |assembly: &mut PreparedConstraintAssembly,
-                      context_prefix: Vec<TetrahedralLigand>| {
-        assembly.add_latent_tetrahedral_layout(
-            order_variable,
-            role_pattern_variable,
-            layout_bonds.iter().copied(),
-            layout_order_rows(&reference_order, &context_prefix, &bond_pattern_bits),
-        )
-    };
     let virtual_hydrogen = reference_order.contains(&TetrahedralLigand::VirtualHydrogen);
     let root_prefix = virtual_hydrogen
         .then_some(TetrahedralLigand::VirtualHydrogen)
         .into_iter()
-        .collect();
-    let root_layout_factor = add_factor(assembly, root_prefix);
-    let entry_layout_factors = bond_pattern_bits
+        .collect::<Vec<_>>();
+    let root_layout_rows: Arc<[Domain]> = layout_order_rows(&reference_order,
+        &root_prefix, &bond_pattern_bits).into();
+    let root_layout_factor = assembly.add_latent_tetrahedral_layout_rows(order_variable,
+        role_pattern_variable, layout_bonds.iter().copied(), Arc::clone(&root_layout_rows));
+    let entry_layouts = bond_pattern_bits
         .iter()
         .map(|(bond, _)| {
             let mut prefix = vec![TetrahedralLigand::Bond(*bond)];
             if virtual_hydrogen {
                 prefix.push(TetrahedralLigand::VirtualHydrogen);
             }
-            (*bond, add_factor(assembly, prefix))
+            let rows: Arc<[Domain]> = layout_order_rows(&reference_order,
+                &prefix, &bond_pattern_bits).into();
+            let factor = assembly.add_latent_tetrahedral_layout_rows(order_variable,
+                role_pattern_variable, layout_bonds.iter().copied(), Arc::clone(&rows));
+            (*bond, factor, rows)
         })
         .collect::<Vec<_>>();
 
@@ -1136,7 +1176,11 @@ fn prepare_tetrahedral_center(
         role_pattern_variable,
         bond_pattern_bits: bond_pattern_bits.into_boxed_slice(),
         root_layout_factor,
-        entry_layout_factors: entry_layout_factors.into_boxed_slice(),
+        entry_layout_factors: entry_layouts.iter().map(|(bond, factor, _)| (*bond, *factor))
+            .collect::<Vec<_>>().into_boxed_slice(),
+        root_layout_rows,
+        entry_layout_rows: entry_layouts.into_iter().map(|(bond, _, rows)| (bond, rows))
+            .collect::<Vec<_>>().into_boxed_slice(),
     }
 }
 
@@ -2230,7 +2274,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 surface: surface.clone(),
                 regime,
                 structural,
-                labels: RingLabels::default(),
+                labels: RingLabels {
+                    #[cfg(test)]
+                    maximum_spelling_label: Some(surface.test_maximum_spelling_label),
+                    ..RingLabels::default()
+                },
                 pending: None,
                 atom_spelling: None,
             }),
@@ -3532,67 +3580,63 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let Consistency::Consistent(structural) = attempted else {
             return Ok(Consistency::Contradiction);
         };
-        let Some((schedule_restrictions, schedule_factors)) = self.fixed_schedule_activation(&structural) else {
+        let Some((schedule_restrictions, schedule_factors)) = self.event_schedule_transition(candidate, &structural) else {
             return Ok(Consistency::Consistent(structural));
         };
         structural.transitioned_semantics(&schedule_restrictions, &schedule_factors)
     }
 
-    fn fixed_schedule_activation(
+    fn event_schedule_transition(
         &self,
+        candidate: StructuralCandidate,
         structural: &WriterState<S>,
     ) -> Option<(Vec<(VariableId, Domain)>, Vec<FactorId>)> {
-        let graph = self.surface.molecule().graph();
-        let root = structural.selected_tree_root()?;
-        let factor = self.surface.fixed_schedule_factor?;
-        if structural.factor_is_active(factor) { return None; }
-        let capacity = schedule_namespace_capacity(self.regime, self.labels.maximum_spelling_label());
-        let mut tree = vec![Vec::<(AtomId, BondId)>::new(); graph.atom_count()];
-        let mut ring_count = 0_usize;
-        let mut traversal_count = 0_usize;
-        for bond in graph.bond_ids() {
-            let edge = graph.bond(bond).expect("prepared schedule edge must exist");
-            match structural.fixed_bond_role(bond)? {
-                BondRole::Traversal => {
-                    tree[edge.a().index()].push((edge.b(), bond));
-                    tree[edge.b().index()].push((edge.a(), bond));
-                    traversal_count += 1;
+        let factor = self.surface.event_schedule_factor?;
+        let active = structural.factor_is_active(factor);
+        let mut restrictions = Vec::new();
+        let mut factors = Vec::new();
+        if !active {
+            let capacity = schedule_namespace_capacity(self.regime, self.labels.maximum_spelling_label());
+            restrictions.extend(self.surface.event_schedule_capacity_bits.iter().enumerate().map(|(bit, variable)| {
+                (*variable, Domain::singleton(((capacity >> bit) & 1) as u8).unwrap())
+            }));
+            factors.push(factor);
+        }
+        let next_rank = self.structural.visited_atom_count();
+        if candidate == StructuralCandidate::CloseBranch {
+            let root = self.structural.closing_branch_root().expect("closing branch must have a root");
+            let visit = &self.surface.event_schedule_visits[root.index()];
+            let end = next_rank.checked_sub(1).expect("closing branch must contain a visit");
+            restrictions.extend(visit.end_bits.iter().enumerate().map(|(rank, bit)| {
+                (*bit, Domain::singleton(u8::from(rank <= end)).unwrap())
+            }));
+        } else {
+            let entry = match candidate {
+                StructuralCandidate::Root { atom } => Some((atom, EntryKind::Root)),
+                StructuralCandidate::BranchChild { incident } => Some((incident.atom(), EntryKind::BondBranch)),
+                StructuralCandidate::InlineChild { incident } => Some((incident.atom(), EntryKind::BondInline)),
+                StructuralCandidate::DotBranchRoot { atom } => Some((atom, EntryKind::DotBranch)),
+                StructuralCandidate::DotSegmentRoot { atom } => Some((atom, EntryKind::DotContinuation)),
+                StructuralCandidate::RingOpen { .. } | StructuralCandidate::RingClose { .. }
+                | StructuralCandidate::FinishSegment => None,
+                StructuralCandidate::CloseBranch => unreachable!(),
+            };
+            if let Some((atom, kind)) = entry {
+                let visit = &self.surface.event_schedule_visits[atom.index()];
+                restrictions.extend(visit.rank_bits.iter().enumerate().map(|(bit, variable)| {
+                    (*variable, Domain::singleton(((next_rank >> bit) & 1) as u8).unwrap())
+                }));
+                restrictions.push((visit.kind, Domain::singleton(kind as u8).unwrap()));
+                for root in self.structural.open_branch_roots() {
+                    restrictions.push((self.surface.event_schedule_visits[root.index()].end_bits[next_rank],
+                        Domain::singleton(1).unwrap()));
                 }
-                BondRole::Ring => {
-                    ring_count += 1;
+                if matches!(kind, EntryKind::BondBranch | EntryKind::DotBranch) {
+                    restrictions.push((visit.end_bits[next_rank], Domain::singleton(1).unwrap()));
                 }
             }
         }
-        if ring_count <= capacity || traversal_count + 1 != graph.atom_count() { return None; }
-        let mut entry = vec![None::<BondId>; graph.atom_count()];
-        let mut visited = vec![false; graph.atom_count()];
-        visited[root.index()] = true;
-        let mut pending = vec![root];
-        while let Some(atom) = pending.pop() {
-            let children = tree[atom.index()].iter().filter(|(other, _)| !visited[other.index()])
-                .copied().collect::<Vec<_>>();
-            for (child, bond) in children {
-                visited[child.index()] = true;
-                entry[child.index()] = Some(bond);
-                pending.push(child);
-            }
-        }
-        if visited.iter().any(|visited| !visited) { return None; }
-        let mut factors = vec![factor];
-        for atom in graph.atom_ids() {
-            if let Some(center) = self.surface.tetrahedral_center(atom) {
-                factors.push(center.layout_factor(entry[atom.index()]));
-            }
-            if let Some(factor) = self.surface.ordinary_order_factors[atom.index()] {
-                factors.push(factor);
-            }
-        }
-        let restrictions = self.surface.fixed_schedule_capacity_bits.iter().enumerate()
-            .map(|(bit, variable)| (*variable, Domain::singleton(((capacity >> bit) & 1) as u8).unwrap()))
-            .chain(self.surface.fixed_schedule_root_bits.iter().enumerate().map(|(bit, variable)| {
-                (*variable, Domain::singleton(((root.index() >> bit) & 1) as u8).unwrap())
-            })).collect();
-        Some((restrictions, factors))
+        if restrictions.is_empty() && factors.is_empty() { None } else { Some((restrictions, factors)) }
     }
 
     fn ring_resource_entry_constraint(
@@ -4184,7 +4228,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
                     return vec![CandidateAttempt::Invariant(failure)];
                 }
-                let structural = match self.structural.attempt_candidate(candidate) {
+                let structural = match self.attempt_candidate_with_transition(candidate, None, &[], &[]) {
                     Ok(Consistency::Consistent(structural)) => structural,
                     Ok(Consistency::Contradiction) => {
                         return vec![CandidateAttempt::Rejected {
@@ -4555,9 +4599,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
                 return SuccessorAttempt::Invariant(failure);
             }
-            self.structural = match self
-                .structural
-                .attempt_candidate(StructuralCandidate::FinishSegment)
+            self.structural = match self.attempt_candidate_with_transition(
+                StructuralCandidate::FinishSegment, None, &[], &[])
             {
                 Ok(Consistency::Consistent(completed)) => completed,
                 Ok(Consistency::Contradiction) => {

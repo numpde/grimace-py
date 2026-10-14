@@ -187,8 +187,16 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.prepared.topology()
     }
 
-    pub(crate) fn selected_tree_root(&self) -> Option<AtomId> {
-        self.traversal.selected_tree_root(self.prepared.graph())
+    pub(crate) fn visited_atom_count(&self) -> usize {
+        self.traversal.visited_atom_count()
+    }
+
+    pub(crate) fn open_branch_roots(&self) -> Vec<AtomId> {
+        self.traversal.open_branch_roots()
+    }
+
+    pub(crate) fn closing_branch_root(&self) -> Option<AtomId> {
+        self.traversal.closing_branch_root()
     }
 
     pub(crate) fn fixed_bond_role(&self, bond: BondId) -> Option<BondRole> {
@@ -247,13 +255,13 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     pub(crate) fn bond_decision_domain(&self, bond: BondId) -> Domain {
         self.constraints
-            .domain(decision_variable(&self.prepared, bond))
+            .domain_bound(decision_variable(&self.prepared, bond))
             .expect("prepared bond decision must belong to the writer constraint model")
     }
 
     pub(crate) fn semantic_domain(&self, variable: VariableId) -> Domain {
         self.constraints
-            .domain(variable)
+            .domain_bound(variable)
             .expect("prepared semantic variable must belong to the writer constraint model")
     }
 
@@ -786,7 +794,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 && activate.is_empty()
                 && merged.iter().all(|(variable, allowed)| {
                     self.constraints
-                        .domain(*variable)
+                        .domain_bound(*variable)
                         .expect("prepared restriction variable must exist")
                         .is_subset_of(*allowed)
                 }))
@@ -794,7 +802,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             return Ok(Consistency::Consistent(self.constraints.clone()));
         }
         self.constraints
-            .transitioned(&merged.into_iter().collect::<Vec<_>>(), activate)
+            .transitioned_feasible(&merged.into_iter().collect::<Vec<_>>(), activate)
     }
 
     #[cfg(test)]
@@ -825,7 +833,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             .bond_ids()
             .map(|bond| {
                 self.constraints
-                    .domain(decision_variable(&self.prepared, bond))
+                    .domain_bound(decision_variable(&self.prepared, bond))
                     .expect("observed bond decision must belong to the prepared solver state")
             })
             .collect();
@@ -936,7 +944,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         let variable = decision_variable(&self.prepared, bond);
         let current = self
             .constraints
-            .domain(variable)
+            .domain_bound(variable)
             .expect("prepared bond decision must belong to the writer constraint model");
         if current.is_subset_of(allowed) {
             return Ok(Consistency::Consistent(self.constraints.clone()));
@@ -956,7 +964,7 @@ fn assert_initial_solver_shape<S: ConstraintSolver>(prepared: &PreparedMolecule,
             .expect("prepared variable index must resolve")
             .initial_domain();
         let current = constraints
-            .domain(variable)
+            .domain_bound(variable)
             .expect("a solver state must retain every prepared variable");
         assert!(
             !current.is_empty() && current.is_subset_of(initial),
@@ -1026,7 +1034,7 @@ mod tests {
             Ok(Consistency::Consistent(self.clone()))
         }
 
-        fn domain(&self, _variable: VariableId) -> Option<Domain> {
+        fn domain_bound(&self, _variable: VariableId) -> Option<Domain> {
             None
         }
 
@@ -1090,9 +1098,9 @@ mod tests {
             }))
         }
 
-        fn domain(&self, variable: VariableId) -> Option<Domain> {
+        fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
             self.domain_reads.fetch_add(1, Ordering::Relaxed);
-            self.native.domain(variable)
+            self.native.domain_bound(variable)
         }
 
         fn factor_is_active(&self, factor: FactorId) -> Option<bool> {

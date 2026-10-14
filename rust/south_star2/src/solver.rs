@@ -68,9 +68,21 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
         activate: &[FactorId],
     ) -> Result<Consistency<Self>, Self::Failure>;
 
-    /// Return the exact projected domain of a known variable in this state, or
+    /// Writer admission may retain conservative domain bounds for future
+    /// variables, but must prove one joint assignment before publication.
+    /// Every later visible candidate must use this transition again.
+    fn transitioned_feasible(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(restrictions, activate)
+    }
+
+    /// Return the exact projected domain after exact transitions, or a
+    /// conservative bound after a writer feasibility transition. Return
     /// `None` when the variable does not belong to the prepared model.
-    fn domain(&self, variable: VariableId) -> Option<Domain>;
+    fn domain_bound(&self, variable: VariableId) -> Option<Domain>;
 
     /// Return whether a known prepared factor is active in this state, or
     /// `None` when the factor does not belong to the prepared model.

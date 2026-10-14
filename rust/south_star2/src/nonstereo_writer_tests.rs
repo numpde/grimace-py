@@ -58,8 +58,8 @@ impl ConstraintSolver for FailingRestrictionSolver {
         Err(InjectedSolverFailure::Restriction)
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -116,8 +116,8 @@ impl ConstraintSolver for FailSecondVariableSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -190,8 +190,8 @@ impl ConstraintSolver for FailFirstRingAlternativeSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -248,8 +248,8 @@ impl ConstraintSolver for RejectFirstVariableSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -286,8 +286,8 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
         Ok(Consistency::Contradiction)
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -317,7 +317,7 @@ impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions
             .iter()
-            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+            .any(|(variable, _)| self.0.domain_bound(*variable) == Some(full_order_domain()))
         {
             return Ok(Consistency::Contradiction);
         }
@@ -335,7 +335,7 @@ impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions
             .iter()
-            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+            .any(|(variable, _)| self.0.domain_bound(*variable) == Some(full_order_domain()))
         {
             return Ok(Consistency::Contradiction);
         }
@@ -346,8 +346,8 @@ impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -374,7 +374,7 @@ impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
         restrictions: &[(crate::ids::VariableId, crate::domain::Domain)],
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions.iter().any(|(variable, domain)| {
-            self.0.domain(*variable) == Some(full_order_domain())
+            self.0.domain_bound(*variable) == Some(full_order_domain())
                 && domain.is_subset_of(parity_domain(TetrahedralParity::Even))
         }) {
             return Ok(Consistency::Contradiction);
@@ -392,7 +392,7 @@ impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
         activate: &[crate::ids::FactorId],
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions.iter().any(|(variable, domain)| {
-            self.0.domain(*variable) == Some(full_order_domain())
+            self.0.domain_bound(*variable) == Some(full_order_domain())
                 && domain.is_subset_of(parity_domain(TetrahedralParity::Even))
         }) {
             return Ok(Consistency::Contradiction);
@@ -404,8 +404,8 @@ impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -435,7 +435,7 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions
             .iter()
-            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+            .any(|(variable, _)| self.0.domain_bound(*variable) == Some(full_order_domain()))
         {
             assert_eq!(
                 TETRAHEDRAL_BACKEND_ATTEMPTS.fetch_add(1, Ordering::Relaxed),
@@ -458,7 +458,7 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
     ) -> Result<Consistency<Self>, Self::Failure> {
         if restrictions
             .iter()
-            .any(|(variable, _)| self.0.domain(*variable) == Some(full_order_domain()))
+            .any(|(variable, _)| self.0.domain_bound(*variable) == Some(full_order_domain()))
         {
             assert_eq!(
                 TETRAHEDRAL_BACKEND_ATTEMPTS.fetch_add(1, Ordering::Relaxed),
@@ -474,8 +474,8 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -513,8 +513,8 @@ impl ConstraintSolver for NonconformingNonProjectingTetrahedralSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -618,8 +618,8 @@ impl ConstraintSolver for WriterPolicyContradictionSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -689,8 +689,8 @@ impl ConstraintSolver for PendingContradictionSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -736,8 +736,8 @@ impl ConstraintSolver for FailDirectionalMarkSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -787,8 +787,8 @@ impl ConstraintSolver for RejectPlainDirectionalMarkSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -830,8 +830,8 @@ impl ConstraintSolver for CountDirectionalRestrictionsSolver {
         )
     }
 
-    fn domain(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
-        self.0.domain(variable)
+    fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
+        self.0.domain_bound(variable)
     }
 
     fn factor_is_active(&self, factor: crate::ids::FactorId) -> Option<bool> {
@@ -1976,9 +1976,9 @@ fn prepared_tetrahedral_layouts_preserve_every_fixed_local_role_assignment() {
                             let solved = result.unwrap_consistent();
                             assert_eq!(solved.factor_is_active(topology_factors[0]), Some(true));
                             assert_eq!(solved.factor_is_active(factor_id), Some(true));
-                            assert_eq!(solved.domain(center.order_variable),
+                            assert_eq!(solved.domain_bound(center.order_variable),
                                 Some(expected_values));
-                            assert_eq!(solved.domain(center.role_pattern_variable),
+                            assert_eq!(solved.domain_bound(center.role_pattern_variable),
                                 Some(Domain::singleton(pattern).unwrap()));
                             for (bit, bond) in bonds.iter().copied().enumerate() {
                                 let partition = surface.molecule().bond_role_partition(bond).unwrap();
@@ -1987,8 +1987,8 @@ fn prepared_tetrahedral_layouts_preserve_every_fixed_local_role_assignment() {
                                 } else {
                                     partition.ring_values()
                                 };
-                                assert_eq!(solved.domain(surface.molecule().bond_decision_variable(bond).unwrap())
-                                    .unwrap().intersect(role), solved.domain(surface.molecule().bond_decision_variable(bond).unwrap()).unwrap());
+                                assert_eq!(solved.domain_bound(surface.molecule().bond_decision_variable(bond).unwrap())
+                                    .unwrap().intersect(role), solved.domain_bound(surface.molecule().bond_decision_variable(bond).unwrap()).unwrap());
                             }
                         }
                     }
@@ -3275,7 +3275,7 @@ fn ordered_ring_phase_native_projection_matches_independent_finite_relation() {
                             assert!(matches!(actual, Consistency::Contradiction),
                                 "degree={degree} roles={role_pattern} waiting={waiting_mask} free={free} parity={parity:?}");
                         } else {
-                            assert_eq!(actual.unwrap_consistent().domain(order), Some(expected),
+                            assert_eq!(actual.unwrap_consistent().domain_bound(order), Some(expected),
                                 "degree={degree} roles={role_pattern} waiting={waiting_mask} free={free} parity={parity:?}");
                         }
                     }
@@ -3353,8 +3353,8 @@ fn ordered_ring_phase_joint_layout_projection_matches_exhaustive_and_literal_bal
         let oracle = oracle.unwrap_consistent();
         let expected_orders = Domain::from_indices(expected_pairs.iter().map(|(value, _)| *value)).unwrap();
         let expected_patterns = Domain::from_indices(expected_pairs.iter().map(|(_, value)| *value)).unwrap();
-        let native_domain = |variable| native.domain(variable);
-        let oracle_domain = |variable| oracle.domain(variable);
+        let native_domain = |variable| native.domain_bound(variable);
+        let oracle_domain = |variable| oracle.domain_bound(variable);
         for domain in [&native_domain as &dyn Fn(VariableId) -> Option<Domain>, &oracle_domain] {
             assert_eq!(domain(order), Some(expected_orders));
             assert_eq!(domain(pattern), Some(expected_patterns));
@@ -3420,8 +3420,8 @@ fn ordered_ring_phase_projects_unfixed_waiting_and_free_domains() {
     let expected_waiting = Domain::from_indices(expected.iter().map(|(_, mask, _)| *mask)).unwrap();
     let expected_free = Domain::from_indices(expected.iter().map(|(_, _, free)| *free)).unwrap();
     for (variable, projected) in [(order, expected_order), (waiting, expected_waiting), (free, expected_free)] {
-        assert_eq!(native.domain(variable), Some(projected));
-        assert_eq!(oracle.domain(variable), Some(projected));
+        assert_eq!(native.domain_bound(variable), Some(projected));
+        assert_eq!(oracle.domain_bound(variable), Some(projected));
     }
     for value in 0..24 {
         for mask in 0..=1 {
@@ -3453,7 +3453,7 @@ fn zero_free_label_prunes_tetra_marker_that_opens_before_waiting_closure() {
         TetrahedralLigand::Bond(bonds[3]),
         TetrahedralLigand::VirtualHydrogen,
     ];
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         vec![
             PreparedAtomToken::Fixed("O".to_owned()),
@@ -3465,10 +3465,9 @@ fn zero_free_label_prunes_tetra_marker_that_opens_before_waiting_closure() {
             PreparedAtomToken::Fixed("F".to_owned()),
         ],
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
-    let mut start = initial(&surface);
-    start.labels.maximum_spelling_label = Some(0);
+    let start = initial(&surface);
     let (_, rooted) = only_root_atom(&start, atoms[0]);
     let opened = rooted.choices().unwrap().into_iter().find(|choice| {
         choice.text() == "0" && matches!(choice.successor().observe_raw().structural.traversal.bond_progress[bonds[2].index()],
@@ -6070,7 +6069,7 @@ fn preparation_rejects_contradictory_directional_cycles_and_flattens_consistent_
     assert_eq!(native.exact_run_counts(), (1, 0));
     for index in 0..model.variable_count() {
         let variable = crate::ids::VariableId::new(index.try_into().unwrap());
-        assert_eq!(native.domain(variable), exhaustive.domain(variable));
+        assert_eq!(native.domain_bound(variable), exhaustive.domain_bound(variable));
     }
 }
 
@@ -6093,7 +6092,7 @@ fn directional_side_patterns_propagate_marks_without_touching_roles_or_exact_sea
         .iter()
         .map(|bond| {
             initial
-                .domain(surface.molecule().bond_decision_variable(*bond).unwrap())
+                .domain_bound(surface.molecule().bond_decision_variable(*bond).unwrap())
                 .unwrap()
         })
         .collect::<Vec<_>>();
@@ -6107,11 +6106,11 @@ fn directional_side_patterns_propagate_marks_without_touching_roles_or_exact_sea
     .unwrap();
 
     assert_eq!(
-        successor.domain(left.mark_variable),
+        successor.domain_bound(left.mark_variable),
         Some(CarrierMark::SlashAtFixedA.singleton_domain())
     );
     assert_eq!(
-        successor.domain(right.mark_variable),
+        successor.domain_bound(right.mark_variable),
         Some(CarrierMark::BackslashAtFixedA.singleton_domain())
     );
     assert_eq!(successor.exact_run_counts(), (0, 0));
@@ -6119,7 +6118,7 @@ fn directional_side_patterns_propagate_marks_without_touching_roles_or_exact_sea
         bonds
             .iter()
             .map(|bond| successor
-                .domain(surface.molecule().bond_decision_variable(*bond).unwrap())
+                .domain_bound(surface.molecule().bond_decision_variable(*bond).unwrap())
                 .unwrap())
             .collect::<Vec<_>>(),
         source_bond_domains
@@ -6379,7 +6378,7 @@ fn one_candidate_side_patterns_match_exhaustive_projection_for_every_unary_restr
             (Consistency::Contradiction, Consistency::Contradiction) => {}
             (Consistency::Consistent(native), Consistency::Consistent(exhaustive)) => {
                 for variable in variables {
-                    assert_eq!(native.domain(variable), exhaustive.domain(variable));
+                    assert_eq!(native.domain_bound(variable), exhaustive.domain_bound(variable));
                 }
                 assert_eq!(native.exact_run_counts(), (0, 0));
             }
@@ -6423,7 +6422,7 @@ fn selectable_side_patterns_match_exhaustive_projection_for_every_mark_domain() 
             (Consistency::Consistent(native), Consistency::Consistent(exhaustive)) => {
                 for index in 0..model.variable_count() {
                     let variable = crate::ids::VariableId::new(index.try_into().unwrap());
-                    assert_eq!(native.domain(variable), exhaustive.domain(variable));
+                    assert_eq!(native.domain_bound(variable), exhaustive.domain_bound(variable));
                 }
                 assert_eq!(native.exact_run_counts(), (0, 0));
             }
@@ -6453,15 +6452,15 @@ fn disconnected_directional_components_remain_constraint_and_writer_local() {
     )
     .unwrap();
     assert!(restricted
-        .domain(sites[1].mark_variable)
+        .domain_bound(sites[1].mark_variable)
         .unwrap()
         .is_singleton());
     assert_eq!(
-        restricted.domain(sites[2].mark_variable),
+        restricted.domain_bound(sites[2].mark_variable),
         Some(CarrierMark::marked_domain())
     );
     assert_eq!(
-        restricted.domain(sites[3].mark_variable),
+        restricted.domain_bound(sites[3].mark_variable),
         Some(CarrierMark::marked_domain())
     );
 
@@ -6618,7 +6617,7 @@ fn two_candidate_side_prepares_six_live_patterns_without_mixed_search() {
             panic!("two-candidate sides must compile physical mark variables")
         };
         assert_eq!(
-            native.domain(site.mark_variable),
+            native.domain_bound(site.mark_variable),
             Some(CarrierMark::domain())
         );
     }
@@ -8620,14 +8619,13 @@ fn exhausted_ring_labels_reject_a_forced_new_ring_before_branch_entry() {
     let atoms = (0..5).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
     let bonds = [(0, 1), (2, 3), (2, 4), (3, 4)]
         .into_iter().map(|(a,b)|graph.add_bond(atoms[a], atoms[b]).unwrap()).collect::<Vec<_>>();
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         (0..atoms.len()).map(|_|PreparedAtomToken::Fixed("C".to_owned())).collect(),
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
-    let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
+    let state = initial(&surface);
     let (_, rooted) = only_root_atom(&state, atoms[0]);
     let opening = rooted.choices().unwrap().into_iter().find(|choice|
         choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
@@ -8671,16 +8669,15 @@ fn opening_the_last_ring_label_keeps_a_traversal_continuation() {
     let bonds = [(0, 1), (0, 2), (1, 2)]
         .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
         .collect::<Vec<_>>();
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         (0..3).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
         vec![NonStereoBondToken::Elided; bonds.len()],
         Vec::new(),
         WriterRegime::Generic { component_order: ComponentOrder::AnyOrder },
-        true,
+        true, 0,
     ).unwrap();
-    let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
+    let state = initial(&surface);
     let (_, rooted) = only_root_atom(&state, atoms[0]);
     let opening = rooted.choices().unwrap().into_iter().find(|choice|
         choice.successor().pending.is_none()
@@ -8751,16 +8748,15 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
     let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
         .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
         .collect::<Vec<_>>();
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         (0..4).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
-    let mut state = initial(&surface);
-    assert!(surface.fixed_schedule_factor.is_some(),
-        "ordinary-only cycle graphs prepare the fixed schedule in the test namespace");
-    state.labels.maximum_spelling_label = Some(0);
+    let state = initial(&surface);
+    assert!(surface.event_schedule_factor.is_some(),
+        "ordinary-only cycle graphs prepare the event schedule in the test namespace");
     let (_, root) = only_root_atom(&state, atoms[0]);
     assert!(!root.choices().unwrap().iter().any(|choice|
         choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
@@ -8838,7 +8834,7 @@ fn tetrahedral_diamond_surface() -> (PreparedNonStereo, [AtomId; 4], [BondId; 5]
     let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
     let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
         .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         vec![
             PreparedAtomToken::Tetrahedral {
@@ -8857,17 +8853,17 @@ fn tetrahedral_diamond_surface() -> (PreparedNonStereo, [AtomId; 4], [BondId; 5]
             PreparedAtomToken::Fixed("O".to_owned()),
         ],
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
     (surface, atoms, bonds)
 }
 
 #[test]
-fn fixed_schedule_factor_matches_independent_diamond_event_reference() {
+fn event_schedule_factor_matches_independent_diamond_event_reference() {
     let (surface, atoms, bonds) = tetrahedral_diamond_surface();
-    let factor_id = surface.fixed_schedule_factor.unwrap();
-    let FactorDefinition::FixedSchedule(schedule) = surface.molecule().constraint_model()
-        .factor(factor_id).unwrap() else { panic!("prepared fixed schedule factor expected") };
+    let factor_id = surface.event_schedule_factor.unwrap();
+    let FactorDefinition::EventSchedule(schedule) = surface.molecule().constraint_model()
+        .factor(factor_id).unwrap() else { panic!("prepared event schedule factor expected") };
     let parent = surface.tetrahedral_center(atoms[0]).unwrap();
     let child = surface.tetrahedral_center(atoms[1]).unwrap();
     let model = surface.molecule().constraint_model();
@@ -8884,24 +8880,51 @@ fn fixed_schedule_factor_matches_independent_diamond_event_reference() {
                     parent_value, child_value, first));
             let relation = parent_layout.allowed_orders(0).contains(parent_value)
                 && child_layout.allowed_orders(child_pattern).contains(child_value)
-                && schedule.permits(|variable| {
-                if variable == parent.order_variable { parent_value }
-                else if variable == child.order_variable { child_value }
-                else if let Some(bit) = schedule.capacity_bits().iter().position(|candidate| *candidate == variable) {
-                    u8::from(bit == 0)
-                } else if schedule.root_bits().contains(&variable) {
-                    0
-                } else if schedule.ordinary_centers().iter().any(|center|
-                    center.pairs.iter().any(|pair| pair.variable == variable)) {
-                    0
-                } else {
-                    let edge = schedule.edges().iter().find(|edge| edge.decision_variable == variable)
-                        .expect("schedule variable must belong to a prepared edge");
-                    u8::from(edge.bond.index() >= 3)
-                }
+                && [bonds[1], bonds[2]].into_iter().any(|first| {
+                    let last = if first == bonds[1] { bonds[2] } else { bonds[1] };
+                    let first_atom = if first == bonds[1] { atoms[2] } else { atoms[3] };
+                    let last_atom = if last == bonds[1] { atoms[2] } else { atoms[3] };
+                    let ranked = [atoms[0], first_atom, atoms[1], last_atom];
+                    let mut assigned = BTreeMap::<VariableId, u8>::new();
+                    for (rank, atom) in ranked.into_iter().enumerate() {
+                        let visit = &schedule.visits[atom.index()];
+                        for (bit, variable) in visit.rank_bits.iter().enumerate() {
+                            assigned.insert(*variable, ((rank >> bit) & 1) as u8);
+                        }
+                        assigned.insert(visit.kind, [EntryKind::Root, EntryKind::BondBranch,
+                            EntryKind::BondBranch, EntryKind::BondInline][rank] as u8);
+                        for (bit, variable) in visit.end_bits.iter().enumerate() {
+                            assigned.insert(*variable, u8::from((rank == 1 || rank == 2) && bit <= rank));
+                        }
+                    }
+                    assigned.insert(parent.order_variable, parent_value);
+                    assigned.insert(child.order_variable, child_value);
+                    assigned.insert(schedule.centers.iter().find(|center| center.atom == atoms[0])
+                        .unwrap().role_pattern_variable, 0);
+                    assigned.insert(schedule.centers.iter().find(|center| center.atom == atoms[1])
+                        .unwrap().role_pattern_variable, child_pattern);
+                    for (bit, variable) in schedule.capacity_bits.iter().enumerate() {
+                        assigned.insert(*variable, u8::from(bit == 0));
+                    }
+                    for (index, variable) in schedule.forest_roots.iter().enumerate() {
+                        assigned.insert(*variable, u8::from(index == atoms[0].index()));
+                    }
+                    for center in schedule.ordinary_centers.iter() {
+                        let entry = if center.atom == atoms[2] { bonds[1] } else { bonds[2] };
+                        for pair in center.pairs.iter() {
+                            assigned.insert(pair.variable, u8::from(pair.second == entry));
+                        }
+                    }
+                    for edge in schedule.edges.iter() {
+                        let role = if edge.bond.index() < 3 {
+                            edge.role_partition.traversal_values()
+                        } else { edge.role_partition.ring_values() };
+                        assigned.insert(edge.decision_variable, role.iter().next().unwrap());
+                    }
+                    schedule.permits(|variable| assigned[&variable])
                 });
             assert_eq!(relation, reference,
-                "fixed schedule disagrees with independent event cuts at orders {parent_value}, {child_value}");
+                "event schedule disagrees with independent event cuts at orders {parent_value}, {child_value}");
             if relation { surviving.push((parent_value, child_value)); }
         }
     }
@@ -8909,19 +8932,32 @@ fn fixed_schedule_factor_matches_independent_diamond_event_reference() {
 }
 
 #[test]
-fn fixed_schedule_preparation_uses_writer_label_namespace() {
-    assert!(cycle_count_exceeds_schedule_capacity(100, WriterRegime::RdkitRandomNoncanonical));
-    assert!(!cycle_count_exceeds_schedule_capacity(100,
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }));
-    assert!(cycle_count_exceeds_schedule_capacity(101,
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }));
+fn event_preparation_uses_the_actual_writer_label_namespace() {
+    let prepare = |edge_count: usize, maximum: usize| {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..4).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+        for index in 0..edge_count {
+            graph.add_bond(atoms[index], atoms[index + 1]).unwrap();
+        }
+        let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+            PreparedMolecule::new(graph.build()),
+            (0..4).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+            vec![NonStereoBondToken::Elided; edge_count], Vec::new(),
+            WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, maximum,
+        ).unwrap();
+        assert_eq!(initial(&surface).labels.maximum_spelling_label(), maximum);
+        surface.event_schedule_factor.is_some()
+    };
+    assert!(!prepare(1, 0), "one forest edge fits one visible label");
+    assert!(prepare(2, 0), "two forest edges can exceed one label even with an isolated atom");
+    assert!(!prepare(2, MAX_RING_LABEL_INDEX), "ordinary capacity does not need the event factor");
+    assert!(ring_count_exceeds_schedule_capacity(100, WriterRegime::RdkitRandomNoncanonical, 99));
 }
 
 #[test]
 fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
     let (surface, atoms, bonds) = tetrahedral_diamond_surface();
     let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
     let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
         let partition = surface.molecule().bond_role_partition(bond).unwrap();
         (surface.molecule().bond_decision_variable(bond).unwrap(),
@@ -8951,15 +8987,14 @@ fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
 #[test]
 fn unseeded_diamond_branch_seal_checks_future_ring_schedule() {
     let (surface, atoms, bonds) = tetrahedral_diamond_surface();
-    let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
+    let state = initial(&surface);
     let roots = completed_atom_witnesses(&state, atoms[0]);
     assert_eq!(roots.len(), 2);
     let parent_reference = surface.tetrahedral_center(atoms[0]).unwrap().reference_order;
     let child_reference = surface.tetrahedral_center(atoms[1]).unwrap().reference_order;
     for (text, root) in roots {
-        let factor = surface.fixed_schedule_factor.unwrap();
-        assert!(!root.structural.factor_is_active(factor));
+        let factor = surface.event_schedule_factor.unwrap();
+        assert!(root.structural.factor_is_active(factor));
         let parity_even = text == "[C@H]";
         for first in [bonds[1], bonds[2]] {
             let viable = (0..24).any(|parent_value|
@@ -8988,11 +9023,11 @@ fn ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule()
     // A-X-B is the long traversal arm; C and D are distinct short arms.
     let bonds = [(0, 1), (1, 2), (0, 3), (0, 4), (2, 3), (2, 4)]
         .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         vec![
             PreparedAtomToken::Fixed("C".to_owned()),
-            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("N".to_owned()),
             PreparedAtomToken::Tetrahedral {
                 reference_order: [TetrahedralLigand::Bond(bonds[1]),
                     TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::Bond(bonds[5]),
@@ -9003,10 +9038,9 @@ fn ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule()
             PreparedAtomToken::Fixed("O".to_owned()),
         ],
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
     let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
     let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
         let partition = surface.molecule().bond_role_partition(bond).unwrap();
         (surface.molecule().bond_decision_variable(bond).unwrap(),
@@ -9045,12 +9079,83 @@ fn ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule()
 }
 
 #[test]
-fn unseeded_ordinary_root_activates_fixed_schedule_after_first_branch() {
+fn disconnected_spectator_cannot_rescue_subdivided_diamond_first_branch() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 6] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    // A-X-B is the long arm; the isolated O has no ring event or label release.
+    let bonds = [(0, 1), (1, 2), (0, 3), (0, 4), (2, 3), (2, 4)]
+        .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(graph.build()),
+        vec![
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("N".to_owned()),
+            PreparedAtomToken::Tetrahedral {
+                reference_order: [TetrahedralLigand::Bond(bonds[1]),
+                    TetrahedralLigand::Bond(bonds[4]), TetrahedralLigand::Bond(bonds[5]),
+                    TetrahedralLigand::VirtualHydrogen],
+                text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
+            },
+            PreparedAtomToken::Fixed("C".to_owned()),
+            PreparedAtomToken::Fixed("O".to_owned()),
+            PreparedAtomToken::Fixed("O".to_owned()),
+        ],
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
+    ).unwrap();
+    assert!(surface.event_schedule_factor.is_some());
+    let mut state = initial(&surface);
+    let restrictions = bonds.iter().copied().enumerate().map(|(index, bond)| {
+        let partition = surface.molecule().bond_role_partition(bond).unwrap();
+        (surface.molecule().bond_decision_variable(bond).unwrap(),
+            if index < 4 { partition.traversal_values() } else { partition.ring_values() })
+    }).collect::<Vec<_>>();
+    state.structural = state.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let (_, root) = only_root_atom(&state, atoms[0]);
+
+    let mut viable_first = BTreeSet::new();
+    for children in permutations(&[bonds[0], bonds[2], bonds[3]]) {
+        for b_events in permutations(&[Some(bonds[4]), Some(bonds[5]), None]) {
+            for spectator_position in 0..=children.len() {
+                let mut live = BTreeSet::new();
+                let mut fits = true;
+                let mut child_events = Vec::new();
+                for child in &children {
+                    let events: Vec<BondId> = if *child == bonds[0] {
+                        b_events.iter().flatten().copied().collect()
+                    } else if *child == bonds[2] { vec![bonds[4]] }
+                    else { vec![bonds[5]] };
+                    child_events.push(events);
+                }
+                child_events.insert(spectator_position, Vec::new());
+                for events in child_events {
+                    for ring in events {
+                        if !live.remove(&ring) { live.insert(ring); }
+                        fits &= live.len() <= 1;
+                    }
+                }
+                if fits && live.is_empty() { viable_first.insert(children[0]); }
+            }
+        }
+    }
+    assert_eq!(viable_first, BTreeSet::from([bonds[2], bonds[3]]));
+    let choices = root.choices().unwrap();
+    let offered = |first| choices.iter().any(|choice|
+        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+            incident(&surface, atoms[0], first))));
+    assert!(offered(bonds[2]), "the C-first completion must remain available");
+    assert!(offered(bonds[3]), "the D-first completion must remain available");
+    assert!(!offered(bonds[0]), "isolated spectator cannot rescue A-X first");
+}
+
+#[test]
+fn unseeded_ordinary_root_keeps_order_facts_across_first_branch() {
     let mut graph = PreparedGraphBuilder::new();
     let atoms: [AtomId; 4] = std::array::from_fn(|_| graph.add_atom().unwrap());
     let bonds = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
         .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         vec![PreparedAtomToken::Fixed("C".to_owned()),
             PreparedAtomToken::Tetrahedral {
@@ -9060,13 +9165,12 @@ fn unseeded_ordinary_root_activates_fixed_schedule_after_first_branch() {
                 text_by_parity: ["[C@H]".to_owned(), "[C@@H]".to_owned()],
             }, PreparedAtomToken::Fixed("C".to_owned()), PreparedAtomToken::Fixed("O".to_owned())],
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
     ).unwrap();
-    let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(0);
+    let state = initial(&surface);
     let (_, root) = only_root_atom(&state, atoms[0]);
-    let factor = surface.fixed_schedule_factor.unwrap();
-    assert!(!root.structural.factor_is_active(factor));
+    let factor = surface.event_schedule_factor.unwrap();
+    assert!(root.structural.factor_is_active(factor));
     let first = root.choices().unwrap().into_iter().find(|choice|
         choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
             incident(&surface, atoms[0], bonds[1])))).expect("A-C is a feasible first branch");
@@ -9079,8 +9183,7 @@ fn unseeded_ordinary_root_activates_fixed_schedule_after_first_branch() {
             || [pair.first, pair.second] == [bonds[2], bonds[0]])
         .expect("root B/D precedence variable");
     let b_before_d = u8::from(pair.first == bonds[2]);
-    assert_eq!(successor.structural.semantic_domain(pair.variable),
-        Domain::singleton(b_before_d).unwrap());
+    assert!(successor.structural.semantic_domain(pair.variable).contains(b_before_d));
     let (_, c) = only_choice(successor, "C");
     let c_entry = surface.ordinary_order_pairs[atoms[2].index()].iter().find(|pair|
         [pair.first, pair.second] == [bonds[1], bonds[3]]
@@ -9094,8 +9197,11 @@ fn unseeded_ordinary_root_activates_fixed_schedule_after_first_branch() {
         .expect("C opens BC before leaving its branch").into_successor();
     let (_, restored) = only_choice(&opened, ")");
     assert!(restored.structural.factor_is_active(factor));
-    assert_eq!(restored.structural.semantic_domain(pair.variable),
-        Domain::singleton(b_before_d).unwrap());
+    let c_visit = &surface.event_schedule_visits[atoms[2].index()];
+    assert!(c_visit.end_bits.iter().enumerate().all(|(rank, bit)|
+        restored.structural.semantic_domain(*bit)
+            == Domain::singleton(u8::from(rank <= 1)).unwrap()));
+    assert!(restored.structural.semantic_domain(pair.variable).contains(b_before_d));
     assert_eq!(restored.structural.semantic_domain(c_entry.variable),
         Domain::singleton(entry_first).unwrap());
     let c_before_b = surface.ordinary_order_pairs[atoms[0].index()].iter().find(|pair|
@@ -9113,16 +9219,15 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
     let bonds = [(0, 1), (2, 3), (2, 4), (2, 5), (3, 4), (3, 5)]
         .into_iter().map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
         .collect::<Vec<_>>();
-    let surface = PreparedNonStereo::with_atom_tokens_and_directional_for_writer(
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
         PreparedMolecule::new(graph.build()),
         (0..6).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
         vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
-        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 1,
     ).unwrap();
-    assert!(surface.fixed_schedule_factor.is_none(),
-        "a disconnected dot-branch schedule is outside the fixed-tree relation");
-    let mut state = initial(&surface);
-    state.labels.maximum_spelling_label = Some(1);
+    assert!(surface.event_schedule_factor.is_some(),
+        "a disconnected dot-branch schedule participates in the event relation");
+    let state = initial(&surface);
     let (_, ethane) = only_root_atom(&state, atoms[0]);
     let held = ethane.choices().unwrap().into_iter().find(|choice|
         choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])

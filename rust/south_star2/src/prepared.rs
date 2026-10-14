@@ -202,6 +202,7 @@ pub(crate) struct PreparedConstraintAssembly {
     builder: ConstraintModelBuilder,
     bond_decision_variables: Vec<VariableId>,
     bond_role_partitions: Box<[EdgeRolePartition]>,
+    prepared_root_variables: Option<Vec<VariableId>>,
 }
 
 impl PreparedConstraintAssembly {
@@ -227,6 +228,7 @@ impl PreparedConstraintAssembly {
             builder,
             bond_decision_variables,
             bond_role_partitions: role_partitions.into(),
+            prepared_root_variables: None,
         }
     }
 
@@ -234,6 +236,15 @@ impl PreparedConstraintAssembly {
         self.builder
             .add_variable(initial_domain)
             .expect("prepared semantic variables must fit the constraint identifier space")
+    }
+
+    pub(crate) fn prepare_forest_root_variables(&mut self) -> Arc<[VariableId]> {
+        assert!(self.prepared_root_variables.is_none(), "forest roots may be prepared once");
+        let roots = (0..self.graph.atom_count()).map(|_|
+            self.add_isolated_variable(Domain::from_bits(3)))
+            .collect::<Vec<_>>();
+        self.prepared_root_variables = Some(roots.clone());
+        roots.into()
     }
 
     pub(crate) fn add_latent_ring_count_at_most(
@@ -300,40 +311,31 @@ impl PreparedConstraintAssembly {
         self.bond_role_partitions[bond.index()]
     }
 
-    pub(crate) fn add_latent_tetrahedral_layout(
+    pub(crate) fn add_latent_tetrahedral_layout_rows(
         &mut self,
         order_variable: VariableId,
         role_pattern_variable: VariableId,
         bonds: impl IntoIterator<Item = TetrahedralLayoutBond>,
-        allowed_orders_by_pattern: impl IntoIterator<Item = Domain>,
+        allowed_orders_by_pattern: Arc<[Domain]>,
     ) -> FactorId {
-        self.builder
-            .add_latent_tetrahedral_layout(
-                order_variable,
-                role_pattern_variable,
-                bonds,
-                allowed_orders_by_pattern,
-            )
-            .expect("prepared tetrahedral layout must define a valid latent factor")
+        self.builder.add_latent_tetrahedral_layout_rows(order_variable,
+            role_pattern_variable, bonds, allowed_orders_by_pattern)
+            .expect("prepared tetrahedral layout rows must define a valid latent factor")
     }
 
-    pub(crate) fn add_latent_fixed_schedule(
+    pub(crate) fn add_latent_event_schedule(
         &mut self,
-        root_bits: Arc<[VariableId]>,
-        edges: Arc<[crate::model::FixedScheduleEdge]>,
-        centers: Arc<[crate::model::FixedScheduleCenter]>,
-        ordinary_centers: Arc<[crate::model::FixedScheduleOrdinaryCenter]>,
+        visits: Arc<[crate::event_schedule::EventVisit]>,
+        edges: Arc<[crate::model::ScheduleEdge]>,
+        centers: Arc<[crate::model::ScheduleCenter]>,
+        ordinary_centers: Arc<[crate::model::ScheduleOrdinaryCenter]>,
         capacity_bits: Arc<[VariableId]>,
+        forest_roots: Arc<[VariableId]>,
+        segments: bool,
     ) -> FactorId {
-        self.builder.add_latent_fixed_schedule(root_bits, edges, centers, ordinary_centers, capacity_bits)
-            .expect("prepared fixed schedule must define a valid latent factor")
-    }
-
-    pub(crate) fn add_latent_ordinary_order(
-        &mut self, atom: AtomId, pairs: Arc<[crate::model::OrdinaryOrderPair]>,
-    ) -> FactorId {
-        self.builder.add_latent_ordinary_order(atom, pairs)
-            .expect("prepared ordinary order must define a valid latent factor")
+        self.builder.add_latent_event_schedule(visits, edges, centers,
+            ordinary_centers, capacity_bits, forest_roots, segments)
+            .expect("prepared event schedule must define a valid factor")
     }
 
     pub(crate) fn finish(self) -> PreparedMolecule {
@@ -345,10 +347,12 @@ impl PreparedConstraintAssembly {
         topology: crate::model::TraversalTopologyRequirement,
     ) -> PreparedMolecule {
         let root_variables = if topology == crate::model::TraversalTopologyRequirement::Forest {
-            self.graph.atom_ids().map(|_| self.builder.add_variable(Domain::from_indices([0, 1]).unwrap())
-                .expect("prepared root decisions must fit the constraint identifier space"))
-                .collect::<Vec<_>>()
+            self.prepared_root_variables.take().unwrap_or_else(|| self.graph.atom_ids().map(|_|
+                self.builder.add_variable(Domain::from_bits(3))
+                    .expect("prepared root decisions must fit the constraint identifier space"))
+                .collect::<Vec<_>>())
         } else {
+            assert!(self.prepared_root_variables.is_none(), "tree topology has no root bits");
             Vec::new()
         };
         for component in self.graph.components() {

@@ -555,6 +555,7 @@ pub(crate) struct LocalLayoutContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FrameNode {
     frame: Arc<WriterFrame>,
+    branch_root: AtomId,
     parent: Option<Arc<FrameNode>>,
 }
 
@@ -669,17 +670,22 @@ pub(crate) struct TraversalState {
 }
 
 impl TraversalState {
-    pub(crate) fn selected_tree_root(&self, graph: &PreparedGraph) -> Option<AtomId> {
-        let mut roots = graph.atom_ids().filter(|atom| {
-            self.progress.atom_is_visited(*atom) && !graph.neighbors(*atom)
-                .expect("prepared atom must have neighbours")
-                .iter().any(|incident| matches!(
-                    self.progress.bonds[incident.bond().index()],
-                    BondProgress::Traversed { to, .. } if to == *atom
-                ))
-        });
-        let root = roots.next()?;
-        roots.next().is_none().then_some(root)
+    pub(crate) fn visited_atom_count(&self) -> usize {
+        self.progress.visited_atoms.marked_count
+    }
+
+    pub(crate) fn open_branch_roots(&self) -> Vec<AtomId> {
+        let mut roots = Vec::new();
+        let mut node = self.branch_returns.as_deref();
+        while let Some(current) = node {
+            roots.push(current.branch_root);
+            node = current.parent.as_deref();
+        }
+        roots
+    }
+
+    pub(crate) fn closing_branch_root(&self) -> Option<AtomId> {
+        self.branch_returns.as_ref().map(|node| node.branch_root)
     }
 
     pub(crate) fn new(graph: &PreparedGraph) -> Self {
@@ -868,6 +874,7 @@ impl TraversalState {
         Arc::make_mut(&mut parent).branch_started = true;
         self.branch_returns = Some(Arc::new(FrameNode {
             frame: parent,
+            branch_root: root,
             parent: self.branch_returns.take(),
         }));
         self.begin_segment(graph, root);
@@ -1090,6 +1097,7 @@ impl TraversalState {
                 );
                 self.branch_returns = Some(Arc::new(FrameNode {
                     frame: parent,
+                    branch_root: incident.atom(),
                     parent: self.branch_returns.take(),
                 }));
             }

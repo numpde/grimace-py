@@ -9,6 +9,7 @@
 mod aromatic_matching;
 mod atom_spelling;
 mod domain;
+mod event_schedule;
 mod ids;
 mod model;
 mod native;

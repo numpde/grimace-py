@@ -393,6 +393,22 @@ Every design decision is tested against this question:
 > propagating only the current structural state and the small affected
 > constraint neighborhood?
 
+The open proof and complexity obligation is:
+
+> From each non-determinized walker state, can we enumerate all and only
+> productive `(text, successor state)` transitions, preserving every
+> standard-valid serialization, with work proportional to affected facts and
+> returned transitions?
+
+This is measured per live graph, event, and constraint state, not per merged
+textual prefix or a determinized set of states. Graph atoms remain labelled and
+distinct. Productive means that a finite accepting continuation exists under
+the graph and stereo facts and the active language profile. Distinct successors
+that emit the same text remain distinct returned transitions. The work bound
+includes propagation, feasibility search, and rejected internal candidates,
+not just printing the returned tokens. This obligation remains open; bounded
+measurements and RDKit writer parity do not establish it.
+
 If the answer requires whole-support construction, global automaton
 compilation, proof generation, count-DAG construction, or artifact
 materialization, that work does not belong in the South Star 2 kernel.

@@ -9199,6 +9199,283 @@ fn fixed_ring_path_dot_order_changes_peak_label_demand() {
     }
 }
 
+// This finite reference is deliberately outside the writer's Event relation.
+fn ring_boundary_size(mask: usize, edges: &[(usize, usize)]) -> usize {
+    edges.iter().filter(|&&(a, b)| ((mask >> a) & 1) != ((mask >> b) & 1)).count()
+}
+
+fn ring_order_peak(order: &[usize], edges: &[(usize, usize)]) -> usize {
+    let mut visited = 0;
+    let mut peak = 0;
+    for &atom in order {
+        peak = peak.max(ring_boundary_size(visited, edges));
+        visited |= 1 << atom;
+        peak = peak.max(ring_boundary_size(visited, edges));
+    }
+    peak
+}
+
+fn ring_suffix_fits(prefix: &[usize], next: usize, atom_count: usize,
+    edges: &[(usize, usize)], capacity: usize) -> bool {
+    fn search(order: &mut Vec<usize>, atom_count: usize, edges: &[(usize, usize)],
+        capacity: usize) -> bool {
+        if ring_order_peak(order, edges) > capacity { return false; }
+        if order.len() == atom_count { return true; }
+        for atom in 0..atom_count {
+            if order.contains(&atom) { continue; }
+            order.push(atom);
+            let fits = search(order, atom_count, edges, capacity);
+            order.pop();
+            if fits { return true; }
+        }
+        false
+    }
+    let mut order = prefix.to_vec();
+    order.push(next);
+    search(&mut order, atom_count, edges, capacity)
+}
+
+fn ring_vertex_orders(atom_count: usize) -> Vec<Vec<usize>> {
+    fn extend(order: &mut Vec<usize>, atom_count: usize, result: &mut Vec<Vec<usize>>) {
+        if order.len() == atom_count {
+            result.push(order.clone());
+            return;
+        }
+        for atom in 0..atom_count {
+            if order.contains(&atom) { continue; }
+            order.push(atom);
+            extend(order, atom_count, result);
+            order.pop();
+        }
+    }
+    let mut result = Vec::new();
+    extend(&mut Vec::new(), atom_count, &mut result);
+    result
+}
+
+fn ring_layout_action(states: Vec<State>, bond: BondId) -> Vec<State> {
+    let mut next = Vec::new();
+    for state in states {
+        let before_count = next.len();
+        let before = state.labels.bonds_by_slot.iter().find_map(|(&slot, &held)|
+            (held == bond).then_some(slot));
+        next.extend(state.choices().unwrap().into_iter().filter(|choice| {
+            let after = choice.successor().labels.bonds_by_slot.iter()
+                .find_map(|(&slot, &held)| (held == bond).then_some(slot));
+            choice.successor().pending.is_none()
+                && if before.is_some() { after.is_none() }
+                    else { after == Some(state.labels.next_available()) }
+        }).map(Choice::into_successor));
+        assert!(next.len() > before_count, "each concrete prefix must retain its ring action");
+        assert!(next.len() <= 4096, "ring layout witness expansion bound");
+    }
+    next
+}
+
+fn ring_layout_atom_spelling_completes(state: &State, atom: AtomId, prefix: &str) -> bool {
+    let hydrogens = state.surface.atom_facts(atom).non_graph_hydrogens;
+    let bracket = match hydrogens {
+        0 => "[C]".to_owned(),
+        1 => "[CH]".to_owned(),
+        count => format!("[CH{count}]"),
+    };
+    ["C".to_owned(), bracket].into_iter().filter(|target| target.starts_with(prefix))
+        .any(|target| consume_atom_spelling_states(state.clone(), &target, prefix.len())
+            .into_iter().any(|completed| completed.structural.atom_is_visited(atom)))
+}
+
+#[test]
+fn all_up_to_three_atom_fixed_ring_layouts_match_boundary_continuations() {
+    let mut graphs = 0;
+    let mut orders = 0;
+    let mut prefixes = 0;
+    let mut distinct_orders = 0;
+    let mut equal_text_distinct_atom_entries = false;
+    for atom_count in 1..=3 {
+        let possible_edges = (0..atom_count).flat_map(|a|
+            (a+1..atom_count).map(move |b| (a, b))).collect::<Vec<_>>();
+        for edge_mask in 0..(1 << possible_edges.len()) {
+        let edges = possible_edges.iter().copied().enumerate()
+            .filter_map(|(bit, edge)| ((edge_mask >> bit) & 1 == 1).then_some(edge))
+            .collect::<Vec<_>>();
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms = (0..atom_count).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+        let bonds = edges.iter().map(|&(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap())
+            .collect::<Vec<_>>();
+        let molecule = PreparedMolecule::new(graph.build());
+        for capacity in 1..=3 {
+            let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+                molecule.clone(),
+                vec![PreparedAtomToken::Fixed("C".to_owned()); atom_count],
+                vec![NonStereoBondToken::Elided; edges.len()], Vec::new(),
+                WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+                capacity - 1,
+            ).unwrap();
+            let mut start = initial(&surface);
+            let restrictions = atoms.iter().map(|&atom|
+                (surface.molecule().root_variable(atom).unwrap(), Domain::singleton(1).unwrap()))
+                .collect::<Vec<_>>();
+            // Local incidence order stays free: the witness chooses closures first.
+            start.structural = start.structural.restricted_semantic_domains_for_test(&restrictions)
+                .unwrap().unwrap_consistent();
+            start.structural = start.structural.restricted_bond_domains_for_test(&bonds.iter()
+                .copied().map(|bond| (bond, BondRole::Ring.singleton_domain()))
+                .collect::<Vec<_>>()).unwrap().unwrap_consistent();
+            graphs += 1;
+            let mut seen_orders = BTreeSet::new();
+
+            fn visit(state: State, prefix: &mut Vec<usize>, atoms: &[AtomId],
+                bonds: &[BondId], edges: &[(usize, usize)], capacity: usize,
+                orders: &mut usize, prefixes: &mut usize,
+                seen_orders: &mut BTreeSet<Vec<usize>>) {
+                let visited = prefix.iter().fold(0, |mask, &atom| mask | (1 << atom));
+                let held = bonds.iter().enumerate().filter_map(|(i, &bond)|
+                    state.labels.bonds_by_slot.values().any(|&held| held == bond).then_some(i))
+                    .collect::<Vec<_>>();
+                let expected_held = edges.iter().enumerate().filter_map(|(i, &(a, b))|
+                    (((visited >> a) & 1) != ((visited >> b) & 1)).then_some(i))
+                    .collect::<Vec<_>>();
+                assert_eq!(held, expected_held, "held physical identities at {prefix:?}");
+                assert_eq!(held.len(), ring_boundary_size(visited, edges));
+                assert!(state.pending.is_none() && state.atom_spelling.is_none());
+                *prefixes += 1;
+                assert!(*prefixes <= 50_000, "ring layout concrete prefix bound");
+                if prefix.len() == atoms.len() {
+                    let mut terminal = vec![state];
+                    let mut accepted = false;
+                    for _ in 0..8 {
+                        let Some(current) = terminal.pop() else { break; };
+                        if current.is_accepted() { accepted = true; break; }
+                        terminal.extend(current.choices().unwrap().into_iter().map(Choice::into_successor));
+                    }
+                    assert!(accepted, "finished atom order {prefix:?} must reach acceptance");
+                    *orders += 1;
+                    seen_orders.insert(prefix.clone());
+                    return;
+                }
+                let choices = state.choices().unwrap();
+                let offered = choices.iter().filter_map(|choice| match choice.successor().pending {
+                    Some(PendingEmission::SegmentRootAtom(atom)) =>
+                        atoms.iter().position(|&candidate| candidate == atom),
+                    _ => None,
+                }).collect::<BTreeSet<_>>();
+                let expected = (0..atoms.len()).filter(|&atom| (visited >> atom) & 1 == 0
+                    && ring_suffix_fits(prefix, atom, atoms.len(), edges, capacity))
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(offered, expected, "productive next labelled atom at {prefix:?}, capacity {capacity}");
+                for choice in choices.into_iter().filter(|choice| matches!(choice.successor().pending,
+                    Some(PendingEmission::SegmentRootAtom(atom)) if offered.contains(&atoms.iter().position(|&a| a == atom).unwrap()))) {
+                    let atom = match choice.successor().pending { Some(PendingEmission::SegmentRootAtom(atom)) => atom, _ => unreachable!() };
+                    let index = atoms.iter().position(|&a| a == atom).unwrap();
+                    assert!(ring_layout_atom_spelling_completes(choice.successor(), atom, ""),
+                        "each offered dot-root choice must have an actual atom spelling");
+                    let completions = completed_atom_witnesses(choice.successor(), atom);
+                    assert!(!completions.is_empty(),
+                        "each offered dot-root choice must complete atom {atom:?} at {prefix:?}");
+                    for (_, current) in completions {
+                        // Follow every labelled successor with the chosen atom, then close
+                        // all rings to finished atoms before opening rings to future atoms.
+                        let mut wanted = edges.iter().enumerate().filter_map(|(i, &(a, b))|
+                            ((a == index || b == index) && ((visited >> (a ^ b ^ index)) & 1 == 1))
+                            .then_some(i)).chain(edges.iter().enumerate().filter_map(|(i, &(a, b))|
+                            ((a == index || b == index) && ((visited >> (a ^ b ^ index)) & 1 == 0))
+                            .then_some(i))).collect::<Vec<_>>();
+                        let mut states = vec![current];
+                        for edge in wanted.drain(..) {
+                            states = ring_layout_action(states, bonds[edge]);
+                        }
+                        prefix.push(index);
+                        for current in states {
+                            visit(current, prefix, atoms, bonds, edges, capacity, orders, prefixes,
+                                seen_orders);
+                        }
+                        prefix.pop();
+                    }
+                }
+            }
+            // The first root is a direct atom entry. Compare those labelled
+            // entries before following each one through its remaining spelling.
+            let expected_roots = (0..atom_count).filter(|&atom|
+                ring_suffix_fits(&[], atom, atom_count, &edges, capacity))
+                .collect::<BTreeSet<_>>();
+            let root_choices = match start.choices() {
+                Ok(choices) => choices,
+                Err(ChoiceFailure::Invariant(WriterInvariantFailure::AllCandidatesSemanticallyRejected { .. }))
+                    if expected_roots.is_empty() => Vec::new(),
+                Err(failure) => panic!("initial ring-layout choice failure: {failure:?}"),
+            };
+            let mut root_text_atoms = BTreeMap::<String, BTreeSet<AtomId>>::new();
+            let root_atom = |choice: &Choice<State>| {
+                let visited = atoms.iter().copied().filter(|&atom|
+                    choice.successor().structural.atom_is_visited(atom)).collect::<Vec<_>>();
+                let [atom] = visited.as_slice() else {
+                    panic!("initial labelled root must visit exactly one atom: {visited:?}");
+                };
+                *atom
+            };
+            let offered_roots = root_choices.iter().map(|choice| {
+                let atom = root_atom(choice);
+                root_text_atoms.entry(choice.text().to_owned()).or_default().insert(atom);
+                atoms.iter().position(|&candidate| candidate == atom)
+                    .expect("initial labelled choice names a graph atom")
+            }).collect::<BTreeSet<_>>();
+            assert_eq!(offered_roots, expected_roots,
+                "productive initial labelled root at graph {edge_mask:03b}, capacity {capacity}");
+            equal_text_distinct_atom_entries |= root_text_atoms.values().any(|atoms| atoms.len() >= 2);
+            for choice in &root_choices {
+                let atom_id = root_atom(&choice);
+                assert!(ring_layout_atom_spelling_completes(choice.successor(), atom_id, choice.text()),
+                    "each offered initial root choice must have an actual atom spelling: {:?}",
+                    choice.text());
+                if choice.text() == "C" {
+                    assert!(!atom_witness_completions_after_choice(choice, atom_id).is_empty(),
+                        "each bare-C initial root choice must retain its own C witness");
+                }
+            }
+            for atom in offered_roots {
+                let completions = completed_atom_witnesses(&start, atoms[atom]);
+                assert!(!completions.is_empty(),
+                    "each offered initial root atom must retain its declared C witness");
+                for (_, state) in completions {
+                    let mut states = vec![state];
+                    for (edge, &(a, b)) in edges.iter().enumerate() {
+                        if a != atom && b != atom { continue; }
+                        states = ring_layout_action(states, bonds[edge]);
+                    }
+                    for state in states {
+                        visit(state, &mut vec![atom], &atoms, &bonds, &edges, capacity,
+                            &mut orders, &mut prefixes, &mut seen_orders);
+                    }
+                }
+            }
+            let expected_orders = ring_vertex_orders(atom_count).into_iter()
+                .filter(|order| ring_order_peak(order, &edges) <= capacity)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(seen_orders, expected_orders,
+                "every feasible labelled vertex order in graph {edge_mask:03b}, capacity {capacity}");
+            distinct_orders += seen_orders.len();
+        }
+        }
+    }
+    assert_eq!(graphs, 33);
+    assert!(equal_text_distinct_atom_entries,
+        "one checkpoint must offer equal text with distinct labelled successor atoms");
+    eprintln!("ring layout contract: {graphs} graph/capacity cases, {distinct_orders} distinct orders, {orders} labelled walks, {prefixes} concrete prefixes");
+}
+
+#[test]
+fn ring_layout_path_cycle_and_k4_sentinels() {
+    let path = [(0, 1), (1, 2)];
+    assert_eq!(ring_order_peak(&[0, 1, 2], &path), 1);
+    assert_eq!(ring_order_peak(&[0, 2, 1], &path), 2);
+    let cycle = [(0, 1), (1, 2), (0, 2)];
+    assert_eq!(ring_order_peak(&[0, 1, 2], &cycle), 2);
+    let k4 = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
+    assert_eq!(ring_order_peak(&[0, 1, 2, 3], &k4), 4);
+    assert!(!ring_suffix_fits(&[0], 1, 4, &k4, 3));
+    assert!(ring_suffix_fits(&[0], 1, 4, &k4, 4));
+}
+
 fn diamond_schedule_fits(
     bonds: &[BondId; 5], parent_reference: &[TetrahedralLigand; 4],
     child_reference: &[TetrahedralLigand; 4], parent_value: u8, child_value: u8, first: BondId,

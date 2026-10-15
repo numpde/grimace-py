@@ -2906,6 +2906,34 @@ quantifies that order without event variables. A general decision procedure
 and its incremental joint-factor contract remain unresolved; no production
 resource factor has been integrated from this regression.
 
+The bounded fixed-Ring layout contract now exercises the actual labelled writer
+on every simple labelled graph with one through three C atoms at capacities one
+through three. It checks every offered initial labelled root against the empty
+graph boundary, including equal text with different atom identities, and gives
+each raw root choice a bounded atom-spelling witness. At each completed-atom
+checkpoint reached by its close-before-open driver, with no pending spelling,
+it compares every offered next dot-root atom
+with an independent prefix edge-boundary calculation conditioned on that atom.
+The driver retains every matching labelled successor, including equal visible
+text with different identities, requires a declared C spelling for each dot-root
+choice, and checks every feasible vertex order reaches acceptance. A path,
+triangle, and graph-only K4 sentinel pin the one-, two-,
+and four-label peaks; the path witness also demonstrates immediate use of a
+released label. This covers the generated normal-form prefixes with free local
+incidence order, not all allocator histories or general writer states. Event
+remains enabled throughout the walker check and is not independent lower-bound
+evidence; the graph calculation supplies that bound. The finite permutation
+enumeration is test-only and makes no runtime algorithm or work-bound claim.
+The next proof step is a finite physical-separator relation algebra for this
+boundary-layout predicate, then the same compositional contract extended to
+joint traversal, returns, and stereo. Its signatures must be contextually
+interchangeable against every admissible outside fact while retaining distinct
+labelled successors; interface size and update bounds may depend on separator
+width, capacity, and named finite physical domains, but not forgotten interior
+atom identities, future subsets, or writer-completion count or order. This
+algebra and algorithm are not established, and bounded molecular degree does
+not imply bounded separator width.
+
 ### Private cut-load word algebra prototype (2026-10-15)
 
 The test-only `cut_load_algebra` module represents a bounded nonnegative load

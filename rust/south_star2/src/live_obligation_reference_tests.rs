@@ -30,7 +30,8 @@ struct State {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Event { Open { bond: usize, label: usize }, Close { bond: usize, label: usize },
-    Branch { bond: usize }, Inline { bond: usize }, Return }
+    Branch { bond: usize }, Inline { bond: usize }, DotBranch { atom: usize },
+    DotInline { atom: usize }, Return }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct Step { event: Event, text: String, next: State }
@@ -47,6 +48,10 @@ impl Graph {
     }
 
     fn raw_steps(&self, state: &State) -> Vec<Step> {
+        self.raw_steps_with_dots(state, false)
+    }
+
+    fn raw_steps_with_dots(&self, state: &State, dots: bool) -> Vec<Step> {
         if self.accepted(state) { return Vec::new(); }
         let mut steps = Vec::new();
         let mut pending_ring = false;
@@ -63,6 +68,10 @@ impl Graph {
                         if state.visited & (1 << other) != 0 { continue; }
                         for label in 1..=self.labels {
                             if used.contains(&label) { continue; }
+                            // Labels are anonymous resources for this structural
+                            // experiment. The least free slot represents every
+                            // capacity-equivalent spelling of this opening.
+                            if dots && (1..label).any(|slot| !used.contains(&slot)) { continue; }
                             let mut next = state.clone();
                             next.bonds[id] = BondState::Open { at: state.active, label };
                             for text in [format!("{}", label - 1), format!("%{:02}", label - 1),
@@ -86,7 +95,10 @@ impl Graph {
                 }
             }
         }
-        if pending_ring { return steps; }
+        // The older diagnostic mode fixes every locally pending ring before a
+        // child. The dot experiment also retains grammar-legal dead prefixes
+        // that leave such an incidence unwritten.
+        if pending_ring && !dots { return steps; }
         let children = self.edges.iter().enumerate().filter_map(|(id, &(a, b, role))| {
             if role != Role::Tree || state.bonds[id] != BondState::Unwritten { return None; }
             let other = if a == state.active { b } else if b == state.active { a } else { return None; };
@@ -98,13 +110,37 @@ impl Graph {
             next.visited |= 1 << child;
             next.started_child |= 1 << state.active;
             next.active = child;
+            if dots {
+                let mut branch = next.clone();
+                branch.returns.push(state.active);
+                steps.push(Step { event: Event::Branch { bond: id },
+                    text: format!("({}", self.atoms[child]), next: branch });
+                steps.push(Step { event: Event::Inline { bond: id },
+                    text: self.atoms[child].to_owned(), next });
+                continue;
+            }
             let (event, text) = if children.len() > 1 {
                 next.returns.push(state.active);
                 (Event::Branch { bond: id }, format!("({}", self.atoms[child]))
             } else { (Event::Inline { bond: id }, self.atoms[child].to_owned()) };
             steps.push(Step { event, text, next });
         }
-        if children.is_empty() && !state.returns.is_empty() {
+        if dots {
+            // OpenSMILES `chain dot branched_atom` and `branch ::= '(' dot chain ')'`.
+            for atom in 0..self.atoms.len() {
+                if state.visited & (1 << atom) != 0 { continue; }
+                let mut next = state.clone();
+                next.visited |= 1 << atom;
+                next.started_child |= 1 << state.active;
+                next.active = atom;
+                steps.push(Step { event: Event::DotInline { atom },
+                    text: format!(".{}", self.atoms[atom]), next: next.clone() });
+                next.returns.push(state.active);
+                steps.push(Step { event: Event::DotBranch { atom },
+                    text: format!("(.{}", self.atoms[atom]), next });
+            }
+        }
+        if (children.is_empty() || dots) && !state.returns.is_empty() {
             let mut next = state.clone();
             next.active = next.returns.pop().unwrap();
             steps.push(Step { event: Event::Return, text: ")".to_owned(), next });
@@ -121,16 +157,28 @@ struct Reference {
 
 impl Reference {
     fn build(graph: &Graph) -> Self {
-        assert!(graph.atoms.len() <= 8 && graph.edges.len() <= 12 && graph.labels <= 2);
-        let mut states = vec![graph.initial()];
+        Self::build_with_dots(graph, false)
+    }
+
+    fn build_with_dots(graph: &Graph, dots: bool) -> Self {
+        Self::build_from_state(graph, dots, graph.initial())
+    }
+
+    fn build_from_state(graph: &Graph, dots: bool, initial: State) -> Self {
+        assert!(graph.atoms.len() <= 8 && graph.edges.len() <= 12
+            && graph.labels <= if dots { 6 } else { 2 });
+        let mut states = vec![initial];
         let mut ids = BTreeMap::from([(states[0].clone(), 0)]);
         let mut transitions = Vec::new();
         let mut queue = VecDeque::from([0]);
         while let Some(id) = queue.pop_front() {
             let mut outgoing = Vec::new();
-            for step in graph.raw_steps(&states[id]) {
+            for step in graph.raw_steps_with_dots(&states[id], dots) {
                 let next = if let Some(&known) = ids.get(&step.next) { known } else {
-                    assert!(states.len() < 20_000, "raw grammar state budget exhausted");
+                    if !dots {
+                        assert!(states.len() < 20_000,
+                            "raw grammar state budget exhausted: graph={graph:?}");
+                    }
                     let fresh = states.len();
                     ids.insert(step.next.clone(), fresh);
                     states.push(step.next);
@@ -165,6 +213,178 @@ impl Reference {
         self.transitions[id].iter().map(|(_, text, next)|
             (text.clone(), self.states[*next].clone())).collect()
     }
+}
+
+// The reference keeps every physical return for grammar. Only the feasibility
+// key drops a saved frame whose incidences are already represented. The held
+// ring bond and its physical label remain in `bonds` after its owner is dropped.
+fn feasibility_projection(graph: &Graph, state: &State) -> State {
+    let mut projection = state.clone();
+    projection.returns.retain(|&atom| graph.edges.iter().enumerate().any(
+        |(id, &(a, b, _))| (a == atom || b == atom)
+            && (state.bonds[id] == BondState::Unwritten
+                || matches!(state.bonds[id], BondState::Open { at, .. } if at != atom))));
+    projection
+}
+
+fn shortest_completion(reference: &Reference, from: usize) -> Option<String> {
+    let mut queue = VecDeque::from([(from, String::new())]);
+    let mut seen = BTreeSet::from([from]);
+    while let Some((id, text)) = queue.pop_front() {
+        if reference.transitions[id].is_empty() && reference.productive.contains(&id) {
+            return Some(text);
+        }
+        for (_, spelling, next) in &reference.transitions[id] {
+            if seen.insert(*next) {
+                queue.push_back((*next, format!("{text}{spelling}")));
+            }
+        }
+    }
+    None
+}
+
+fn raw_prefix(graph: &Graph, events: &[Event]) -> State {
+    let mut state = graph.initial();
+    for event in events {
+        state = graph.raw_steps_with_dots(&state, true).into_iter()
+            .find(|step| &step.event == event)
+            .unwrap_or_else(|| panic!("raw prefix event {event:?} unavailable after {state:?}"))
+            .next;
+    }
+    state
+}
+
+#[test]
+fn unrepresented_traversal_owner_defeats_unconditional_frame_forgetting() {
+    let graph = Graph { atoms: &["C", "C", "C"],
+        edges: vec![(0, 1, Role::Tree), (0, 2, Role::Tree), (1, 2, Role::Ring)],
+        root: 0, labels: 1 };
+    let saved = raw_prefix(&graph, &[Event::Branch { bond: 0 },
+        Event::Open { bond: 2, label: 1 }]);
+    let lost = raw_prefix(&graph, &[Event::Inline { bond: 0 },
+        Event::Open { bond: 2, label: 1 }]);
+    let saved_reference = Reference::build_from_state(&graph, true, saved.clone());
+    let lost_reference = Reference::build_from_state(&graph, true, lost.clone());
+    assert!(saved_reference.productive.contains(&0));
+    assert!(!lost_reference.productive.contains(&0));
+    assert_ne!(feasibility_projection(&graph, &saved),
+        feasibility_projection(&graph, &lost));
+    let mut unsafe_saved = saved;
+    unsafe_saved.returns.clear();
+    assert_eq!(unsafe_saved, lost,
+        "dropping an owner with an unwritten Traversal incidence would merge them");
+}
+
+#[test]
+fn ordered_saved_owners_distinguish_two_label_completions() {
+    let edges = vec![(0, 3, Role::Tree), (1, 4, Role::Tree),
+        (1, 3, Role::Ring), (2, 3, Role::Ring), (3, 4, Role::Ring)];
+    let first_graph = Graph { atoms: &["C", "C", "C", "C", "C"],
+        edges: edges.clone(), root: 1, labels: 2 };
+    let second_graph = Graph { root: 0, ..first_graph.clone() };
+    let t_first = raw_prefix(&first_graph, &[
+        Event::Open { bond: 2, label: 1 }, Event::DotBranch { atom: 0 },
+        Event::DotBranch { atom: 2 }, Event::Open { bond: 3, label: 2 }]);
+    let u_first = raw_prefix(&second_graph, &[
+        Event::DotBranch { atom: 1 }, Event::Open { bond: 2, label: 1 },
+        Event::DotBranch { atom: 2 }, Event::Open { bond: 3, label: 2 }]);
+    let t_reference = Reference::build_from_state(&first_graph, true, t_first.clone());
+    let u_reference = Reference::build_from_state(&second_graph, true, u_first.clone());
+    assert!(t_reference.productive.contains(&0),
+        "T-first order should release a label before opening T-U");
+    assert!(!u_reference.productive.contains(&0),
+        "U-first order needs a third simultaneous ring label");
+    let ordered_t = feasibility_projection(&first_graph, &t_first);
+    let ordered_u = feasibility_projection(&second_graph, &u_first);
+    assert_ne!(ordered_t, ordered_u);
+    let mut unordered_t = ordered_t;
+    let mut unordered_u = ordered_u;
+    unordered_t.returns.sort_unstable();
+    unordered_u.returns.sort_unstable();
+    assert_eq!(unordered_t, unordered_u,
+        "an owner set would merge prefixes with different feasibility");
+}
+
+fn check_exhausted_saved_frames_through(max_atoms: usize) {
+    // Every labelled simple graph through max_atoms: each possible bond is
+    // absent, Tree, or Ring; root 0; capacities 0..=number of Ring bonds.
+    // This is a finite falsification experiment, not a stereo or general proof.
+    let mut cases = 0;
+    let mut deleted = 0;
+    let mut compared = 0;
+    let mut single_deletion_pairs = 0;
+    for n in 1..=max_atoms {
+        let pairs = (0..n).flat_map(|a| ((a + 1)..n).map(move |b| (a, b)))
+            .collect::<Vec<_>>();
+        let assignments = 3usize.pow(pairs.len() as u32);
+        for assignment in 0..assignments {
+            let mut code = assignment;
+            let mut edges = Vec::new();
+            for &(a, b) in &pairs {
+                match code % 3 {
+                    1 => edges.push((a, b, Role::Tree)),
+                    2 => edges.push((a, b, Role::Ring)),
+                    _ => {}
+                }
+                code /= 3;
+            }
+            let ring_bonds = edges.iter().filter(|edge| edge.2 == Role::Ring).count();
+            for labels in 0..=ring_bonds {
+                let graph = Graph { atoms: &["C", "C", "C", "C"][..n],
+                    edges: edges.clone(), root: 0, labels };
+                let reference = Reference::build_with_dots(&graph, true);
+                let mut groups = BTreeMap::<State, Vec<usize>>::new();
+                for (id, state) in reference.states.iter().enumerate() {
+                    let key = feasibility_projection(&graph, state);
+                    deleted += state.returns.len() - key.returns.len();
+                    groups.entry(key).or_default().push(id);
+                }
+                for (key, ids) in groups {
+                    if ids.len() < 2 { continue; }
+                    compared += 1;
+                    let first = ids[0];
+                    for &other in &ids[1..] {
+                        let left = &reference.states[first].returns;
+                        let right = &reference.states[other].returns;
+                        let (long, short) = if left.len() >= right.len() {
+                            (left, right)
+                        } else { (right, left) };
+                        if long.len() == short.len() + 1 && (0..long.len()).any(|i| {
+                            let mut without = long.clone();
+                            without.remove(i);
+                            &without == short
+                        }) {
+                            single_deletion_pairs += 1;
+                        }
+                        assert_eq!(reference.productive.contains(&first),
+                            reference.productive.contains(&other),
+                            "frame-forget counterexample: n={n} edges={edges:?} labels={labels} \
+                             projection={key:?} left={:?} right={:?} shortest-left={:?} shortest-right={:?}",
+                            reference.states[first], reference.states[other],
+                            shortest_completion(&reference, first),
+                            shortest_completion(&reference, other));
+                    }
+                }
+                cases += 1;
+            }
+        }
+    }
+    assert!(deleted > 0 && compared > 0 && single_deletion_pairs > 0,
+        "projection must forget and compare one-frame deletions: \
+         {cases} cases, {deleted} dropped frames, {compared} groups, \
+         {single_deletion_pairs} direct pairs");
+}
+
+#[test]
+fn exhausted_saved_frames_preserve_bounded_dot_grammar_feasibility() {
+    // 59 graph-capacity cases: all fixed-role simple graphs on 1..=3 atoms.
+    check_exhausted_saved_frames_through(3);
+}
+
+#[test]
+#[ignore = "2,246-case matrix exceeded the 120-second bounded diagnostic budget"]
+fn exhausted_saved_frames_four_atom_diagnostic() {
+    check_exhausted_saved_frames_through(4);
 }
 
 #[test]

@@ -2656,6 +2656,7 @@ three-label scheduling argument is limited to these fixed roles and orders;
 the test does not prove unrestricted capacity minimality or RDKit writer
 parity. Whether a reduced ordered-owner obligation suffices alongside stereo,
 local phase, and cut constraints remains open.
+
 A direct traversal test separately confirms that a held target with no
 unwritten visited-boundary entry may be visited by a dot branch and close its
 ring, and a spare-label admission test confirms that the relation does not
@@ -2664,6 +2665,66 @@ A separate bounded full-crate qualification attempt reported 362 passing tests,
 5 ignored tests, and one exhaustive growth diagnostic stopped at its
 300-second CPU limit. The cause remains unresolved; it does not establish a
 regression from this slice. Focused first-release and layout checks passed.
+
+### Exhausted-frame control projection experiment (incomplete)
+
+The feasibility interface candidate keeps the active atom, visited atoms,
+fixed bond roles, each physical bond's progress (including the identity and
+label of every held open ring), and the ordered saved frames with unfinished
+incidences. A saved frame is eligible for projection only after each of its
+incident bond occurrences is represented: an open ring discharged at that
+frame counts, but an open ring started at the other endpoint does not. The
+actual writer stack, including every required `)`, remains the sole grammar
+authority. The proposed reduction concerns accepting-completion existence,
+not equality of next-token sets or exact RDKit writer strings.
+
+The conditional argument is that, in the unrestricted dot grammar, a future
+dot excursion hosted by an exhausted saved frame can be moved to the last
+active atom before that frame would be restored, preserving the order of
+labelled atom and bond events and the held physical bond set. The inverse
+inserts an immediate return through that frame. This needs completed atom
+blocks with no pending atom/bond spelling, unrestricted dot roots and leading
+dot branches, and no local order or stereo obligation at the forgotten frame.
+Those premises are not established for compact or RDKit writer profiles; the
+joint structural/stereo interface and dominance rule remain open.
+
+The raw test reference now offers dot-inline and leading-dot branch events
+without importing native writer admission. Its dot mode includes syntactically
+legal dead prefixes that abandon an unwritten Tree or Ring incidence. It
+normalizes numeric ring labels to the least free slot only for structural
+completion existence; the physical bond IDs remain distinct and this does not
+cover label-specific lexical suffix constraints. Its existing stricter mode
+remains for prior diagnostics. The declared exhaustive matrix has every
+labelled simple graph on 1..=4 atoms, each possible edge absent/Tree/Ring,
+root zero, and capacities zero through the number of Ring edges: 2,246
+graph-capacity cases. For each reachable state it groups a projected key and
+compares accepting-completion existence. A mismatch reports the states,
+forgotten return order, physical bond progress, and shortest accepting
+continuation where available. This tests the Boolean property; it does not
+mechanically verify the argument's full labelled event-order relocation.
+
+The active check covers all 59 graph-capacity cases through three atoms and
+passed under the 120-second bounded runner. Two new raw-reference negative
+controls also pass: the fixed-role triangle distinguishes a saved owner of an
+unwritten Traversal incidence from its lost-owner state, and the five-atom
+two-label prefixes distinguish T-first from U-first completion. The full
+ordered projection separates those five-atom states while sorting the saved
+owners merges them. These controls begin from explicit raw event prefixes and
+search only their futures; they do not enumerate all five-atom graphs.
+
+The four-atom extension is left as an ignored diagnostic because its bounded run stopped
+at the fixed 120-second wall limit (exit 124, sampled peak process-tree RSS
+1334.54 MiB, cleanup `verified_no_live_members`) before completing. There
+was no reported counterexample before the timeout, and there is no four-atom
+finite-pass claim. An earlier
+raw-reference guard of 20,000 states was exceeded by the four-atom graph
+`[(0,1,Ring),(0,2,Ring),(0,3,Tree),(1,2,Ring)]` at capacity three; the dot
+mode relies on the external bounded runner instead. The five-atom
+reversed-owner-order contract above and its separate compact-language parse
+test provide additional semantic evidence; the new raw-reference control
+checks its two-label feasibility directly. The next
+destination is a bounded joint structural/stereo interface experiment, not
+an EventSchedule deletion or production writer change.
 
 Final focused native qualification passed 13 tests in seven filters; every
 bounded run reported `verified_no_live_members`. A bounded offline host build

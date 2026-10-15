@@ -3106,3 +3106,19 @@ continuations. This admission move does not yet establish that replacement.
 The existing pending-atom parity-branch and lexical-frontier work-count tests
 fail identically on clean `023a90a0`; they remain separate follow-up work and
 their expectations were not weakened here.
+
+### Owner-relation trial and remaining production boundary
+
+The current root HEAD still uses `EventSchedule` for production feasibility.
+An uncommitted private candidate replaced it with a shared-variable owner
+grammar and passed focused correctness checks; that is useful bounded
+reference evidence, not an accepted production architecture. Its exact
+future-footprint Inside cells, partial compositions, and retained formula DAG
+compile future-support relations across prefixes. Reusing those cells on an
+unchanged query does not establish bounded work when a live prefix changes.
+
+The next production gate is a changed-step update derived from actual live
+writer facts and incremental constraints, without a compiled future-support
+relation. It must preserve joint chemistry and ring-resource correctness and
+account for the work and retained state of each changed successor. The
+future-support compilation boundary and that update proof remain unresolved.

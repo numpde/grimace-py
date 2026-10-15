@@ -50,58 +50,83 @@ pub(crate) fn prefix_domain(
     })
 }
 
-pub(crate) fn singleton_order(
-    reference_order: &[TetrahedralLigand; 4],
-    order: &[TetrahedralLigand],
-) -> Domain {
-    assert_eq!(order.len(), reference_order.len());
-    prefix_domain(reference_order, order)
-}
-
 pub(crate) fn full_role_pattern_domain(bond_count: usize) -> Domain {
     assert!((3..=4).contains(&bond_count));
     Domain::from_indices(0..(1_u8 << bond_count)).unwrap()
 }
 
+/// Physical incidence and stereochemical order at one tetrahedral atom.
+/// Writer spelling policy and traversal scheduling live outside this relation.
+pub(crate) struct TetrahedralIncidence<'a> {
+    reference_order: &'a [TetrahedralLigand; 4],
+    bond_bits: &'a [(BondId, u8)],
+}
+
+impl<'a> TetrahedralIncidence<'a> {
+    pub(crate) fn new(reference_order: &'a [TetrahedralLigand; 4], bond_bits: &'a [(BondId, u8)]) -> Self {
+        assert!((3..=4).contains(&bond_bits.len()));
+        Self { reference_order, bond_bits }
+    }
+
+    fn bit(&self, bond: BondId) -> u8 {
+        self.bond_bits.iter().find_map(|(candidate, bit)| (*candidate == bond).then_some(*bit))
+            .expect("every tetrahedral bond must have one role-pattern bit")
+    }
+
+    pub(crate) fn context_prefix(&self, incoming: Option<BondId>) -> Vec<TetrahedralLigand> {
+        let mut prefix = Vec::with_capacity(2);
+        if let Some(bond) = incoming { prefix.push(TetrahedralLigand::Bond(bond)); }
+        if self.reference_order.contains(&TetrahedralLigand::VirtualHydrogen) {
+            prefix.push(TetrahedralLigand::VirtualHydrogen);
+        }
+        prefix
+    }
+
+    pub(crate) fn prefix_orders(&self, incoming: Option<BondId>, emitted: &[BondId],
+        parity: Option<TetrahedralParity>) -> Domain {
+        let mut prefix = self.context_prefix(incoming);
+        prefix.extend(emitted.iter().copied().map(TetrahedralLigand::Bond));
+        let domain = prefix_domain(self.reference_order, &prefix);
+        parity.map_or(domain, |parity| domain.intersect(parity_domain(parity)))
+    }
+
+    pub(crate) fn permits(&self, incoming: Option<BondId>, pattern: u8, order_value: u8) -> bool {
+        let Some(order) = order_for_value(self.reference_order, order_value) else { return false; };
+        let prefix = self.context_prefix(incoming);
+        if !order.starts_with(&prefix) || incoming.is_some_and(|bond| self.is_ring(pattern, bond)) {
+            return false;
+        }
+        let mut saw_traversal = false;
+        for ligand in &order[prefix.len()..] {
+            let TetrahedralLigand::Bond(bond) = ligand else { return false; };
+            let ring = self.is_ring(pattern, *bond);
+            if ring && saw_traversal { return false; }
+            saw_traversal |= !ring;
+        }
+        true
+    }
+
+    pub(crate) fn is_ring(&self, pattern: u8, bond: BondId) -> bool {
+        pattern & (1_u8 << self.bit(bond)) != 0
+    }
+
+    pub(crate) fn precedes(&self, order_value: u8, first: BondId, second: BondId) -> bool {
+        let Some(order) = order_for_value(self.reference_order, order_value) else { return false; };
+        let position = |bond| order.iter().position(|ligand| *ligand == TetrahedralLigand::Bond(bond));
+        position(first).zip(position(second)).is_some_and(|(a, b)| a < b)
+    }
+}
+
 pub(crate) fn layout_order_rows(
     reference_order: &[TetrahedralLigand; 4],
-    context_prefix: &[TetrahedralLigand],
+    incoming: Option<BondId>,
     bond_bits: &[(BondId, u8)],
 ) -> Vec<Domain> {
-    assert!((3..=4).contains(&bond_bits.len()));
-    let bit_for_bond = |bond: BondId| {
-        bond_bits
-            .iter()
-            .find_map(|(candidate, bit)| (*candidate == bond).then_some(*bit))
-            .expect("every prepared bond ligand must own one role-pattern bit")
-    };
+    let incidence = TetrahedralIncidence::new(reference_order, bond_bits);
     (0..(1_u8 << bond_bits.len()))
         .map(|pattern| {
-            Domain::from_indices((0..TETRAHEDRAL_ORDER_COUNT as u8).filter(|value| {
-                let order = order_for_value(reference_order, *value)
-                    .expect("tetrahedral order value must be prepared");
-                if !order.starts_with(context_prefix) {
-                    return false;
-                }
-                if context_prefix.iter().any(|ligand| {
-                    matches!(ligand, TetrahedralLigand::Bond(bond)
-                        if pattern & (1_u8 << bit_for_bond(*bond)) != 0)
-                }) {
-                    return false;
-                }
-                let mut saw_traversal = false;
-                for ligand in &order[context_prefix.len()..] {
-                    let TetrahedralLigand::Bond(bond) = ligand else {
-                        return false;
-                    };
-                    let is_ring = pattern & (1_u8 << bit_for_bond(*bond)) != 0;
-                    if is_ring && saw_traversal {
-                        return false;
-                    }
-                    saw_traversal |= !is_ring;
-                }
-                true
-            }))
+            Domain::from_indices((0..TETRAHEDRAL_ORDER_COUNT as u8)
+                .filter(|value| incidence.permits(incoming, pattern, *value)))
             .unwrap()
         })
         .collect()
@@ -193,7 +218,7 @@ mod tests {
                 if bond_count == 3 {
                     prefix.push(TetrahedralLigand::VirtualHydrogen);
                 }
-                let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+                let rows = layout_order_rows(&reference, entry, &bond_bits);
                 for pattern in 0..(1_u8 << bond_count) {
                     let mut ring = Vec::new();
                     let mut traversal = Vec::new();
@@ -267,6 +292,63 @@ mod tests {
     }
 
     #[test]
+    fn incidence_relation_matches_physical_prefixes_and_parity_for_every_local_case() {
+        for bond_count in [3_usize, 4] {
+            let bonds = (0..bond_count).map(|index| BondId::new(index as u32)).collect::<Vec<_>>();
+            let mut ligands = bonds.iter().copied().map(TetrahedralLigand::Bond).collect::<Vec<_>>();
+            if bond_count == 3 { ligands.push(TetrahedralLigand::VirtualHydrogen); }
+            let reference: [TetrahedralLigand; 4] = ligands.try_into().unwrap();
+            let bits = bonds.iter().copied().enumerate().map(|(bit, bond)| (bond, bit as u8))
+                .collect::<Vec<_>>();
+            let relation = TetrahedralIncidence::new(&reference, &bits);
+            for incoming in std::iter::once(None).chain(bonds.iter().copied().map(Some)) {
+                let mut physical_start = incoming.map(TetrahedralLigand::Bond).into_iter().collect::<Vec<_>>();
+                if bond_count == 3 { physical_start.push(TetrahedralLigand::VirtualHydrogen); }
+                for pattern in 0..(1_u8 << bond_count) {
+                    for value in 0..TETRAHEDRAL_ORDER_COUNT as u8 {
+                        let order = order_for_value(&reference, value).unwrap();
+                        let suffix = &order[physical_start.len()..];
+                        let ring = |bond: BondId| pattern & (1 << bond.index()) != 0;
+                        let expected_layout = order.starts_with(&physical_start)
+                            && incoming.is_none_or(|bond| !ring(bond))
+                            && suffix.windows(2).all(|pair| {
+                                !matches!((pair[0], pair[1]),
+                                    (TetrahedralLigand::Bond(first), TetrahedralLigand::Bond(second))
+                                    if !ring(first) && ring(second))
+                            });
+                        assert_eq!(relation.permits(incoming, pattern, value), expected_layout);
+                    }
+                }
+                for order_value in 0..TETRAHEDRAL_ORDER_COUNT as u8 {
+                    let order = order_for_value(&reference, order_value).unwrap();
+                    if !order.starts_with(&physical_start) { continue; }
+                    let emitted = order[physical_start.len()..].iter().map(|ligand| {
+                        let TetrahedralLigand::Bond(bond) = ligand else { unreachable!() };
+                        *bond
+                    }).collect::<Vec<_>>();
+                    for length in 0..=emitted.len() {
+                        for parity in TetrahedralParity::ALL {
+                            let actual = relation.prefix_orders(incoming, &emitted[..length], Some(parity));
+                            for candidate in 0..TETRAHEDRAL_ORDER_COUNT as u8 {
+                                let candidate_order = order_for_value(&reference, candidate).unwrap();
+                                let indices = candidate_order.map(|ligand| reference.iter().position(|item| *item == ligand).unwrap());
+                                let inversions = (0..4).flat_map(|left| ((left + 1)..4)
+                                    .map(move |right| (left, right)))
+                                    .filter(|(left, right)| indices[*left] > indices[*right]).count();
+                                let expected = candidate_order.starts_with(&physical_start)
+                                    && candidate_order[physical_start.len()..].starts_with(
+                                        &order[physical_start.len()..physical_start.len() + length])
+                                    && (inversions % 2 == 0) == (parity == TetrahedralParity::Even);
+                                assert_eq!(actual.contains(candidate), expected);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn all_orders_are_unique_and_split_evenly_by_parity() {
         let reference = reference();
         let orders = (0..TETRAHEDRAL_ORDER_COUNT as u8)
@@ -301,7 +383,7 @@ mod tests {
                 }
             }
             assert_eq!(
-                singleton_order(&reference, &order),
+                prefix_domain(&reference, &order),
                 Domain::singleton(value).unwrap()
             );
         }
@@ -317,15 +399,12 @@ mod tests {
         ];
         let root_rows = layout_order_rows(
             &reference,
-            &[TetrahedralLigand::VirtualHydrogen],
+            None,
             &bond_bits,
         );
         let entered_rows = layout_order_rows(
             &reference,
-            &[
-                TetrahedralLigand::Bond(BondId::new(1)),
-                TetrahedralLigand::VirtualHydrogen,
-            ],
+            Some(BondId::new(1)),
             &bond_bits,
         );
 

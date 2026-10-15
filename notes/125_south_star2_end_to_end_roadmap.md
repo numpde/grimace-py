@@ -2736,3 +2736,21 @@ general forest proof or authorize EventSchedule retirement.
 ### Joint child-entry spelling admission
 
 Branch `(` and explicit inline bond text now come from a child-entry transaction that joins the selected traversal bond emission with the child's initial atom grammar, incoming layout, parent prefix, and directional anchor before publication. Each admitted alternative carries its selected bond text and atom grammar through pending syntax; equal visible tokens may therefore have distinct labelled successors. The implicit child route uses the same admission. Later grammar characters still pass the existing writer filter and semantic consistency check. This closes the local realization split only; EventSchedule remains the completion authority, and no work bound or global support theorem follows from this slice.
+
+### Shared tetrahedral incidence relation
+
+`TetrahedralIncidence` now owns the local physical rule: incoming bond, virtual
+hydrogen, committed bond prefix, remaining ring-before-traversal order, and
+order parity. The latent joint layout factor derives its pattern/order rows
+from that rule. Atom token, parent prefix, and local completion restrictions
+use its prefix projection; EventSchedule's full and partial local checks use
+the same relation when interpreting a hypothetical physical entry. Prepared
+and schedule centers no longer copy root/entry row arrays. The factor retains
+its rows as a solver projection so role pattern and order remain correlated.
+
+Finite tests independently enumerate three-bond centers with virtual hydrogen
+and four-bond centers across incoming bonds, role patterns, both parities, and
+every physical prefix length. They check the factor and renderer contracts;
+focused adjacent tetrahedral, shared carrier, and Event tests passed. This is
+one local semantic authority only. Lexical writer-policy totality, general
+forest productivity, and EventSchedule retirement remain open.

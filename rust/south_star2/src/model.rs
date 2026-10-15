@@ -313,8 +313,6 @@ pub struct ScheduleCenter {
     pub role_pattern_variable: VariableId,
     pub reference_order: [TetrahedralLigand; 4],
     pub bond_pattern_bits: Arc<[(BondId, u8)]>,
-    pub root_layout_rows: Arc<[Domain]>,
-    pub entry_layout_rows: Arc<[(BondId, Arc<[Domain]>)]>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1195,7 +1193,6 @@ impl ConstraintModelBuilder {
             let pattern_count = 1_usize << center.bond_pattern_bits.len();
             let pattern_bonds = center.bond_pattern_bits.iter().map(|(bond, _)| *bond).collect::<BTreeSet<_>>();
             let pattern_bits = center.bond_pattern_bits.iter().map(|(_, bit)| usize::from(*bit)).collect::<BTreeSet<_>>();
-            let entry_bonds = center.entry_layout_rows.iter().map(|(bond, _)| *bond).collect::<BTreeSet<_>>();
             let reference_bonds = center.reference_order.iter().filter_map(|ligand|
                 match ligand { TetrahedralLigand::Bond(bond) => Some(*bond), _ => None })
                 .collect::<BTreeSet<_>>();
@@ -1204,18 +1201,20 @@ impl ConstraintModelBuilder {
             if !covered.insert(center.atom) || center.atom.index() >= count
                 || !(3..=4).contains(&incidence.len()) || pattern_bonds != incidence
                 || pattern_bits != (0..incidence.len()).collect()
-                || entry_bonds != incidence || center.entry_layout_rows.len() != incidence.len()
                 || reference_bonds != incidence || reference_bond_count != incidence.len()
-                || center.root_layout_rows.len() != pattern_count
-                || center.entry_layout_rows.iter().any(|(_, rows)| rows.len() != pattern_count) {
-                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center incidence or rows"));
+            {
+                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center incidence"));
             }
             let order = domain(center.order_variable)?;
             let expected_pattern = Domain::from_bits((1_u64 << pattern_count) - 1);
+            let rows_fit_order = std::iter::once(None)
+                .chain(center.bond_pattern_bits.iter().map(|(bond, _)| Some(*bond)))
+                .flat_map(|incoming| crate::tetrahedral::layout_order_rows(
+                    &center.reference_order, incoming, &center.bond_pattern_bits))
+                .all(|row| row.is_subset_of(order));
             if domain(center.role_pattern_variable)? != expected_pattern
-                || center.root_layout_rows.iter().chain(center.entry_layout_rows.iter()
-                    .flat_map(|(_, rows)| rows.iter())).any(|row| !row.is_subset_of(order)) {
-                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center domain or row"));
+                || !rows_fit_order {
+                return Err(ConstraintModelError::InvalidEventSchedule("tetrahedral center domain"));
             }
         }
         for center in factor.ordinary_centers.iter() {

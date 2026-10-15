@@ -3215,8 +3215,7 @@ fn ordered_ring_phase_native_projection_matches_independent_finite_relation() {
             .collect::<Vec<_>>();
         let bond_bits = bond_ids.iter().copied().enumerate().map(|(bit, bond)| (bond, bit as u8))
             .collect::<Vec<_>>();
-        let prefix = if degree == 3 { vec![TetrahedralLigand::VirtualHydrogen] } else { vec![] };
-        let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+        let rows = layout_order_rows(&reference, None, &bond_bits);
         let layout = builder.add_latent_tetrahedral_layout(order, pattern,
             roles.iter().copied().enumerate().map(|(bit, variable)|
                 TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),
@@ -3290,8 +3289,7 @@ fn ordered_ring_phase_joint_layout_projection_matches_exhaustive_and_literal_bal
             Domain::singleton(((free >> bit) & 1) as u8).unwrap()).unwrap()).collect::<Vec<_>>();
         let bond_bits = ids.iter().copied().enumerate().map(|(bit, bond)| (bond, bit as u8))
             .collect::<Vec<_>>();
-        let prefix = if degree == 3 { vec![TetrahedralLigand::VirtualHydrogen] } else { vec![] };
-        let rows = layout_order_rows(&reference, &prefix, &bond_bits);
+        let rows = layout_order_rows(&reference, None, &bond_bits);
         let layout = builder.add_latent_tetrahedral_layout(order, pattern,
             roles.iter().copied().enumerate().map(|(bit, variable)|
                 TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),
@@ -3372,7 +3370,7 @@ fn ordered_ring_phase_projects_unfixed_waiting_and_free_domains() {
     let waiting = builder.add_variable(Domain::from_indices([0, 1]).unwrap()).unwrap();
     let free = builder.add_variable(Domain::from_bits(3)).unwrap();
     let bits = [(ids[0], 0_u8), (ids[1], 1), (ids[2], 2)];
-    let rows = layout_order_rows(&reference, &[TetrahedralLigand::VirtualHydrogen], &bits);
+    let rows = layout_order_rows(&reference, None, &bits);
     let layout = builder.add_latent_tetrahedral_layout(order, pattern,
         roles.iter().copied().enumerate().map(|(bit, variable)|
             TetrahedralLayoutBond::new(variable, EdgeRolePartition::bond_role(), bit as u8)),

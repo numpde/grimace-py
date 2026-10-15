@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::{ScheduleCenter, ScheduleEdge, ScheduleOrdinaryCenter};
-use crate::tetrahedral::{order_for_value, TetrahedralLigand};
+use crate::tetrahedral::{order_for_value, TetrahedralIncidence, TetrahedralLigand};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -201,14 +201,11 @@ impl EventScheduleFactor {
                         pattern | (1 << bit)
                     } else { pattern }
                 });
-                let rows = match incoming[atom.index()] {
-                    Some(entry) => center.entry_layout_rows.iter()
-                        .find_map(|(bond, rows)| (*bond == entry).then_some(rows)),
-                    None => Some(&center.root_layout_rows),
-                };
-                let Some(rows) = rows else { return false; };
+                let incidence_relation = TetrahedralIncidence::new(
+                    &center.reference_order, &center.bond_pattern_bits);
                 if value(center.role_pattern_variable) != pattern
-                    || !rows[pattern as usize].contains(value(center.order_variable)) {
+                    || !incidence_relation.permits(incoming[atom.index()], pattern,
+                        value(center.order_variable)) {
                     return false;
                 }
                 let Some(order) = order_for_value(&center.reference_order, value(center.order_variable)) else {

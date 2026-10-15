@@ -1578,26 +1578,18 @@ fn event_partial_local_order_feasible(
             .map(|bond| (entry, bond)));
     }
     for ring_bond in ring {
+        // A child selected on a fixed ring edge contributes a self-pair and is rejected.
         before.extend(children.iter().map(|(_, child, _)| (ring_bond, *child)));
     }
     before.extend(children.windows(2).map(|pair| (pair[0].1, pair[1].1)));
     if children.windows(2).any(|pair| pair[0].2 == 2) { return false; }
 
     if let Some(center) = factor.centers.iter().find(|center| center.atom == atom) {
-        let rows = match incoming {
-            Some(entry) => center.entry_layout_rows.iter()
-                .find_map(|(bond, rows)| (*bond == entry).then_some(rows)),
-            None => Some(&center.root_layout_rows),
-        };
-        let Some(rows) = rows else { return false; };
+        let incidence_relation = crate::tetrahedral::TetrahedralIncidence::new(
+            &center.reference_order, &center.bond_pattern_bits);
         return domains[center.order_variable.index()].iter().any(|value| {
-            let Some(order) = crate::tetrahedral::order_for_value(&center.reference_order, value) else {
-                return false;
-            };
-            let position = |bond| order.iter().position(|ligand|
-                *ligand == crate::tetrahedral::TetrahedralLigand::Bond(bond));
             domains[center.role_pattern_variable.index()].iter().any(|pattern| {
-                rows[pattern as usize].contains(value)
+                incidence_relation.permits(incoming, pattern, value)
                     && center.bond_pattern_bits.iter().all(|(bond, bit)| {
                         let edge = factor.edges.iter().find(|edge| edge.bond == *bond)
                             .expect("prepared center bond must have a role");
@@ -1607,7 +1599,7 @@ fn event_partial_local_order_feasible(
                         !domains[edge.decision_variable.index()].intersect(role).is_empty()
                     })
                     && before.iter().all(|(first, second)|
-                        position(*first).zip(position(*second)).is_some_and(|(a, b)| a < b))
+                        incidence_relation.precedes(value, *first, *second))
             })
         });
     }

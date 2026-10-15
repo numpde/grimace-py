@@ -19,9 +19,11 @@ use crate::model::{AromaticMatchingEdge, BondRole, EdgeRolePartition, FactorDefi
 use crate::prepared::{AdjacentBond, PreparedGraph, PreparedBond, PreparedConstraintAssembly, PreparedMolecule};
 use crate::solver::{Consistency, ConstraintSolver};
 use crate::tetrahedral::{
-    full_order_domain, full_role_pattern_domain, layout_order_rows, parity_domain, prefix_domain,
-    singleton_order, TetrahedralLigand, TetrahedralParity,
+    full_order_domain, full_role_pattern_domain, layout_order_rows, TetrahedralIncidence,
+    TetrahedralLigand, TetrahedralParity,
 };
+#[cfg(test)]
+use crate::tetrahedral::{parity_domain, prefix_domain};
 use crate::traversal::LocalLayoutContext;
 use crate::walker::{ComponentOrder, WriterRegime};
 #[cfg(test)]
@@ -481,28 +483,15 @@ struct PreparedTetrahedralCenter {
     bond_pattern_bits: Box<[(BondId, u8)]>,
     root_layout_factor: FactorId,
     entry_layout_factors: Box<[(BondId, FactorId)]>,
-    root_layout_rows: Arc<[Domain]>,
-    entry_layout_rows: Box<[(BondId, Arc<[Domain]>)]>,
 }
 
 impl PreparedTetrahedralCenter {
-    fn context_prefix(&self, entry_bond: Option<BondId>) -> Vec<TetrahedralLigand> {
-        let mut prefix = Vec::with_capacity(2);
-        if let Some(bond) = entry_bond {
-            prefix.push(TetrahedralLigand::Bond(bond));
-        }
-        if self
-            .reference_order
-            .contains(&TetrahedralLigand::VirtualHydrogen)
-        {
-            prefix.push(TetrahedralLigand::VirtualHydrogen);
-        }
-        prefix
+    fn incidence(&self) -> TetrahedralIncidence<'_> {
+        TetrahedralIncidence::new(&self.reference_order, &self.bond_pattern_bits)
     }
 
     fn token_domain(&self, entry_bond: Option<BondId>, parity: TetrahedralParity) -> Domain {
-        prefix_domain(&self.reference_order, &self.context_prefix(entry_bond))
-            .intersect(parity_domain(parity))
+        self.incidence().prefix_orders(entry_bond, &[], Some(parity))
     }
 
     fn prefix_domain_with_bond_order(
@@ -510,9 +499,7 @@ impl PreparedTetrahedralCenter {
         entry_bond: Option<BondId>,
         emitted_bonds: &[BondId],
     ) -> Domain {
-        let mut prefix = self.context_prefix(entry_bond);
-        prefix.extend(emitted_bonds.iter().copied().map(TetrahedralLigand::Bond));
-        prefix_domain(&self.reference_order, &prefix)
+        self.incidence().prefix_orders(entry_bond, emitted_bonds, None)
     }
 
     fn completed_order_domain(
@@ -520,9 +507,8 @@ impl PreparedTetrahedralCenter {
         entry_bond: Option<BondId>,
         emitted_bonds: &[BondId],
     ) -> Domain {
-        let mut order = self.context_prefix(entry_bond);
-        order.extend(emitted_bonds.iter().copied().map(TetrahedralLigand::Bond));
-        singleton_order(&self.reference_order, &order)
+        assert_eq!(emitted_bonds.len() + usize::from(entry_bond.is_some()), self.bond_pattern_bits.len());
+        self.incidence().prefix_orders(entry_bond, emitted_bonds, None)
     }
 
     fn layout_factor(&self, entry_bond: Option<BondId>) -> FactorId {
@@ -817,8 +803,6 @@ impl PreparedNonStereo {
                         role_pattern_variable: center.role_pattern_variable,
                         reference_order: center.reference_order,
                         bond_pattern_bits: center.bond_pattern_bits.iter().copied().collect::<Vec<_>>().into(),
-                        root_layout_rows: Arc::clone(&center.root_layout_rows),
-                        entry_layout_rows: center.entry_layout_rows.iter().cloned().collect::<Vec<_>>().into(),
                     }),
                     _ => None,
                 }
@@ -1165,27 +1149,18 @@ fn prepare_tetrahedral_center(
             )
         })
         .collect::<Vec<_>>();
-    let virtual_hydrogen = reference_order.contains(&TetrahedralLigand::VirtualHydrogen);
-    let root_prefix = virtual_hydrogen
-        .then_some(TetrahedralLigand::VirtualHydrogen)
-        .into_iter()
-        .collect::<Vec<_>>();
     let root_layout_rows: Arc<[Domain]> = layout_order_rows(&reference_order,
-        &root_prefix, &bond_pattern_bits).into();
+        None, &bond_pattern_bits).into();
     let root_layout_factor = assembly.add_latent_tetrahedral_layout_rows(order_variable,
         role_pattern_variable, layout_bonds.iter().copied(), Arc::clone(&root_layout_rows));
     let entry_layouts = bond_pattern_bits
         .iter()
         .map(|(bond, _)| {
-            let mut prefix = vec![TetrahedralLigand::Bond(*bond)];
-            if virtual_hydrogen {
-                prefix.push(TetrahedralLigand::VirtualHydrogen);
-            }
             let rows: Arc<[Domain]> = layout_order_rows(&reference_order,
-                &prefix, &bond_pattern_bits).into();
+                Some(*bond), &bond_pattern_bits).into();
             let factor = assembly.add_latent_tetrahedral_layout_rows(order_variable,
                 role_pattern_variable, layout_bonds.iter().copied(), Arc::clone(&rows));
-            (*bond, factor, rows)
+            (*bond, factor)
         })
         .collect::<Vec<_>>();
 
@@ -1196,11 +1171,7 @@ fn prepare_tetrahedral_center(
         role_pattern_variable,
         bond_pattern_bits: bond_pattern_bits.into_boxed_slice(),
         root_layout_factor,
-        entry_layout_factors: entry_layouts.iter().map(|(bond, factor, _)| (*bond, *factor))
-            .collect::<Vec<_>>().into_boxed_slice(),
-        root_layout_rows,
-        entry_layout_rows: entry_layouts.into_iter().map(|(bond, _, rows)| (bond, rows))
-            .collect::<Vec<_>>().into_boxed_slice(),
+        entry_layout_factors: entry_layouts.into_boxed_slice(),
     }
 }
 

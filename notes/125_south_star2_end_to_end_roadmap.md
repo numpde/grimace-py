@@ -2793,3 +2793,26 @@ choice work remain unresolved. The finished target is still an actual-event
 walker plus one joint live semantic constraint authority, without future visit
 ranks, entry kinds, branch-end search, continuation assets, a fallback, or a
 runtime fast path for this case.
+
+### Private cut-load word algebra prototype (2026-10-15)
+
+The test-only `cut_load_algebra` module represents a bounded nonnegative load
+word at one fixed boundary context. It normalizes by deleting equal neighbors
+and interiors between endpoint loads, compares words by coordinatewise
+domination after monotone repetitions, and joins two words with horizontal or
+vertical grid interleavings. Each grid cell keeps only nondominated typical
+prefixes. Profiles may be compared only when they have the same boundary facts
+and future choices; the module does not represent those facts. The result is a
+quotient under mutual domination, not an inventory of exact attainable traces.
+The normalization, comparison, and merge congruence use Bodlaender, Jaffke,
+and Telle, [Lemma 2.10(i-v)](https://link.springer.com/article/10.1007/s00224-021-10030-3).
+
+For capacity `K`, typical words have length at most `2K+1`; a coarse finite
+inventory bound is `sum_{l=1}^{2K+1}(K+1)^l`. The DP has `|a|*|b|` cells,
+but its per-cell profile inventory and domination comparisons remain part of
+the work. This bound is deliberately not called practical at the writer's
+100-label namespace, nor output proportional. Focused tests compare small
+raw interleaving peaks under external contexts, association up to domination,
+capacity shifts, and the valley counterexample `[2,0,2]` versus `[2]`.
+No tree-decomposition introduce/forget proof, LIFO branch or shared chemistry
+model, general Event replacement, or runtime admission claim follows.

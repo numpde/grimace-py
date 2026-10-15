@@ -8,6 +8,8 @@
 
 mod aromatic_matching;
 mod atom_spelling;
+#[cfg(test)]
+mod cut_load_algebra;
 mod domain;
 #[cfg(test)]
 mod work_diagnostic;

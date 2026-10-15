@@ -2543,3 +2543,47 @@ diagnostic shows a delayed local-only failure for that exact reachable prefix;
 it is not an independent grammar proof of the six-atom case. It does not
 establish a general compact completion criterion or justify disabling the
 factor in production.
+
+### 2026-10-15 actual-event transaction cleanup
+
+From the `994027e0` proof baseline, the private writer now adds the observed
+EventSchedule restrictions and activation to the same candidate solver
+transition as the structural, lexical, and ring-resource commitments. The
+schedule delta depends on the source walker and the source schedule activation
+bit, so the second semantic transition was redundant. Repeated variable
+restrictions are intersected by `WriterState`; a conflicting intersection is
+a candidate contradiction. Backend failures still abort the choice batch.
+The source state remains immutable.
+
+The focused root regression checks one solver call and equality of every
+semantic domain against the former two-transition path for a tetrahedral
+diamond root. On the combined source, four finite live-obligation reference
+tests and that regression passed, as did the existing complete-walk tests for
+coupled tetrahedral, selectable tetrahedral/directional, and directional ring
+fixtures. Every bounded offline run reported `verified_no_live_members`;
+logs are under `/tmp/grimace-live-event-994027e0/`. These bounded witnesses
+do not prove general domain equality or the compact completion criterion.
+The legacy EventSchedule remains production admission authority until that
+criterion and labelled-transition equivalence are established.
+
+Artifact qualification used the frozen combined archive at
+`/tmp/grimace-live-event-994027e0`, compared with tracked baseline
+`994027e0fb553637acbf8af05ab1503fe6a3e24a`: only this note,
+`nonstereo_writer.rs`, and `nonstereo_writer_tests.rs` differed. The two Rust
+files had SHA-256 `909a62fd0e12443bbbb8a5d40e8161f16b097570539b96e37b35ff71b357cd5a`
+and `0190a7ac8f1b30806a3b2317b9f61779858be182f240156a8bc9a3cab05cf572`.
+The bounded offline release build produced CPython 3.12 wheel SHA-256
+`34768e374fd5abf9b3a6cf034c16038643d7ce7b789521d2f5932647db3493a7`;
+its sole `_core` extension had SHA-256
+`9b29df18be5aca390418c66ca9de7344a9501f4e951362e6d63aabbf702e32e6`.
+Imports resolved to the extracted wheel, where all 16 public-prefix tests
+passed. The previous ignored checkout extension (SHA-256
+`10b8fd9e896e9600c8819ba01162d6ce7053a0a5a500d8d14f25cce388aba8f9`)
+was backed up as `/tmp/grimace-live-event-qualification-994027e0/checkout-core-before.so`;
+the refreshed checkout extension matches the wheel bytes. Checkout imports
+resolved to that extension, and the four focused South Star 2 semantic modules
+passed 37 tests. Every bounded build and test run reported
+`verified_no_live_members`; durable logs and the wheel are under
+`/tmp/grimace-live-event-qualification-994027e0/`. These checks qualify the
+represented public and semantic paths, not the unproved completion criterion,
+general support equality, or latency.

@@ -3565,7 +3565,11 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             restrictions.extend(budget);
             activate.extend(factors);
         }
-        let attempted = if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
+        if let Some((schedule_restrictions, schedule_factors)) = self.event_schedule_transition(candidate) {
+            restrictions.extend(schedule_restrictions);
+            activate.extend(schedule_factors);
+        }
+        if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate(candidate)
         } else if restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate_with_bond_refinement(
@@ -3579,26 +3583,18 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 &restrictions,
                 &activate,
             )
-        }?;
-        let Consistency::Consistent(structural) = attempted else {
-            return Ok(Consistency::Contradiction);
-        };
-        let Some((schedule_restrictions, schedule_factors)) = self.event_schedule_transition(candidate, &structural) else {
-            return Ok(Consistency::Consistent(structural));
-        };
-        structural.transitioned_semantics(&schedule_restrictions, &schedule_factors)
+        }
     }
 
-    // todo: This copies each observed writer event into a whole-future CSP schedule.
+    // TODO: Legacy EventSchedule copies each observed writer event into a whole-future CSP schedule.
     // Keep its exact admission check until current walker state and affected
     // constraints can prove the same productive labelled transitions.
     fn event_schedule_transition(
         &self,
         candidate: StructuralCandidate,
-        structural: &WriterState<S>,
     ) -> Option<(Vec<(VariableId, Domain)>, Vec<FactorId>)> {
         let factor = self.surface.event_schedule_factor?;
-        let active = structural.factor_is_active(factor);
+        let active = self.structural.factor_is_active(factor);
         let mut restrictions = Vec::new();
         let mut factors = Vec::new();
         if !active {

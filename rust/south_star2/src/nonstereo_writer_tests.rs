@@ -8859,6 +8859,45 @@ fn tetrahedral_diamond_surface() -> (PreparedNonStereo, [AtomId; 4], [BondId; 5]
 }
 
 #[test]
+fn actual_root_event_activates_schedule_in_one_solver_transition() {
+    let _counter_guard = DIRECTIONAL_RESTRICTION_TEST_LOCK.lock().unwrap();
+    let (surface, atoms, _) = tetrahedral_diamond_surface();
+    let source = NonStereoWriterState::<CountDirectionalRestrictionsSolver>::initial(&surface)
+        .unwrap().unwrap_consistent();
+    let factor = surface.event_schedule_factor.unwrap();
+    assert!(!source.structural.factor_is_active(factor));
+    let before = source.observe_raw();
+
+    DIRECTIONAL_RESTRICTION_CALLS.store(0, Ordering::Relaxed);
+    let successor = source.attempt_candidate_with_transition(
+        StructuralCandidate::Root { atom: atoms[0] }, None, &[], &[],
+    ).unwrap().unwrap_consistent();
+
+    assert_eq!(DIRECTIONAL_RESTRICTION_CALLS.load(Ordering::Relaxed), 1);
+    assert!(successor.factor_is_active(factor));
+    assert_eq!(source.observe_raw(), before);
+    let (resource_restrictions, resource_factors) = source.ring_resource_entry_constraint(
+        StructuralCandidate::Root { atom: atoms[0] },
+    ).unwrap();
+    let old_first = source.structural.attempt_candidate_with_semantic_transition(
+        StructuralCandidate::Root { atom: atoms[0] }, None,
+        &resource_restrictions, &resource_factors,
+    ).unwrap().unwrap_consistent();
+    let (schedule_restrictions, schedule_factors) = source.event_schedule_transition(
+        StructuralCandidate::Root { atom: atoms[0] },
+    ).unwrap();
+    let old_successor = old_first.transitioned_semantics(
+        &schedule_restrictions, &schedule_factors,
+    ).unwrap().unwrap_consistent();
+    assert_eq!(successor.observe_raw(), old_successor.observe_raw());
+    for index in 0..surface.molecule().constraint_model().variable_count() {
+        let variable = VariableId::new(index as u32);
+        assert_eq!(successor.semantic_domain(variable), old_successor.semantic_domain(variable),
+            "candidate and legacy transition disagree at {variable:?}");
+    }
+}
+
+#[test]
 fn event_schedule_factor_matches_independent_diamond_event_reference() {
     let (surface, atoms, bonds) = tetrahedral_diamond_surface();
     let factor_id = surface.event_schedule_factor.unwrap();

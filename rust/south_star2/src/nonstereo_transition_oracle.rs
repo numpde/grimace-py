@@ -606,9 +606,9 @@ impl<'a> OracleEngine<'a> {
             return Vec::new();
         }
         if state.pending.is_some() {
-            let explicit_choices = match state.pending {
+            let explicit_choices = match &state.pending {
                 Some(OraclePending::BranchTraversalEmission { bond, .. })
-                    if self.surface.bonds[bond].token == FixtureBondToken::Elided => &[false, true][..],
+                    if self.surface.bonds[*bond].token == FixtureBondToken::Elided => &[false, true][..],
                 _ => &[false][..],
             };
             return explicit_choices.iter().filter_map(|&explicit| {
@@ -1931,8 +1931,8 @@ fn atom_for_spelling_choice(
             if !(first == '[' || first == '*' || first.is_ascii_alphabetic()) {
                 return None;
             }
-            match state.pending {
-                Some(super::PendingEmission::SegmentRootAtom(atom)) => Some(atom),
+            match &state.pending {
+                Some(super::PendingEmission::SegmentRootAtom(atom)) => Some(*atom),
                 Some(
                     super::PendingEmission::InlineAtom(edge)
                     | super::PendingEmission::BranchAtom(edge),

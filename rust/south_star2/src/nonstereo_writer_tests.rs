@@ -1194,7 +1194,7 @@ fn only_choice<S: ConstraintSolver>(
     state: &NonStereoWriterState<S>,
     text: &str,
 ) -> (String, NonStereoWriterState<S>) {
-    let branch_atom_is_ready = match state.pending {
+    let branch_atom_is_ready = match &state.pending {
         Some(PendingEmission::BranchTraversalEmission(incident)) => {
             let atom = incident.atom();
             let first_chars = declared_atom_witnesses(&state.surface, atom)
@@ -1209,8 +1209,7 @@ fn only_choice<S: ConstraintSolver>(
     };
     if state.is_spelling_atom()
         || branch_atom_is_ready
-        || matches!(
-            state.pending,
+        || matches!(&state.pending,
             Some(
                 PendingEmission::SegmentRootAtom(_)
                     | PendingEmission::InlineAtom(_)
@@ -1298,8 +1297,8 @@ fn pending_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
         .atom_spelling
         .as_ref()
         .map(|progress| progress.atom)
-        .or_else(|| match state.pending {
-            Some(PendingEmission::SegmentRootAtom(atom)) => Some(atom),
+        .or_else(|| match &state.pending {
+            Some(PendingEmission::SegmentRootAtom(atom)) => Some(*atom),
             Some(PendingEmission::InlineAtom(edge) | PendingEmission::BranchAtom(edge)) => {
                 Some(edge.atom())
             }
@@ -1309,7 +1308,7 @@ fn pending_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
 }
 
 fn branch_event_atom<S>(state: &NonStereoWriterState<S>) -> Option<AtomId> {
-    match state.pending {
+    match &state.pending {
         Some(PendingEmission::BranchTraversalEmission(incident)) => Some(incident.atom()),
         _ => pending_atom(state),
     }
@@ -1511,7 +1510,7 @@ pub(super) fn selected_ring_label_witness<S: ConstraintSolver>(
         .find(|slot| !state.labels.bonds_by_slot.contains_key(slot)).copied();
     let released = state.labels.bonds_by_slot.keys()
         .find(|slot| !successor.labels.bonds_by_slot.contains_key(slot)).copied();
-    let pending_label = match state.pending {
+    let pending_label = match &state.pending {
         Some(PendingEmission::RingOpeningLabel { label_slot, .. })
         | Some(PendingEmission::RingClosureLabel { label_slot, .. }) => Some(label_slot),
         _ => None,
@@ -1522,11 +1521,11 @@ pub(super) fn selected_ring_label_witness<S: ConstraintSolver>(
         }
         // Explicit operators allocate the ID before its visible label.
         return choice.text() == ring_label_number_text(slot.index())
-            || matches!(successor.pending, Some(PendingEmission::RingOpeningLabel { .. }));
+            || matches!(&successor.pending, Some(PendingEmission::RingOpeningLabel { .. }));
     }
-    if let Some(slot) = pending_label.or(released) {
+    if let Some(slot) = pending_label.copied().or(released) {
         return choice.text() == ring_label_number_text(slot.index())
-            || matches!(successor.pending, Some(PendingEmission::RingClosureLabel { .. }));
+            || matches!(&successor.pending, Some(PendingEmission::RingClosureLabel { .. }));
     }
     true
 }
@@ -2145,8 +2144,7 @@ fn branch_and_explicit_inline_tetrahedral_entries_activate_the_selected_layout()
         let pending = if has_sibling {
             let branch = ring_witness_choices(&parent)
                 .into_iter()
-                .find(|choice| choice.successor().pending
-                    == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bonds[0]))))
+                .find(|choice| matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(&surface, atoms[0], bonds[0])))
                 .unwrap().into_successor();
             if token == NonStereoBondToken::Double {
                 only_choice(&branch, "=").1
@@ -2521,12 +2519,11 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
     let pending_branch = parent_choices
         .into_iter()
         .find(|choice| {
-            choice.successor().pending
-                == Some(PendingEmission::BranchTraversalEmission(incident(
+            matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(
                     &elided_branch_surface,
                     atoms[0],
                     bonds[0],
-                )))
+                ))
         })
         .unwrap()
         .into_successor();
@@ -2544,12 +2541,11 @@ fn pending_atom_stages_preserve_tetrahedral_parity_branches() {
     let pending_bond = ring_witness_choices(&parent)
         .into_iter()
         .find(|choice| {
-            choice.successor().pending
-                == Some(PendingEmission::BranchTraversalEmission(incident(
+            matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(
                     &explicit_branch_surface,
                     atoms[0],
                     bonds[0],
-                )))
+                ))
         })
         .unwrap()
         .into_successor();
@@ -2632,8 +2628,7 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
         let selected = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
-                matches!(
-                    choice.successor().pending,
+                matches!(&choice.successor().pending,
                     Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
@@ -2656,16 +2651,14 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
             .intersect(parity_domain(TetrahedralParity::Even))
     );
     let next = ring_witness_choices(&parent);
-    assert_eq!(
-        next.len(),
-        1,
-        "the parity-incompatible third bond must not be advertised"
-    );
-    assert_eq!(next[0].text(), "(");
-    let entered = next[0].successor().structural.observe_raw().traversal;
-    assert_ne!(entered.active_frame.as_ref().unwrap().atom, atoms[0]);
-    assert_eq!(entered.branch_returns[0].atom, atoms[0]);
-    assert_eq!(entered.branch_returns[0].emitted_bonds.len(), 3);
+    assert_eq!(next.len(), 2, "the admitted child has two spelling classes");
+    for choice in next {
+        assert_eq!(choice.text(), "(");
+        let entered = choice.successor().structural.observe_raw().traversal;
+        assert_ne!(entered.active_frame.as_ref().unwrap().atom, atoms[0]);
+        assert_eq!(entered.branch_returns[0].atom, atoms[0]);
+        assert_eq!(entered.branch_returns[0].emitted_bonds.len(), 3);
+    }
 }
 
 #[test]
@@ -2689,8 +2682,7 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
         let pending = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
-                matches!(
-                    choice.successor().pending,
+                matches!(&choice.successor().pending,
                     Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
@@ -2735,8 +2727,7 @@ fn unresolved_tetrahedral_completion_is_typed_and_leaves_source_unchanged() {
         let pending = ring_witness_choices(&parent)
             .into_iter()
             .find(|choice| {
-                matches!(
-                    choice.successor().pending,
+                matches!(&choice.successor().pending,
                     Some(PendingEmission::BranchTraversalEmission(incident))
                         if incident.bond() == bond
                 )
@@ -3010,8 +3001,7 @@ fn explicit_ring_endpoint_commits_local_order_before_pending_label() {
         .flat_map(|(_, root)| ring_witness_choices(&root))
         .find(|choice| {
             choice.text() == "="
-                && matches!(
-                    choice.successor().pending,
+                && matches!(&choice.successor().pending,
                     Some(PendingEmission::RingOpeningLabel { incident, .. })
                         if incident.bond() == bonds[0]
                 )
@@ -3873,7 +3863,7 @@ fn backend_failure_aborts_the_tetrahedral_atom_token_batch() {
 }
 
 #[test]
-fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
+fn explicit_bond_is_hidden_when_joint_child_entry_contradicts() {
     let (surface, atoms, _) = entered_tetrahedral_fixture(NonStereoBondToken::Double, false);
     let initial =
         NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
@@ -3884,13 +3874,13 @@ fn preceding_explicit_bond_is_hidden_when_pending_atom_tokens_all_contradict() {
     assert!(matches!(
         parent.choices(),
         Err(ChoiceFailure::Invariant(
-            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 1 }
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count: 2 }
         ))
     ));
 }
 
 #[test]
-fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
+fn parenthesis_only_publishes_jointly_admitted_child_spellings() {
     let (surface, atoms, bonds) = entered_tetrahedral_fixture(NonStereoBondToken::Elided, true);
     let initial =
         NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
@@ -3899,13 +3889,55 @@ fn preceding_parenthesis_is_hidden_when_pending_atom_tokens_all_contradict() {
     let (_, parent) = only_root_atom(&initial, atoms[0]);
     let choices = ring_witness_choices(&parent);
 
-    assert_eq!(choices.len(), 1);
-    assert_eq!(choices[0].text(), "(");
-    assert!(matches!(
-        choices[0].successor().pending,
-        Some(PendingEmission::BranchTraversalEmission(incident))
-            if incident.bond() == bonds[4]
-    ));
+    assert_eq!(choices.len(), 2);
+    let decision = surface.molecule().bond_decision_variable(bonds[4]).unwrap();
+    let mut texts = BTreeSet::new();
+    for choice in choices {
+        assert_eq!(choice.text(), "(");
+        let Some(PendingEmission::BranchTraversalEmission(entry)) = &choice.successor().pending
+        else { panic!("published parenthesis must carry its child entry") };
+        assert_eq!(entry.bond(), bonds[4]);
+        let domain = choice.successor().structural.semantic_domain(decision);
+        match entry.bond_text {
+            "" => assert!(domain.is_subset_of(BondRepresentation::elided_domain())),
+            "-" => assert!(domain.is_subset_of(BondRepresentation::explicit_domain())),
+            other => panic!("unexpected branch bond text: {other}"),
+        }
+        texts.insert(entry.bond_text);
+    }
+    assert_eq!(texts, BTreeSet::from(["", "-"]));
+}
+
+#[test]
+fn parenthesis_is_hidden_when_every_joint_child_entry_contradicts() {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms = (0..9).map(|_| graph.add_atom().unwrap()).collect::<Vec<_>>();
+    let edges = [(0, 1), (0, 2), (1, 3), (1, 4), (1, 5),
+        (2, 6), (2, 7), (2, 8)];
+    let bonds = edges.map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let tetrahedral = |entry, children: [usize; 3]| PreparedAtomToken::Tetrahedral {
+        reference_order: [entry, bonds[children[0]], bonds[children[1]], bonds[children[2]]]
+            .map(TetrahedralLigand::Bond),
+        text_by_parity: ["[C@]".to_owned(), "[C@@]".to_owned()],
+    };
+    let mut tokens = vec![
+        PreparedAtomToken::Fixed("P".to_owned()),
+        tetrahedral(bonds[0], [2, 3, 4]),
+        tetrahedral(bonds[1], [5, 6, 7]),
+    ];
+    tokens.extend((3..9).map(|_| PreparedAtomToken::Fixed("F".to_owned())));
+    let surface = PreparedNonStereo::with_atom_tokens(
+        PreparedMolecule::new(graph.build()),
+        tokens,
+        vec![NonStereoBondToken::Elided; bonds.len()],
+    ).unwrap();
+    let state = NonStereoWriterState::<NonconformingRejectTetrahedralParitySolver>::initial(&surface)
+        .unwrap().unwrap_consistent();
+    let (_, parent) = only_root_atom(&state, atoms[0]);
+    assert!(matches!(parent.choices(),
+        Err(ChoiceFailure::Invariant(
+            WriterInvariantFailure::AllCandidatesSemanticallyRejected { candidate_count }
+        )) if candidate_count > 0));
 }
 
 #[test]
@@ -3986,16 +4018,18 @@ fn ring_and_child_atom_frontiers_preserve_ring_and_parity_choices() {
         let (surface, atoms, _) = entered_tetrahedral_fixture(token, false);
         let initial = WriterState::initial(&surface).unwrap().unwrap_consistent();
         let (_, parent) = only_root_atom(&initial, atoms[0]);
-        let atom_frontier = if token == NonStereoBondToken::Double {
+        let atom_frontiers = if token == NonStereoBondToken::Double {
             ring_witness_choices(&parent)
                 .into_iter()
-                .find(|choice| choice.text() == "=")
-                .unwrap()
-                .into_successor()
+                .filter(|choice| choice.text() == "=")
+                .map(Choice::into_successor)
+                .collect::<Vec<_>>()
         } else {
-            parent
+            vec![parent]
         };
-        let atom_choices = completed_atom_witnesses(&atom_frontier, atoms[1]);
+        let atom_choices = atom_frontiers.iter()
+            .flat_map(|state| completed_atom_witnesses(state, atoms[1]))
+            .collect::<Vec<_>>();
         assert_eq!(
             atom_choices.len(),
             2,
@@ -4189,8 +4223,7 @@ fn equal_parentheses_enter_distinct_children_and_restrict_parent_order() {
     assert!(branches.len() >= 2);
     for (child, bond) in [(atoms[1], bonds[0]), (atoms[2], bonds[1])] {
         let successor = branches.iter().find(|choice| {
-            choice.successor().pending
-                == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bond)))
+            matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(&surface, atoms[0], bond))
         }).unwrap().successor();
         assert_eq!(successor.active_atom(), Some(child));
         assert_eq!(successor.structural.observe_raw().traversal.visited_atoms, vec![atoms[0], child]);
@@ -4199,8 +4232,7 @@ fn equal_parentheses_enter_distinct_children_and_restrict_parent_order() {
         ));
     }
     let chosen = |bond| branches.iter().find(|choice| {
-        choice.successor().pending
-            == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bond)))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(&surface, atoms[0], bond))
     }).unwrap().successor();
     assert_ne!(
         chosen(bonds[0]).structural.semantic_domain(center.order_variable),
@@ -4923,8 +4955,7 @@ fn explicit_ring_opening_choices_refine_the_fixed_endpoint_plan() {
                 .bond_decision_domain(bonds[0]),
             emitted_plan
         );
-        assert!(matches!(
-            emitted.successor().pending,
+        assert!(matches!(&emitted.successor().pending,
             Some(PendingEmission::RingOpeningLabel { incident, .. })
                 if incident.bond() == bonds[0]
         ));
@@ -5280,7 +5311,7 @@ fn explicit_inline_bond_enters_child_before_atom_spelling() {
     assert_eq!(rooted.active_atom(), Some(atoms[0]));
     assert_eq!(pending.active_atom(), Some(atoms[1]));
     assert!(pending.structural.atom_is_visited(atoms[1]));
-    assert_eq!(pending.pending, Some(PendingEmission::InlineAtom(edge)));
+    assert!(matches!(&pending.pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident == edge));
     let (atom, accepted) = only_choice(&pending, "O");
     assert_eq!(atom, "O");
     assert!(accepted.is_accepted());
@@ -5319,7 +5350,7 @@ fn explicit_branch_commits_at_open_parenthesis() {
     let branch_choice = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
-            choice.successor.pending == Some(PendingEmission::BranchTraversalEmission(oxygen))
+            matches!(&choice.successor.pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == oxygen)
         })
         .unwrap();
     let open = branch_choice.text;
@@ -5624,8 +5655,7 @@ fn branch_closure_and_component_separator_have_distinct_tokens() {
     let branch_choice = ring_witness_choices(&rooted)
         .into_iter()
         .find(|choice| {
-            choice.successor().pending
-                == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+            matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
         })
         .unwrap();
     let open = branch_choice.text;
@@ -6980,12 +7010,9 @@ fn selectable_inline_elision_exposes_plain_atom_and_directional_tokens() {
             == CarrierMark::Plain.singleton_domain()
     }));
     for choice in directional {
-        assert_eq!(
-            choice.successor().pending,
-            Some(PendingEmission::InlineAtom(incident(
-                &surface, atoms[0], bonds[0]
-            )))
-        );
+        assert!(matches!(&choice.successor().pending,
+            Some(PendingEmission::InlineAtom(entry))
+                if entry.incident == incident(&surface, atoms[0], bonds[0])));
     }
 }
 
@@ -7001,10 +7028,9 @@ fn selectable_explicit_plain_and_directional_tokens_share_one_inline_frontier() 
         BTreeSet::from(["-", "/", "\\"])
     );
     assert!(choices.iter().all(|choice| {
-        choice.successor().pending
-            == Some(PendingEmission::InlineAtom(incident(
+        matches!(&choice.successor().pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident == incident(
                 &surface, atoms[4], bonds[3],
-            )))
+            ))
     }));
 }
 
@@ -7068,44 +7094,43 @@ fn selectable_directional_ring_walks_have_bounded_complete_suffixes() {
 }
 
 #[test]
-fn selectable_branch_parenthesis_defers_plain_or_directional_mark() {
+fn selectable_branch_parenthesis_commits_plain_or_directional_mark() {
     let (surface, atoms, bonds) =
         selectable_directional_fixture(NonStereoBondToken::Elided, NonStereoBondToken::Single);
     let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
-    let branch = ring_witness_choices(&rooted)
+    let branches = ring_witness_choices(&rooted)
         .into_iter()
-        .find(|choice| {
+        .filter(|choice| {
             choice.text() == "("
-                && choice.successor().pending
-                    == Some(PendingEmission::BranchTraversalEmission(incident(
+                && matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(
                         &surface, atoms[1], bonds[0],
-                    )))
+                    ))
         })
-        .unwrap()
-        .into_successor();
+        .map(Choice::into_successor)
+        .collect::<Vec<_>>();
     let site = match surface.directional_status(bonds[0]) {
         PreparedDirectionalBondStatus::CompiledSite(site) => site,
         _ => panic!("selectable carrier must compile"),
     };
-    assert_eq!(
-        branch.structural.semantic_domain(site.mark_variable),
-        CarrierMark::domain()
-    );
-
-    let choices = ring_witness_choices(&branch);
-    let directional = choices
-        .iter()
-        .filter(|choice| choice.text() == "/" || choice.text() == "\\")
-        .map(Choice::text)
-        .collect::<BTreeSet<_>>();
-    assert_eq!(directional, BTreeSet::from(["/", "\\"]));
-    let plain = completed_atom_witnesses(&branch, atoms[0]);
-    assert_eq!(plain.len(), 1);
-    assert!(plain[0].1.pending.is_none());
-    assert_eq!(
-        plain[0].1.structural.semantic_domain(site.mark_variable),
-        CarrierMark::Plain.singleton_domain()
-    );
+    assert_eq!(branches.len(), 3);
+    let mut marks = Domain::empty();
+    let mut directional = BTreeSet::new();
+    for branch in branches {
+        let mark = branch.structural.semantic_domain(site.mark_variable);
+        assert!(mark.is_singleton());
+        marks = marks.union(mark);
+        if mark == CarrierMark::Plain.singleton_domain() {
+            let plain = completed_atom_witnesses(&branch, atoms[0]);
+            assert_eq!(plain.len(), 1);
+            assert!(plain[0].1.pending.is_none());
+        } else {
+            let choices = ring_witness_choices(&branch);
+            assert_eq!(choices.len(), 1);
+            directional.insert(choices[0].text().to_owned());
+        }
+    }
+    assert_eq!(marks, CarrierMark::domain());
+    assert_eq!(directional, BTreeSet::from(["/".to_owned(), "\\".to_owned()]));
 }
 
 #[test]
@@ -7123,10 +7148,12 @@ fn selectable_directional_token_preserves_tetrahedral_child_parity_frontier() {
     for token in ["/", "\\"] {
         let pending = ring_witness_choices(&rooted)
             .into_iter()
-            .find(|choice| choice.text() == token)
-            .unwrap()
-            .into_successor();
-        let choices = completed_atom_witnesses(&pending, atoms[1]);
+            .filter(|choice| choice.text() == token)
+            .map(Choice::into_successor)
+            .collect::<Vec<_>>();
+        let choices = pending.iter()
+            .flat_map(|state| completed_atom_witnesses(state, atoms[1]))
+            .collect::<Vec<_>>();
         assert_eq!(
             choices
                 .iter()
@@ -7533,10 +7560,9 @@ fn inline_directional_carrier_emits_sign_before_the_child_atom() {
         BTreeSet::from(["/", "\\"])
     );
     assert!(choices.iter().all(|choice| {
-        choice.successor().pending
-            == Some(PendingEmission::InlineAtom(incident(
+        matches!(&choice.successor().pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident == incident(
                 &surface, atoms[0], bonds[0],
-            )))
+            ))
     }));
     let slash = choices
         .into_iter()
@@ -7596,12 +7622,8 @@ fn rdkit_anchor_restricts_an_incoming_mark_before_publishing_its_token() {
         slash.structural.semantic_domain(right.mark_variable),
         CarrierMark::BackslashAtFixedA.singleton_domain()
     );
-    assert_eq!(
-        slash.pending,
-        Some(PendingEmission::InlineAtom(incident(
-            &surface, atoms[0], bonds[0],
-        )))
-    );
+    assert!(matches!(&slash.pending, Some(PendingEmission::InlineAtom(entry))
+        if entry.incident == incident(&surface, atoms[0], bonds[0])));
 }
 
 #[test]
@@ -7621,7 +7643,8 @@ fn final_inline_directional_child_waits_for_atom_spelling_after_graph_completion
         .find(|choice| matches!(choice.text(), "/" | "\\"))
         .unwrap()
         .into_successor();
-    assert_eq!(final_sign.pending, Some(PendingEmission::InlineAtom(incident(&surface, atoms[2], bonds[2]))));
+    assert!(matches!(&final_sign.pending, Some(PendingEmission::InlineAtom(entry))
+        if entry.incident == incident(&surface, atoms[2], bonds[2])));
     assert_eq!(final_sign.active_atom(), Some(atoms[3]));
     assert!(final_sign.graph_is_complete());
     assert!(!final_sign.is_accepted());
@@ -7646,51 +7669,43 @@ fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
 }
 
 #[test]
-fn branch_directional_mark_is_selected_after_the_parenthesis() {
+fn branch_directional_mark_is_committed_at_the_parenthesis() {
     let (surface, atoms, bonds) = directional_chain_fixture();
     let (_, rooted) = only_root_atom(&initial(&surface), atoms[1]);
-    let branch = ring_witness_choices(&rooted)
+    let branches = ring_witness_choices(&rooted)
         .into_iter()
-        .find(|choice| {
+        .filter(|choice| {
             choice.text() == "("
-                && choice.successor().pending
-                    == Some(PendingEmission::BranchTraversalEmission(incident(
+                && matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(
                         &surface, atoms[1], bonds[0],
-                    )))
+                    ))
         })
-        .unwrap()
-        .into_successor();
+        .map(Choice::into_successor)
+        .collect::<Vec<_>>();
     let PreparedDirectionalBondStatus::CompiledSite(left) = surface.directional_status(bonds[0])
     else {
         panic!("left carrier must be compiled");
     };
-    assert_eq!(
-        branch.structural.semantic_domain(left.mark_variable),
-        CarrierMark::marked_domain(),
-        "the parenthesis commits traversal but not the directional mark"
-    );
-
-    let signs = ring_witness_choices(&branch);
-    assert_eq!(
-        signs.iter().map(Choice::text).collect::<BTreeSet<_>>(),
-        BTreeSet::from(["/", "\\"])
-    );
-    let slash = signs
-        .into_iter()
-        .find(|choice| choice.text() == "/")
-        .unwrap()
-        .into_successor();
-    assert_eq!(
-        slash.pending,
-        Some(PendingEmission::BranchAtom(incident(
-            &surface, atoms[1], bonds[0],
-        )))
-    );
-    assert_eq!(
-        slash.structural.semantic_domain(left.mark_variable),
-        CarrierMark::BackslashAtFixedA.singleton_domain(),
-        "emission from fixed endpoint B reverses the visible glyph"
-    );
+    assert_eq!(branches.len(), 2);
+    let mut signs = BTreeSet::new();
+    let mut mark_union = Domain::empty();
+    for branch in branches {
+        let mark = branch.structural.semantic_domain(left.mark_variable);
+        assert!(mark.is_singleton());
+        mark_union = mark_union.union(mark);
+        let choices = ring_witness_choices(&branch);
+        assert_eq!(choices.len(), 1, "the branch carries its selected bond text");
+        let sign = choices[0].text();
+        signs.insert(sign.to_owned());
+        assert!(matches!(&choices[0].successor().pending,
+            Some(PendingEmission::BranchAtom(entry))
+                if entry.incident == incident(&surface, atoms[1], bonds[0])));
+        if sign == "/" {
+            assert_eq!(mark, CarrierMark::BackslashAtFixedA.singleton_domain());
+        }
+    }
+    assert_eq!(mark_union, CarrierMark::marked_domain());
+    assert_eq!(signs, BTreeSet::from(["/".to_owned(), "\\".to_owned()]));
 }
 
 #[test]
@@ -7818,10 +7833,9 @@ fn directional_branch_commit_narrows_a_tetrahedral_parent_before_sign_selection(
         .into_iter()
         .filter(|choice| {
             choice.text() == "("
-                && choice.successor().pending
-                    == Some(PendingEmission::BranchTraversalEmission(incident(
+                && matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == incident(
                         &surface, atoms[0], bonds[0],
-                    )))
+                    ))
         })
         .collect::<Vec<_>>();
     assert_eq!(branch_choices.len(), 1);
@@ -7870,12 +7884,11 @@ fn directional_token_leading_to_tetrahedral_child_preserves_the_atom_parity_fron
             let next_offset = next_atom_spelling_offset(&state, successor, atom_offset, &token);
             if matches!(choice.text(), "/" | "\\")
                 && state.active_atom() == Some(atoms[0])
-                && successor.pending
-                    == Some(PendingEmission::InlineAtom(incident(
+                && matches!(&successor.pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident == incident(
                         &surface, atoms[0], bonds[0],
-                    )))
+                    ))
             {
-                assert_eq!(successor.active_atom(), Some(atoms[0]));
+                assert_eq!(successor.active_atom(), Some(atoms[2]));
                 assert!(successor.atom_spelling.is_none());
                 directional_children
                     .entry(next_prefix)
@@ -8730,10 +8743,10 @@ fn exhausted_ring_labels_reject_a_forced_new_ring_before_branch_entry() {
     ).expect("closing the held ethane ring frees its visible label").into_successor();
     let (_, restored) = only_choice(&released, ")");
     assert!(restored.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ), "releasing a label restores the triangle branch");
     let branch = restored.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ).unwrap().into_successor();
     let (_, child) = only_choice(&branch, "C");
     let ring = child.choices().unwrap().into_iter().find(|choice|
@@ -8745,7 +8758,7 @@ fn exhausted_ring_labels_reject_a_forced_new_ring_before_branch_entry() {
     let (_, last) = only_choice(&pending_last, "C");
     assert!(last.choices().unwrap().iter().any(|choice| choice.successor().is_accepted()));
     assert!(!triangle.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ), "a branch child that can only demand an unavailable ring label must not be offered");
 }
 
@@ -8775,9 +8788,9 @@ fn opening_the_last_ring_label_keeps_a_traversal_continuation() {
         .is_subset_of(partition.traversal_values()));
     assert!(opening.choices().unwrap().iter().any(|choice|
         choice.successor().active_atom() == Some(atoms[2])
-            || choice.successor().pending == Some(PendingEmission::InlineAtom(
+            || matches!(&choice.successor().pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident ==
                 incident(&surface, atoms[0], bonds[1])
-            ))
+            )
     ));
 }
 
@@ -8824,7 +8837,7 @@ fn public_ring_label_capacity_rejects_a_forced_101st_opening() {
             && !choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[0])
     ), "closing a held ethane ring frees one visible label");
     assert!(!triangle_root.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ), "a branch child that can only demand an unavailable ring label must not be offered");
 }
 
@@ -8846,9 +8859,9 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
         "ordinary-only cycle graphs prepare the event schedule in the test namespace");
     let (_, root) = only_root_atom(&state, atoms[0]);
     assert!(!root.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
             incident(&surface, atoms[0], bonds[0])
-        ))
+        )
     ), "diamond branch needs two concurrent ring labels before leaving its local ring phase");
 }
 
@@ -9211,8 +9224,8 @@ fn tetrahedral_diamond_first_child_respects_future_ring_schedule() {
                 independent_tetrahedral_order_is_even(&parent_reference, parent_value) == parity_even
                     && (0..24).any(|child_value| diamond_schedule_fits(&bonds, &parent_reference, &child_reference, parent_value, child_value, first)));
             let offered = root.choices().unwrap().iter().any(|choice|
-                choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-                    incident(&surface, atoms[0], first))));
+                matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+                    incident(&surface, atoms[0], first)));
             assert_eq!(offered, viable,
                 "root marker {text}, first bond {first:?}: branch must preserve one complete two-center schedule");
         }
@@ -9236,13 +9249,13 @@ fn unseeded_diamond_branch_seal_checks_future_ring_schedule() {
                 independent_tetrahedral_order_is_even(&parent_reference, parent_value) == parity_even
                     && (0..24).any(|child_value| diamond_schedule_fits(&bonds, &parent_reference, &child_reference, parent_value, child_value, first)));
             let offered = root.choices().unwrap().iter().any(|choice|
-                choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-                    incident(&surface, atoms[0], first))));
+                matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+                    incident(&surface, atoms[0], first)));
             assert_eq!(offered, viable, "unseeded root marker {text}, first bond {first:?}");
             if offered {
                 let branch = root.choices().unwrap().into_iter().find(|choice|
-                    choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-                        incident(&surface, atoms[0], first)))).unwrap();
+                    matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+                        incident(&surface, atoms[0], first))).unwrap();
                 assert!(branch.successor().structural.factor_is_active(factor));
                 assert_eq!(branch.successor().structural.fixed_bond_role(bonds[3]), Some(BondRole::Ring));
                 assert_eq!(branch.successor().structural.fixed_bond_role(bonds[4]), Some(BondRole::Ring));
@@ -9306,8 +9319,8 @@ fn ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule()
     let choices = root.choices().unwrap();
     for first in [bonds[0], bonds[2], bonds[3]] {
         let offered = choices.iter().any(|choice|
-            choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-                incident(&surface, atoms[0], first))));
+            matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+                incident(&surface, atoms[0], first)));
         assert_eq!(offered, viable_first.contains(&first),
             "first ordinary child {first:?} must preserve a complete one-label schedule");
     }
@@ -9377,8 +9390,8 @@ fn disconnected_spectator_cannot_rescue_subdivided_diamond_first_branch() {
     assert_eq!(viable_first, BTreeSet::from([bonds[2], bonds[3]]));
     let choices = root.choices().unwrap();
     let offered = |first| choices.iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-            incident(&surface, atoms[0], first))));
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+            incident(&surface, atoms[0], first)));
     assert!(offered(bonds[2]), "the C-first completion must remain available");
     assert!(offered(bonds[3]), "the D-first completion must remain available");
     assert!(!offered(bonds[0]), "isolated spectator cannot rescue A-X first");
@@ -9407,8 +9420,8 @@ fn unseeded_ordinary_root_keeps_order_facts_across_first_branch() {
     let factor = surface.event_schedule_factor.unwrap();
     assert!(root.structural.factor_is_active(factor));
     let first = root.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
-            incident(&surface, atoms[0], bonds[1])))).expect("A-C is a feasible first branch");
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
+            incident(&surface, atoms[0], bonds[1]))).expect("A-C is a feasible first branch");
     let successor = first.successor();
     assert!(successor.structural.factor_is_active(factor));
     assert_eq!(successor.structural.fixed_bond_role(bonds[3]), Some(BondRole::Ring));
@@ -9471,7 +9484,7 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
     let (_, diamond) = only_choice(&pending_diamond, "C");
     let branch_incident = incident(&surface, atoms[2], bonds[1]);
     assert!(!diamond.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ));
     let rescue = diamond.choices().unwrap().into_iter().find(|choice|
         choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
@@ -9482,10 +9495,10 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
     ).expect("closing held ethane ring frees its label").into_successor();
     let (_, restored) = only_choice(&released, ")");
     assert!(restored.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ));
     let branch = restored.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch_incident)
     ).unwrap().into_successor();
     let (_, child) = only_choice(&branch, "C");
     let first_open = child.choices().unwrap().into_iter().find(|choice|
@@ -9497,7 +9510,7 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
     let (_, parent) = only_choice(&second_open, ")");
     let c_incident = incident(&surface, atoms[2], bonds[2]);
     let c_branch = parent.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(c_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == c_incident)
     ).expect("A enters C").into_successor();
     let (_, c) = only_choice(&c_branch, "C");
     let c_closed = c.choices().unwrap().into_iter().find(|choice|
@@ -9506,7 +9519,7 @@ fn releasing_a_real_held_label_restores_diamond_branch() {
     let (_, parent) = only_choice(&c_closed, ")");
     let d_incident = incident(&surface, atoms[2], bonds[3]);
     let d_pending = parent.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::InlineAtom(d_incident))
+        matches!(&choice.successor().pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident == d_incident)
     ).expect("A enters D").into_successor();
     let (_, d) = only_choice(&d_pending, "C");
     let d_closed = d.choices().unwrap().into_iter().find(|choice|
@@ -9547,7 +9560,7 @@ fn public_ring_label_capacity_rejects_two_forced_openings_with_one_free_slot() {
     let (_, root) = only_choice(&pending_diamond, "C");
     let branch = incident(&surface, atoms[198], bonds[99]);
     assert!(!root.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch)
     ));
     let rescue = root.choices().unwrap().into_iter().find(|choice|
         choice.successor().pending == Some(PendingEmission::SegmentRootAtom(atoms[1]))
@@ -9558,6 +9571,6 @@ fn public_ring_label_capacity_rejects_two_forced_openings_with_one_free_slot() {
     ).expect("real closure frees one label").into_successor();
     let (_, restored) = only_choice(&released, ")");
     assert!(restored.choices().unwrap().iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(branch))
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident == branch)
     ));
 }

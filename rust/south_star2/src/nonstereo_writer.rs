@@ -449,10 +449,27 @@ enum AtomSpellingStart {
     Grammar { atom: AtomId, state: AtomSpellingState },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct AtomSpellingProgress {
     atom: AtomId,
     state: AtomSpellingState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ChildEntrySpelling {
+    incident: AdjacentBond,
+    bond_text: &'static str,
+    grammar: AtomSpellingState,
+}
+
+impl ChildEntrySpelling {
+    fn atom(&self) -> AtomId {
+        self.incident.atom()
+    }
+
+    fn bond(&self) -> BondId {
+        self.incident.bond()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1947,12 +1964,12 @@ impl RingLabels {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum PendingEmission {
     SegmentRootAtom(AtomId),
-    InlineAtom(AdjacentBond),
-    BranchTraversalEmission(AdjacentBond),
-    BranchAtom(AdjacentBond),
+    InlineAtom(ChildEntrySpelling),
+    BranchTraversalEmission(ChildEntrySpelling),
+    BranchAtom(ChildEntrySpelling),
     RingOpeningLabel {
         incident: AdjacentBond,
         label_slot: RingLabelSlot,
@@ -2323,24 +2340,24 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             .as_ref()
             .map(|frame| frame.atom);
         let active_endpoint = || active.expect("observed pending syntax requires an active atom");
-        let pending = self.pending.map(|pending| match pending {
-            PendingEmission::SegmentRootAtom(root) => ObservedPending::ComponentAtom { root },
-            PendingEmission::InlineAtom(incident) => ObservedPending::InlineAtom {
-                parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
-                child: incident.atom(),
-                bond: incident.bond(),
+        let pending = self.pending.as_ref().map(|pending| match pending {
+            PendingEmission::SegmentRootAtom(root) => ObservedPending::ComponentAtom { root: *root },
+            PendingEmission::InlineAtom(entry) => ObservedPending::InlineAtom {
+                parent: self.surface.molecule().graph().bond(entry.incident.bond()).unwrap().other(entry.incident.atom()).unwrap(),
+                child: entry.incident.atom(),
+                bond: entry.incident.bond(),
             },
-            PendingEmission::BranchTraversalEmission(incident) => {
+            PendingEmission::BranchTraversalEmission(entry) => {
                 ObservedPending::BranchTraversalEmission {
-                    parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
-                    child: incident.atom(),
-                    bond: incident.bond(),
+                    parent: self.surface.molecule().graph().bond(entry.incident.bond()).unwrap().other(entry.incident.atom()).unwrap(),
+                    child: entry.incident.atom(),
+                    bond: entry.incident.bond(),
                 }
             }
-            PendingEmission::BranchAtom(incident) => ObservedPending::BranchAtom {
-                parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
-                child: incident.atom(),
-                bond: incident.bond(),
+            PendingEmission::BranchAtom(entry) => ObservedPending::BranchAtom {
+                parent: self.surface.molecule().graph().bond(entry.incident.bond()).unwrap().other(entry.incident.atom()).unwrap(),
+                child: entry.incident.atom(),
+                bond: entry.incident.bond(),
             },
             PendingEmission::RingOpeningLabel {
                 incident,
@@ -2448,7 +2465,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         if self.is_accepted() {
             return Ok(Vec::new());
         }
-        if let Some(pending) = self.pending {
+        if let Some(pending) = self.pending.clone() {
             let attempts = self.pending_attempts(pending);
             let mut choices = Vec::new();
             let mut unavailable_label = None;
@@ -3948,6 +3965,112 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         Ok(())
     }
 
+    fn attempt_child_entry(
+        &self,
+        candidate: StructuralCandidate,
+        incident: AdjacentBond,
+    ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        let prepared = self.structural.prepare_child_entry(candidate);
+        let parent = self.structural.active_atom().expect("child entry requires an active parent");
+        let mut common = self.parent_prefix_restriction(incident);
+        let anchor = match self.directional_anchor_restrictions(
+            incident.atom(), parent, Some(incident.bond()),
+        ) {
+            Ok(anchor) => anchor,
+            Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
+        };
+        common.extend(anchor);
+        let emissions = match self.traversal_emission_specs(incident.bond(), parent) {
+            Ok(emissions) => emissions,
+            Err(incomplete) => {
+                let structural = match self.attempt_candidate_with_prepared_transition(
+                    candidate, Some(&prepared), None, &common, &[],
+                ) {
+                    Ok(Consistency::Consistent(structural)) => structural,
+                    Ok(Consistency::Contradiction) => return vec![CandidateAttempt::Rejected {
+                        reason: CandidateRejection::Contradiction,
+                    }],
+                    Err(failure) => return vec![CandidateAttempt::Failed(failure)],
+                };
+                if matches!(candidate, StructuralCandidate::InlineChild { .. }) {
+                    if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared) {
+                        return vec![CandidateAttempt::Invariant(failure)];
+                    }
+                }
+                return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(incomplete))];
+            }
+        };
+        let context = prepared.layout_context(self.surface.molecule().graph());
+        let spellings = self.atom_token_specs(incident.atom(), Some(incident.bond()), &context);
+        let mut attempts = Vec::new();
+        for emission in emissions {
+            for (start, atom_restrictions, activate) in &spellings {
+                let mut restrictions = common.clone();
+                restrictions.extend_from_slice(&emission.semantic_restrictions);
+                restrictions.extend_from_slice(atom_restrictions);
+                let structural = match self.attempt_candidate_with_prepared_transition(
+                    candidate, Some(&prepared), None, &restrictions, activate,
+                ) {
+                    Ok(Consistency::Consistent(structural)) => structural,
+                    Ok(Consistency::Contradiction) => {
+                        attempts.push(CandidateAttempt::Rejected {
+                            reason: CandidateRejection::Contradiction,
+                        });
+                        continue;
+                    }
+                    Err(failure) => {
+                        attempts.push(CandidateAttempt::Failed(failure));
+                        return attempts;
+                    }
+                };
+                if matches!(candidate, StructuralCandidate::InlineChild { .. }) {
+                    if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared) {
+                        attempts.push(CandidateAttempt::Invariant(failure));
+                        return attempts;
+                    }
+                }
+                let AtomSpellingStart::Grammar { atom, state: grammar } = start;
+                let spelling = AtomSpellingProgress { atom: *atom, state: grammar.clone() };
+                let branch = matches!(candidate, StructuralCandidate::BranchChild { .. });
+                let successor = Self {
+                    surface: self.surface.clone(),
+                    regime: self.regime,
+                    structural,
+                    labels: self.labels.clone(),
+                    pending: if branch || !emission.text.is_empty() {
+                        let entry = ChildEntrySpelling {
+                            incident, bond_text: emission.text, grammar: grammar.clone(),
+                        };
+                        Some(if branch {
+                            PendingEmission::BranchTraversalEmission(entry)
+                        } else {
+                            PendingEmission::InlineAtom(entry)
+                        })
+                    } else {
+                        None
+                    },
+                    atom_spelling: None,
+                };
+                let new_attempts = if branch {
+                    vec![self.finish_attempt("(".to_owned(), successor)]
+                } else if emission.text.is_empty() {
+                    successor.atom_spelling_attempts(spelling)
+                } else {
+                    vec![self.finish_attempt(emission.text.to_owned(), successor)]
+                };
+                for attempt in new_attempts {
+                    let stop = matches!(attempt, CandidateAttempt::Incomplete(_)
+                        | CandidateAttempt::Invariant(_) | CandidateAttempt::Failed(_));
+                    attempts.push(attempt);
+                    if stop {
+                        return attempts;
+                    }
+                }
+            }
+        }
+        attempts
+    }
+
     fn attempt_structural(
         &self,
         candidate: StructuralCandidate,
@@ -4064,211 +4187,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             StructuralCandidate::RingClose { incident, .. } => {
                 panic!("ring closures expand into endpoint-spelling candidates: {incident:?}")
             }
-            StructuralCandidate::BranchChild { incident } => {
-                let prepared = self.structural.prepare_child_entry(candidate);
-                let parent = self
-                    .structural
-                    .active_atom()
-                    .expect("branch emission requires an active atom");
-                let incomplete = self.traversal_emission_specs(incident.bond(), parent).err();
-                let mut restrictions = self.parent_prefix_restriction(incident);
-                let anchor = match self.directional_anchor_restrictions(
-                    incident.atom(),
-                    parent,
-                    Some(incident.bond()),
-                ) {
-                    Ok(anchor) => anchor,
-                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
-                };
-                restrictions.extend_from_slice(&anchor);
-                let structural = match self.attempt_candidate_with_prepared_transition(
-                    candidate,
-                    Some(&prepared),
-                    None,
-                    restrictions.as_slice(),
-                    &[],
-                ) {
-                    Ok(Consistency::Consistent(structural)) => structural,
-                    Ok(Consistency::Contradiction) => {
-                        return vec![CandidateAttempt::Rejected {
-                            reason: CandidateRejection::Contradiction,
-                        }];
-                    }
-                    Err(failure) => return vec![CandidateAttempt::Failed(failure)],
-                };
-                if let Some(incomplete) = incomplete {
-                    return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
-                        incomplete,
-                    ))];
-                }
-                let labels = self.labels.clone();
-                vec![self.finish_attempt(
-                    "(".to_owned(),
-                    Self {
-                        surface: self.surface.clone(),
-                        regime: self.regime,
-                        structural,
-                        labels,
-                        pending: Some(PendingEmission::BranchTraversalEmission(incident)),
-                    atom_spelling: None,
-},
-                )]
-            }
-            StructuralCandidate::InlineChild { incident } => {
-                let prepared = self.structural.prepare_child_entry(candidate);
-                let parent = self
-                    .structural
-                    .active_atom()
-                    .expect("inline emission requires an active atom");
-                let mut parent_restriction = self.parent_prefix_restriction(incident);
-                let anchor = match self.directional_anchor_restrictions(
-                    incident.atom(),
-                    parent,
-                    Some(incident.bond()),
-                ) {
-                    Ok(anchor) => anchor,
-                    Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
-                };
-                parent_restriction.extend_from_slice(&anchor);
-                let emissions = match self.traversal_emission_specs(incident.bond(), parent) {
-                    Ok(emissions) => emissions,
-                    Err(incomplete) => {
-                        let structural = match self.attempt_candidate_with_prepared_transition(
-                            candidate,
-                            Some(&prepared),
-                            None,
-                            parent_restriction.as_slice(),
-                            &[],
-                        ) {
-                            Ok(Consistency::Consistent(structural)) => structural,
-                            Ok(Consistency::Contradiction) => {
-                                return vec![CandidateAttempt::Rejected {
-                                    reason: CandidateRejection::Contradiction,
-                                }];
-                            }
-                            Err(failure) => return vec![CandidateAttempt::Failed(failure)],
-                        };
-                        if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared)
-                        {
-                            return vec![CandidateAttempt::Invariant(failure)];
-                        }
-                        return vec![CandidateAttempt::Incomplete(Self::incomplete_selection(
-                            incomplete,
-                        ))];
-                    }
-                };
-                let mut attempts = Vec::new();
-                for emission in emissions {
-                    if emission.text.is_empty() {
-                        let context = prepared.layout_context(self.surface.molecule().graph());
-                        for (spelling, mut child_restriction, activate) in
-                            self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
-                        {
-                            let mut restrictions = parent_restriction.clone();
-                            restrictions.extend_from_slice(&emission.semantic_restrictions);
-                            restrictions.append(&mut child_restriction);
-                            let structural = match self.attempt_candidate_with_prepared_transition(
-                                candidate,
-                                Some(&prepared),
-                                None,
-                                restrictions.as_slice(),
-                                activate.as_slice(),
-                            ) {
-                                Ok(Consistency::Consistent(structural)) => structural,
-                                Ok(Consistency::Contradiction) => {
-                                    attempts.push(CandidateAttempt::Rejected {
-                                        reason: CandidateRejection::Contradiction,
-                                    });
-                                    continue;
-                                }
-                                Err(failure) => {
-                                    attempts.push(CandidateAttempt::Failed(failure));
-                                    return attempts;
-                                }
-                            };
-                            if let Err(failure) =
-                                self.validate_inline_parent_completion(&structural, &prepared)
-                            {
-                                attempts.push(CandidateAttempt::Invariant(failure));
-                                return attempts;
-                            }
-                            let state = Self {
-                                    surface: self.surface.clone(),
-                                    regime: self.regime,
-                                    structural,
-                                    labels: self.labels.clone(),
-                                    pending: None,
-                                    atom_spelling: None,
-                                };
-                            let spellings = match spelling {
-                                AtomSpellingStart::Grammar { atom, state: spelling } => {
-                                    state.atom_spelling_attempts(AtomSpellingProgress { atom, state: spelling })
-                                }
-                            };
-                            for attempt in spellings {
-                                let stop = matches!(
-                                    attempt,
-                                    CandidateAttempt::Incomplete(_)
-                                        | CandidateAttempt::Invariant(_)
-                                        | CandidateAttempt::Failed(_)
-                                );
-                                attempts.push(attempt);
-                                if stop {
-                                    return attempts;
-                                }
-                            }
-                        }
-                    } else {
-                        let mut restrictions = parent_restriction.clone();
-                        restrictions.extend_from_slice(&emission.semantic_restrictions);
-                        let structural = match self.attempt_candidate_with_prepared_transition(
-                            candidate,
-                            Some(&prepared),
-                            None,
-                            restrictions.as_slice(),
-                            &[],
-                        ) {
-                            Ok(Consistency::Consistent(structural)) => structural,
-                            Ok(Consistency::Contradiction) => {
-                                attempts.push(CandidateAttempt::Rejected {
-                                    reason: CandidateRejection::Contradiction,
-                                });
-                                continue;
-                            }
-                            Err(failure) => {
-                                attempts.push(CandidateAttempt::Failed(failure));
-                                return attempts;
-                            }
-                        };
-                        if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared)
-                        {
-                            attempts.push(CandidateAttempt::Invariant(failure));
-                            return attempts;
-                        }
-                        let attempt = self.finish_attempt(
-                            emission.text.to_owned(),
-                            Self {
-                                surface: self.surface.clone(),
-                                regime: self.regime,
-                                structural,
-                                labels: self.labels.clone(),
-                                pending: Some(PendingEmission::InlineAtom(incident)),
-                            atom_spelling: None,
-},
-                        );
-                        let stop = matches!(
-                            attempt,
-                            CandidateAttempt::Incomplete(_)
-                                | CandidateAttempt::Invariant(_)
-                                | CandidateAttempt::Failed(_)
-                        );
-                        attempts.push(attempt);
-                        if stop {
-                            return attempts;
-                        }
-                    }
-                }
-                attempts
+            StructuralCandidate::BranchChild { incident }
+            | StructuralCandidate::InlineChild { incident } => {
+                self.attempt_child_entry(candidate, incident)
             }
             StructuralCandidate::CloseBranch => {
                 if let Err(failure) = self.validate_active_semantic_completion(&self.structural) {
@@ -4308,85 +4229,24 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         match pending {
             PendingEmission::SegmentRootAtom(atom) => {
-                self.pending_atom_attempts(atom, None, &[])
+                self.pending_root_atom_attempts(atom)
             }
-            PendingEmission::InlineAtom(incident) => self.pending_atom_attempts(
-                incident.atom(),
-                Some(incident.bond()),
-                &[],
-            ),
-            PendingEmission::BranchTraversalEmission(incident) => {
-                assert_eq!(self.structural.active_atom(), Some(incident.atom()));
-                let parent = self.surface.molecule().graph().bond(incident.bond()).unwrap()
-                    .other(incident.atom()).expect("incoming bond must have the active child");
-                let emissions = self
-                    .traversal_emission_specs(incident.bond(), parent)
-                    .expect("a published branch must have a complete traversal-emission frontier");
-                let mut attempts = Vec::new();
-                for emission in emissions {
-                    let restrictions = emission.semantic_restrictions;
-                    if emission.text.is_empty() {
-                        let pending = self.pending_atom_attempts(
-                            incident.atom(),
-                            Some(incident.bond()),
-                            &restrictions,
-                        );
-                        let stop = pending.iter().any(|attempt| {
-                            matches!(
-                                attempt,
-                                CandidateAttempt::Incomplete(_)
-                                    | CandidateAttempt::Invariant(_)
-                                    | CandidateAttempt::Failed(_)
-                            )
-                        });
-                        attempts.extend(pending);
-                        if stop {
-                            return attempts;
-                        }
-                    } else {
-                        let structural = match self.restrict_semantics(&restrictions, &[]) {
-                            Ok(Consistency::Consistent(structural)) => structural,
-                            Ok(Consistency::Contradiction) => {
-                                attempts.push(CandidateAttempt::Rejected {
-                                    reason: CandidateRejection::Contradiction,
-                                });
-                                continue;
-                            }
-                            Err(failure) => {
-                                attempts.push(CandidateAttempt::Failed(failure));
-                                return attempts;
-                            }
-                        };
-                        let attempt = self.finish_attempt(
-                            emission.text.to_owned(),
-                            Self {
-                                surface: self.surface.clone(),
-                                regime: self.regime,
-                                structural,
-                                labels: self.labels.clone(),
-                                pending: Some(PendingEmission::BranchAtom(incident)),
-                            atom_spelling: None,
-},
-                        );
-                        let stop = matches!(
-                            attempt,
-                            CandidateAttempt::Incomplete(_)
-                                | CandidateAttempt::Invariant(_)
-                                | CandidateAttempt::Failed(_)
-                        );
-                        attempts.push(attempt);
-                        if stop {
-                            return attempts;
-                        }
-                    }
+            PendingEmission::InlineAtom(entry) => {
+                self.committed_child_atom_attempts(entry)
+            }
+            PendingEmission::BranchTraversalEmission(entry) => {
+                assert_eq!(self.structural.active_atom(), Some(entry.incident.atom()));
+                if entry.bond_text.is_empty() {
+                    self.committed_child_atom_attempts(entry)
+                } else {
+                    let mut successor = self.clone();
+                    successor.pending = Some(PendingEmission::BranchAtom(entry.clone()));
+                    vec![self.finish_attempt(entry.bond_text.to_owned(), successor)]
                 }
-                attempts
             }
-            PendingEmission::BranchAtom(incident) => self.pending_atom_attempts(
-                incident.atom(),
-                Some(incident.bond()),
-                &[],
-            ),
+            PendingEmission::BranchAtom(entry) => {
+                self.committed_child_atom_attempts(entry)
+            }
             PendingEmission::RingOpeningLabel {
                 incident,
                 label_slot,
@@ -4450,12 +4310,20 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
     }
 
-    fn pending_atom_attempts(
+    fn committed_child_atom_attempts(
         &self,
-        atom: AtomId,
-        entry_bond: Option<BondId>,
-        semantic_restrictions: &[(VariableId, Domain)],
+        entry: ChildEntrySpelling,
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
+        assert_eq!(self.structural.active_atom(), Some(entry.incident.atom()));
+        let mut successor = self.clone();
+        successor.pending = None;
+        successor.atom_spelling_attempts(AtomSpellingProgress {
+            atom: entry.incident.atom(),
+            state: entry.grammar,
+        })
+    }
+
+    fn pending_root_atom_attempts(&self, atom: AtomId) -> Vec<CandidateAttempt<Self, S::Failure>> {
         #[cfg(test)]
         self.surface
             .work_counters
@@ -4464,10 +4332,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         assert_eq!(self.structural.active_atom(), Some(atom));
         let context = self.structural.active_local_layout_context();
         collect_attempts_fail_fast(
-            self.atom_token_specs(atom, entry_bond, &context)
+            self.atom_token_specs(atom, None, &context)
                 .into_iter()
-                .flat_map(|(spelling, mut restrictions, activate)| {
-                    restrictions.extend_from_slice(semantic_restrictions);
+                .flat_map(|(spelling, restrictions, activate)| {
                     let structural = match self.restrict_semantics(&restrictions, &activate) {
                         Ok(Consistency::Consistent(structural)) => structural,
                         Ok(Consistency::Contradiction) => {
@@ -4555,7 +4422,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         if self.atom_spelling.is_some() {
             return SuccessorAttempt::Accepted(self);
         }
-        if let Some(pending) = self.pending {
+        if let Some(pending) = self.pending.clone() {
             assert!(
                 self.structural.active_atom().is_some(),
                 "pending text requires an active structural path"

@@ -277,7 +277,7 @@ fn assert_guided_inline_trace(
         let candidates = state.choices().unwrap();
         let entered = candidates.into_iter().find(|choice| {
             choice.successor().active_atom() == Some(entry.atom)
-                && matches!(choice.successor().pending,
+                && matches!(&choice.successor().pending,
                     Some(PendingEmission::InlineAtom(incident))
                     if incident.bond() == entry.bond && incident.atom() == entry.atom)
         }).expect("induced inline child must be a labelled event");
@@ -290,12 +290,13 @@ fn assert_guided_inline_trace(
             ObservedBondProgress::Traversed { from: entry.from, to: entry.atom });
         assert_eq!(observed.active_frame.as_ref().unwrap().entry_bond, Some(entry.bond));
         assert!(observed.branch_returns.is_empty());
-        assert_eq!(state.pending, Some(PendingEmission::InlineAtom(
-            state.surface.molecule().graph().neighbors(entry.from).unwrap().iter().copied()
-                .find(|incident| incident.bond() == entry.bond).unwrap())));
-        let mut grammar = state.atom_token_specs(entry.atom, Some(entry.bond),
-            &state.structural.active_local_layout_context()).pop().unwrap().0;
-        let AtomSpellingStart::Grammar { state: ref mut grammar_state, .. } = grammar;
+        assert!(matches!(&state.pending, Some(PendingEmission::InlineAtom(committed))
+            if committed.incident == state.surface.molecule().graph().neighbors(entry.from).unwrap()
+                .iter().copied().find(|incident| incident.bond() == entry.bond).unwrap()));
+        let mut grammar_state = match &state.pending {
+            Some(PendingEmission::InlineAtom(committed)) => committed.grammar.clone(),
+            _ => panic!("guided inline trace requires its committed child grammar"),
+        };
         for character in row.atom_text.chars() {
             let grammar_choice = grammar_state.choices().into_iter()
                 .find(|step| step.text == character).unwrap();
@@ -306,10 +307,10 @@ fn assert_guided_inline_trace(
                         None => grammar_choice.successor.is_complete(),
                     }
             }).expect("row grammar character and state must be offered");
-            *grammar_state = grammar_choice.successor;
+            grammar_state = grammar_choice.successor;
             state = choice.into_successor();
             if let Some(progress) = &state.atom_spelling {
-                assert_eq!(progress.state, *grammar_state);
+                assert_eq!(progress.state, grammar_state);
             } else {
                 assert!(grammar_state.is_complete());
             }

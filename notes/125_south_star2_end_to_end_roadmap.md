@@ -2732,3 +2732,7 @@ The exact focused test passed with exit status 0 and
 `verified_no_live_members` under the bounded runner; its retained log is
 `/tmp/grimace-forest-common-final2.log`. This result does not close the
 general forest proof or authorize EventSchedule retirement.
+
+### Joint child-entry spelling admission
+
+Branch `(` and explicit inline bond text now come from a child-entry transaction that joins the selected traversal bond emission with the child's initial atom grammar, incoming layout, parent prefix, and directional anchor before publication. Each admitted alternative carries its selected bond text and atom grammar through pending syntax; equal visible tokens may therefore have distinct labelled successors. The implicit child route uses the same admission. Later grammar characters still pass the existing writer filter and semantic consistency check. This closes the local realization split only; EventSchedule remains the completion authority, and no work bound or global support theorem follows from this slice.

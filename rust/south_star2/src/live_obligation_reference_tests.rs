@@ -301,7 +301,7 @@ fn one_label_diamond_production_first_branches_match_reference_successors() {
     assert_eq!(rooted.active_atom(), Some(atoms[0]));
     let mut actual = BTreeSet::new();
     for branch in rooted.choices().unwrap() {
-        let Some(PendingEmission::BranchTraversalEmission(incident)) = branch.successor().pending else { continue; };
+        let Some(PendingEmission::BranchTraversalEmission(incident)) = &branch.successor().pending else { continue; };
         let child = incident.atom().index();
         let branch_text = branch.text().to_owned();
         let opened = branch.into_successor();
@@ -366,20 +366,20 @@ fn unseeded_x_branch_preserves_ring_role_and_rejects_traversal_role() {
         .unwrap().unwrap_consistent();
     let (_, a) = super::tests::only_root_atom(&state, atoms[0]);
     let branch = a.choices().unwrap().into_iter().find(|choice|
-        choice.successor().pending == Some(PendingEmission::BranchTraversalEmission(
+        matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
             surface.molecule().graph().neighbors(atoms[0]).unwrap().iter()
                 .find(|incident| incident.bond() == bonds[0]).copied().unwrap()
-        ))).expect("A-X remains a legal first branch").into_successor();
+        )).expect("A-X remains a legal first branch").into_successor();
     let x_states = super::tests::completed_atom_witnesses(&branch, atoms[1]);
     assert_eq!(x_states.len(), 1);
     let (_, x) = x_states.into_iter().next().unwrap();
     assert_eq!(x.active_atom(), Some(atoms[1]));
     let choices = x.choices().unwrap();
     assert!(!choices.iter().any(|choice|
-        choice.successor().pending == Some(PendingEmission::InlineAtom(
+        matches!(&choice.successor().pending, Some(PendingEmission::InlineAtom(entry)) if entry.incident ==
             surface.molecule().graph().neighbors(atoms[1]).unwrap().iter()
                 .find(|incident| incident.bond() == bonds[1]).copied().unwrap()
-        ))), "X-B traversal strands both later ring endpoints at B");
+        )), "X-B traversal strands both later ring endpoints at B");
     assert!(choices.iter().any(|choice|
         choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[1])),
         "X-B can open as a ring and later release its label");
@@ -396,7 +396,7 @@ fn unseeded_x_branch_preserves_ring_role_and_rejects_traversal_role() {
     }
     let mut actual = BTreeMap::<(String, State), Vec<Vec<crate::domain::Domain>>>::new();
     for choice in &choices {
-        let emitted = if matches!(choice.successor().pending,
+        let emitted = if matches!(&choice.successor().pending,
             Some(PendingEmission::RingOpeningLabel { .. })) {
             choice.successor().choices().unwrap().into_iter()
                 .map(|tail| (format!("{}{}", choice.text(), tail.text()), tail.into_successor()))
@@ -444,13 +444,13 @@ fn unseeded_x_branch_preserves_ring_role_and_rejects_traversal_role() {
     let returned = xb_open.choices().unwrap().into_iter()
         .find(|choice| choice.text() == ")").unwrap().into_successor();
     let branch_c = returned.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2]))
         .expect("A-C remains a branch after X-B opens").into_successor();
     let (_, c) = super::tests::completed_atom_witnesses(&branch_c, atoms[3])
         .into_iter().next().unwrap();
     let inline_b = c.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[4]))
         .expect("C enters B through traversal").into_successor();
     let (_, b) = super::tests::completed_atom_witnesses(&inline_b, atoms[2])
@@ -465,7 +465,7 @@ fn unseeded_x_branch_preserves_ring_role_and_rejects_traversal_role() {
     let returned = bd_open.choices().unwrap().into_iter()
         .find(|choice| choice.text() == ")").unwrap().into_successor();
     let inline_d = returned.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[3]))
         .expect("A enters D after the C-B branch").into_successor();
     let (_, d) = super::tests::completed_atom_witnesses(&inline_d, atoms[4])
@@ -502,7 +502,7 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
         choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
             .any(|bond| *bond == bonds[0])).expect("P opens P-H").into_successor();
     let pa = ph_open.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[1]))
         .expect("P enters A while P-H remains held").into_successor();
     let (_, a) = super::tests::completed_atom_witnesses(&pa, atoms[1])
@@ -511,11 +511,11 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
     assert!(a.labels.bonds_by_slot.values().any(|bond| *bond == bonds[0]));
     let first = a.choices().unwrap();
     assert!(!first.iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3])),
         "A-B first cannot finish the B-C-D triangle before P-H releases its slot");
     let ah = first.into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2]))
         .expect("A-H first retains a completion").into_successor();
     let (_, h) = super::tests::completed_atom_witnesses(&ah, atoms[2])
@@ -526,13 +526,13 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
     let returned = ph_closed.choices().unwrap().into_iter().find(|choice|
         choice.text() == ")").expect("return from A-H").into_successor();
     let ab = returned.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[3]))
         .expect("A enters B after H closes the held ring").into_successor();
     let (_, b) = super::tests::completed_atom_witnesses(&ab, atoms[3])
         .into_iter().next().unwrap();
     let bc = b.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[4]))
         .expect("B enters C as a branch").into_successor();
     let (_, c) = super::tests::completed_atom_witnesses(&bc, atoms[4])
@@ -544,7 +544,7 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
     let returned = cd_open.choices().unwrap().into_iter().find(|choice|
         choice.text() == ")").expect("return from B-C").into_successor();
     let bd = returned.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[5]))
         .expect("B enters D inline").into_successor();
     let (_, d) = super::tests::completed_atom_witnesses(&bd, atoms[5])
@@ -564,17 +564,17 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
         choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
             .any(|bond| *bond == bonds[0])).unwrap().into_successor();
     let local_pa = local_ph.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[1]))
         .unwrap().into_successor();
     let (_, local_a) = super::tests::completed_atom_witnesses(&local_pa, atoms[1])
         .into_iter().next().unwrap();
     let local_choices = local_a.choices().unwrap();
     assert!(!local_choices.iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3])));
     assert!(local_choices.iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2])));
 
     let mut builder = PreparedGraphBuilder::new();
@@ -595,13 +595,13 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
         choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
             .any(|bond| *bond == spare_bonds[0])).unwrap().into_successor();
     let spare_pa = spare_ph.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == spare_bonds[1]))
         .unwrap().into_successor();
     let (_, spare_a) = super::tests::completed_atom_witnesses(&spare_pa, spare_atoms[1])
         .into_iter().next().unwrap();
     assert!(spare_a.choices().unwrap().iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == spare_bonds[3])));
 }
 
@@ -630,7 +630,7 @@ fn held_target_in_same_residual_component_rejects_b_branch() {
         choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
             .any(|bond| *bond == bonds[1])).unwrap().into_successor();
     let pa = ph.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[0]))
         .unwrap().into_successor();
     let (_, a) = super::tests::completed_atom_witnesses(&pa, atoms[1])
@@ -640,10 +640,10 @@ fn held_target_in_same_residual_component_rejects_b_branch() {
             if incident.bond() == bonds[3])));
     let choices = a.choices().unwrap();
     assert!(!choices.iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3])));
     assert!(choices.iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2])));
 }
 
@@ -674,13 +674,13 @@ fn tree_inline_child_can_drain_to_saved_ring_target_owner() {
         choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
             .any(|bond| *bond == bonds[1])).unwrap().into_successor();
     let px = ph.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[0]))
         .unwrap().into_successor();
     let (_, x) = super::tests::completed_atom_witnesses(&px, atoms[1])
         .into_iter().next().unwrap();
     let xa = x.choices().unwrap().into_iter().find(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3]))
         .expect("the tree branch drains to saved X").into_successor();
     let (_, a) = super::tests::completed_atom_witnesses(&xa, atoms[3])
@@ -689,6 +689,6 @@ fn tree_inline_child_can_drain_to_saved_ring_target_owner() {
         matches!(candidate, StructuralCandidate::InlineChild { incident }
             if incident.bond() == bonds[4])));
     assert!(a.choices().unwrap().iter().any(|choice|
-        matches!(choice.successor().pending,
+        matches!(&choice.successor().pending,
             Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[4])));
 }

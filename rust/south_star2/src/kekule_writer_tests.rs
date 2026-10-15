@@ -281,7 +281,7 @@ fn maximal_aromatic_bridge_branch_publishes_dash_before_child_atom() {
             }
             for branch in opened.choices().unwrap() {
                 let pending = branch.into_successor();
-                if !matches!(pending.pending, Some(PendingEmission::BranchTraversalEmission(incident))
+                if !matches!(&pending.pending, Some(PendingEmission::BranchTraversalEmission(incident))
                     if incident.bond() == bridge) { continue; }
                 branch_count += 1;
                 let texts = pending.choices().unwrap().into_iter().map(|choice| choice.text().to_owned())

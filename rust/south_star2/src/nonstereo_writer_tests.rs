@@ -2662,15 +2662,10 @@ fn suspended_tetrahedral_parent_retains_prefix_and_filters_child_order() {
         "the parity-incompatible third bond must not be advertised"
     );
     assert_eq!(next[0].text(), "(");
-    assert_eq!(
-        next[0]
-            .successor()
-            .structural
-            .active_local_bond_order()
-            .emitted_bonds
-            .len(),
-        3
-    );
+    let entered = next[0].successor().structural.observe_raw().traversal;
+    assert_ne!(entered.active_frame.as_ref().unwrap().atom, atoms[0]);
+    assert_eq!(entered.branch_returns[0].atom, atoms[0]);
+    assert_eq!(entered.branch_returns[0].emitted_bonds.len(), 3);
 }
 
 #[test]
@@ -2708,14 +2703,11 @@ fn explicit_inline_bond_completes_tetrahedral_parent_before_child_atom() {
     }
 
     let (_, pending_atom) = only_choice(&parent, "=");
-    assert_eq!(pending_atom.active_atom(), Some(atoms[0]));
-    assert!(!pending_atom.structural.atom_is_visited(atoms[4]));
+    assert_eq!(pending_atom.active_atom(), Some(atoms[4]));
+    assert!(pending_atom.structural.atom_is_visited(atoms[4]));
     assert_eq!(
-        pending_atom
-            .structural
-            .active_local_bond_order()
-            .emitted_bonds,
-        bonds
+        parent.structural.active_local_bond_order().emitted_bonds,
+        bonds[..3]
     );
     assert_eq!(
         pending_atom
@@ -4182,6 +4174,42 @@ fn equal_text_choices_retain_distinct_successors() {
 }
 
 #[test]
+fn equal_parentheses_enter_distinct_children_and_restrict_parent_order() {
+    let (surface, atoms, bonds) = tetrahedral_star_fixture(4);
+    let center = surface.tetrahedral_center(atoms[0]).unwrap();
+    let rooted = completed_atom_witnesses(&initial(&surface), atoms[0])
+        .into_iter()
+        .find(|(text, _)| text.contains('@') && !text.contains("@@"))
+        .unwrap().1;
+    let before = rooted.observe_raw();
+    let branches = ring_witness_choices(&rooted)
+        .into_iter()
+        .filter(|choice| choice.text() == "(")
+        .collect::<Vec<_>>();
+    assert!(branches.len() >= 2);
+    for (child, bond) in [(atoms[1], bonds[0]), (atoms[2], bonds[1])] {
+        let successor = branches.iter().find(|choice| {
+            choice.successor().pending
+                == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bond)))
+        }).unwrap().successor();
+        assert_eq!(successor.active_atom(), Some(child));
+        assert_eq!(successor.structural.observe_raw().traversal.visited_atoms, vec![atoms[0], child]);
+        assert!(successor.structural.bond_decision_domain(bond).is_subset_of(
+            surface.molecule().bond_role_partition(bond).unwrap().traversal_values()
+        ));
+    }
+    let chosen = |bond| branches.iter().find(|choice| {
+        choice.successor().pending
+            == Some(PendingEmission::BranchTraversalEmission(incident(&surface, atoms[0], bond)))
+    }).unwrap().successor();
+    assert_ne!(
+        chosen(bonds[0]).structural.semantic_domain(center.order_variable),
+        chosen(bonds[1]).structural.semantic_domain(center.order_variable),
+    );
+    assert_eq!(rooted.observe_raw(), before);
+}
+
+#[test]
 fn accepted_state_returns_an_ordinary_empty_choice_result() {
     let (surface, atoms, _) = fixture(&["C"], &[]);
     let initial = initial(&surface);
@@ -5241,7 +5269,7 @@ fn directed_ring_closure_uses_the_emitting_fixed_endpoint_orientation() {
 }
 
 #[test]
-fn explicit_inline_bond_commits_before_child_entry() {
+fn explicit_inline_bond_enters_child_before_atom_spelling() {
     let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, NonStereoBondToken::Double)]);
     let initial = initial(&surface);
     let edge = incident(&surface, atoms[0], bonds[0]);
@@ -5250,7 +5278,8 @@ fn explicit_inline_bond_commits_before_child_entry() {
 
     assert_eq!(bond, "=");
     assert_eq!(rooted.active_atom(), Some(atoms[0]));
-    assert_eq!(pending.active_atom(), Some(atoms[0]));
+    assert_eq!(pending.active_atom(), Some(atoms[1]));
+    assert!(pending.structural.atom_is_visited(atoms[1]));
     assert_eq!(pending.pending, Some(PendingEmission::InlineAtom(edge)));
     let (atom, accepted) = only_choice(&pending, "O");
     assert_eq!(atom, "O");
@@ -5295,6 +5324,9 @@ fn explicit_branch_commits_at_open_parenthesis() {
         .unwrap();
     let open = branch_choice.text;
     let pending_branch = branch_choice.successor;
+    assert_eq!(rooted.active_atom(), Some(atoms[0]));
+    assert_eq!(pending_branch.active_atom(), Some(atoms[1]));
+    assert!(pending_branch.structural.atom_is_visited(atoms[1]));
     let (bond, pending_atom) = only_choice(&pending_branch, "=");
     let (atom, branch) = only_choice(&pending_atom, "O");
     let (close, restored) = only_choice(&branch, ")");
@@ -7573,6 +7605,31 @@ fn rdkit_anchor_restricts_an_incoming_mark_before_publishing_its_token() {
 }
 
 #[test]
+fn final_inline_directional_child_waits_for_atom_spelling_after_graph_completion() {
+    let (surface, atoms, bonds) = directional_chain_fixture();
+    let (_, root) = only_root_atom(&initial(&surface), atoms[0]);
+    let first_sign = ring_witness_choices(&root)
+        .into_iter()
+        .find(|choice| matches!(choice.text(), "/" | "\\"))
+        .unwrap()
+        .into_successor();
+    let (_, left) = only_choice(&first_sign, surface.atom_text(atoms[1]));
+    let (_, double) = only_choice(&left, "=");
+    let (_, right) = only_choice(&double, surface.atom_text(atoms[2]));
+    let final_sign = ring_witness_choices(&right)
+        .into_iter()
+        .find(|choice| matches!(choice.text(), "/" | "\\"))
+        .unwrap()
+        .into_successor();
+    assert_eq!(final_sign.pending, Some(PendingEmission::InlineAtom(incident(&surface, atoms[2], bonds[2]))));
+    assert_eq!(final_sign.active_atom(), Some(atoms[3]));
+    assert!(final_sign.graph_is_complete());
+    assert!(!final_sign.is_accepted());
+    let (_, complete) = only_choice(&final_sign, surface.atom_text(atoms[3]));
+    assert!(complete.is_accepted());
+}
+
+#[test]
 fn directional_glyph_replaces_explicit_single_and_aromatic_base_tokens() {
     for token in [NonStereoBondToken::Single, NonStereoBondToken::Aromatic] {
         let (surface, atoms, _) =
@@ -8908,6 +8965,7 @@ fn actual_root_event_activates_schedule_in_one_solver_transition() {
     assert_eq!(source.observe_raw(), before);
     let (resource_restrictions, resource_factors) = source.ring_resource_entry_constraint(
         StructuralCandidate::Root { atom: atoms[0] },
+        None,
     ).unwrap();
     let old_first = source.structural.attempt_candidate_with_semantic_transition(
         StructuralCandidate::Root { atom: atoms[0] }, None,

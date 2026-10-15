@@ -132,6 +132,26 @@ pub(crate) struct ObservedWriterState {
     pub(crate) active_factors: Vec<FactorId>,
 }
 
+#[derive(Clone)]
+pub(crate) struct PreparedChildEntry {
+    traversal: TraversalState,
+    parent_order: Option<LocalBondOrder>,
+}
+
+impl PreparedChildEntry {
+    pub(crate) fn parent_order(&self) -> Option<&LocalBondOrder> {
+        self.parent_order.as_ref()
+    }
+
+    pub(crate) fn layout_context(&self, graph: &crate::prepared::PreparedGraph) -> LocalLayoutContext {
+        self.traversal.active_local_layout_context(graph)
+    }
+
+    pub(crate) fn may_release_held_ring_before_opening(&self, graph: &crate::prepared::PreparedGraph, held_bonds: &[BondId]) -> bool {
+        self.traversal.may_release_held_ring_before_opening(graph, held_bonds)
+    }
+}
+
 impl<S: ConstraintSolver> WriterState<S> {
     #[cfg(test)]
     pub(crate) fn restricted_bond_domains_for_test(
@@ -519,7 +539,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         candidate: StructuralCandidate,
     ) -> Result<Consistency<Self>, S::Failure> {
-        self.attempt_candidate_with_refinement(candidate, None, &[], &[])
+        self.attempt_candidate_with_refinement(candidate, None, &[], &[], None)
     }
 
     pub(crate) fn attempt_candidate_with_bond_refinement(
@@ -538,7 +558,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             ),
             "only a ring endpoint candidate accepts a visible bond refinement"
         );
-        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[], &[])
+        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[], &[], None)
     }
 
     pub(crate) fn attempt_candidate_with_semantic_transition(
@@ -557,7 +577,37 @@ impl<S: ConstraintSolver> WriterState<S> {
             allowed_representations,
             restrictions,
             activate,
+            None,
         )
+    }
+
+    pub(crate) fn prepare_child_entry(&self, candidate: StructuralCandidate) -> PreparedChildEntry {
+        let mut traversal = self.traversal.clone();
+        let parent_order = match candidate {
+            StructuralCandidate::InlineChild { incident } => {
+                traversal.commit_active_child(incident);
+                let parent_order = traversal.active_local_bond_order();
+                traversal.enter_inline_child(self.prepared.graph(), incident);
+                Some(parent_order)
+            }
+            StructuralCandidate::BranchChild { incident } => {
+                traversal.commit_active_child(incident);
+                traversal.enter_branch_child(self.prepared.graph(), incident);
+                None
+            }
+            _ => panic!("prepared child entry requires a child candidate"),
+        };
+        PreparedChildEntry { traversal, parent_order }
+    }
+
+    pub(crate) fn attempt_prepared_child_with_semantic_transition(
+        &self,
+        candidate: StructuralCandidate,
+        prepared_entry: &PreparedChildEntry,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, S::Failure> {
+        self.attempt_candidate_with_refinement(candidate, None, restrictions, activate, Some(prepared_entry))
     }
 
     pub(crate) fn transitioned_semantics(
@@ -587,6 +637,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         allowed_representations: Option<Domain>,
         semantic_restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
+        prepared_entry: Option<&PreparedChildEntry>,
     ) -> Result<Consistency<Self>, S::Failure> {
         #[cfg(test)]
         crate::work_diagnostic::record(|counts| counts.candidate_attempts += 1);
@@ -664,6 +715,14 @@ impl<S: ConstraintSolver> WriterState<S> {
                 }
             }
         }
+        let child_entry = match candidate {
+            StructuralCandidate::BranchChild { .. } | StructuralCandidate::InlineChild { .. } =>
+                Some(prepared_entry.cloned().unwrap_or_else(|| self.prepare_child_entry(candidate))),
+            _ => {
+                assert!(prepared_entry.is_none(), "only a child candidate may carry a prepared entry");
+                None
+            }
+        };
         let attempted = self
             .restricted_constraints(
                 restriction_bond,
@@ -672,7 +731,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 activate,
             )?
             .map(|constraints| {
-                let mut traversal = self.traversal.clone();
+                let mut traversal = child_entry.as_ref().map_or_else(|| self.traversal.clone(), |entry| entry.traversal.clone());
                 match candidate {
                     StructuralCandidate::Root { atom } => {
                         traversal.begin_segment(self.prepared.graph(), atom);
@@ -700,10 +759,8 @@ impl<S: ConstraintSolver> WriterState<S> {
                         );
                         traversal.close_ring_endpoint(self.prepared.graph(), incident);
                     }
-                    StructuralCandidate::BranchChild { incident }
-                    | StructuralCandidate::InlineChild { incident } => {
-                        traversal.commit_active_child(incident);
-                    }
+                    StructuralCandidate::BranchChild { .. }
+                    | StructuralCandidate::InlineChild { .. } => {}
                     StructuralCandidate::CloseBranch => {
                         assert!(
                             traversal.complete_path(self.prepared.graph()).is_some(),
@@ -857,19 +914,6 @@ impl<S: ConstraintSolver> WriterState<S> {
         }
     }
 
-    pub(crate) fn enter_committed_inline_child(&self, incident: AdjacentBond) -> Self {
-        assert_eq!(
-            self.bond_role_domain(incident.bond()),
-            BondRole::Traversal.singleton_domain(),
-            "an inline child must already be committed to Traversal"
-        );
-        let mut successor = self.clone();
-        successor
-            .traversal
-            .enter_inline_child(self.prepared.graph(), incident);
-        successor
-    }
-
     pub(crate) fn active_local_bond_order(&self) -> LocalBondOrder {
         self.traversal.active_local_bond_order()
     }
@@ -895,78 +939,6 @@ impl<S: ConstraintSolver> WriterState<S> {
         let mut traversal = self.traversal.clone();
         traversal.begin_dot_segment(self.prepared.graph(), atom);
         traversal.active_local_layout_context(self.prepared.graph())
-    }
-
-    pub(crate) fn prospective_inline_child_layout_context(
-        &self,
-        incident: AdjacentBond,
-    ) -> LocalLayoutContext {
-        let traversal = self.prospective_child_traversal(StructuralCandidate::InlineChild { incident });
-        traversal.active_local_layout_context(self.prepared.graph())
-    }
-
-    pub(crate) fn prospective_branch_child_layout_context(
-        &self,
-        incident: AdjacentBond,
-    ) -> LocalLayoutContext {
-        let traversal = self.prospective_child_traversal(StructuralCandidate::BranchChild { incident });
-        traversal.active_local_layout_context(self.prepared.graph())
-    }
-
-    fn prospective_child_traversal(&self, candidate: StructuralCandidate) -> TraversalState {
-        let mut traversal = self.traversal.clone();
-        match candidate {
-            StructuralCandidate::InlineChild { incident } => {
-                traversal.commit_active_child(incident);
-                traversal.enter_inline_child(self.prepared.graph(), incident);
-            }
-            StructuralCandidate::BranchChild { incident } => {
-                traversal.commit_active_child(incident);
-                traversal.enter_branch_child(self.prepared.graph(), incident);
-            }
-            _ => panic!("child preview requires a child candidate"),
-        }
-        traversal
-    }
-
-    pub(crate) fn may_release_held_ring_after_child_entry(
-        &self,
-        candidate: StructuralCandidate,
-        held_bonds: &[BondId],
-    ) -> bool {
-        self.prospective_child_traversal(candidate)
-            .may_release_held_ring_before_opening(self.prepared.graph(), held_bonds)
-    }
-
-    pub(crate) fn prospective_committed_inline_child_layout_context(
-        &self,
-        incident: AdjacentBond,
-    ) -> LocalLayoutContext {
-        let mut traversal = self.traversal.clone();
-        traversal.enter_inline_child(self.prepared.graph(), incident);
-        traversal.active_local_layout_context(self.prepared.graph())
-    }
-
-    pub(crate) fn prospective_committed_branch_child_layout_context(
-        &self,
-        incident: AdjacentBond,
-    ) -> LocalLayoutContext {
-        let mut traversal = self.traversal.clone();
-        traversal.enter_branch_child(self.prepared.graph(), incident);
-        traversal.active_local_layout_context(self.prepared.graph())
-    }
-
-    pub(crate) fn enter_committed_branch_child(&self, incident: AdjacentBond) -> Self {
-        assert_eq!(
-            self.bond_role_domain(incident.bond()),
-            BondRole::Traversal.singleton_domain(),
-            "a branch child must already be committed to Traversal"
-        );
-        let mut successor = self.clone();
-        successor
-            .traversal
-            .enter_branch_child(self.prepared.graph(), incident);
-        successor
     }
 
     #[cfg(test)]
@@ -1361,8 +1333,7 @@ mod tests {
         check_named_ring_endpoints(graph, &raw).unwrap();
 
         let entry = incident(&prepared, atoms[2], child);
-        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
-            .enter_committed_inline_child(entry);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry });
         let ready_to_close = state.observe_raw().traversal;
         check_named_ring_endpoints(graph, &ready_to_close).unwrap();
 
@@ -1423,10 +1394,10 @@ mod tests {
 
         let committed = offered_step(&rooted, StructuralCandidate::BranchChild { incident: branch });
         assert_eq!(committed.bond_role_domain(bonds[5]), BondRole::Traversal.singleton_domain());
-        let entered = committed.enter_committed_branch_child(branch);
+        let entered = committed;
         let next = incident(&prepared, atoms[1], bonds[1]);
         let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
-        let entered = committed.enter_committed_inline_child(next);
+        let entered = committed;
         let opened = offered_step(&entered, StructuralCandidate::RingOpen {
             incident: incident(&prepared, atoms[2], bonds[2]),
         });
@@ -1448,13 +1419,13 @@ mod tests {
             first_endpoint: atoms[2],
         });
         let committed = offered_step(&restored, StructuralCandidate::InlineChild { incident: sibling });
-        let entered = committed.enter_committed_inline_child(sibling);
+        let entered = committed;
         let next = incident(&prepared, atoms[3], bonds[4]);
         let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
-        let entered = committed.enter_committed_inline_child(next);
+        let entered = committed;
         let next = incident(&prepared, atoms[4], bonds[3]);
         let committed = offered_step(&entered, StructuralCandidate::InlineChild { incident: next });
-        let entered = committed.enter_committed_inline_child(next);
+        let entered = committed;
         let closing = incident(&prepared, atoms[5], bonds[2]);
         let closed = offered_step(&entered, StructuralCandidate::RingClose {
             incident: closing,
@@ -1514,8 +1485,7 @@ mod tests {
             candidate, StructuralCandidate::RingOpen { .. } | StructuralCandidate::RingClose { .. }
         )));
         let entry = incident(&prepared, atoms[0], parent);
-        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
-            .enter_committed_inline_child(entry);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry });
         check_named_ring_endpoints(prepared.graph(), &state.observe_raw().traversal).unwrap();
         let closing = incident(&prepared, atoms[1], cross);
         let state = offered_step(&state, StructuralCandidate::RingClose {
@@ -1569,8 +1539,7 @@ mod tests {
         }
         assert!(state.traversal.can_enter_atom(prepared.graph(), atoms[1], Some(child)));
         let entry = incident(&prepared, atoms[2], child);
-        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry })
-            .enter_committed_inline_child(entry);
+        let state = offered_step(&state, StructuralCandidate::InlineChild { incident: entry });
         let closing = incident(&prepared, atoms[1], cross);
         let state = offered_step(&state, StructuralCandidate::RingClose {
             incident: closing,
@@ -1771,16 +1740,14 @@ mod tests {
                 incident: right_incident,
             })
             .unwrap()
-            .unwrap_consistent()
-            .enter_committed_inline_child(right_incident);
+            .unwrap_consistent();
         let between_incident = incident(&prepared, atoms[2], between);
         let walked = walked
             .attempt_candidate(StructuralCandidate::InlineChild {
                 incident: between_incident,
             })
             .unwrap()
-            .unwrap_consistent()
-            .enter_committed_inline_child(between_incident);
+            .unwrap_consistent();
         let closing_incident = incident(&prepared, atoms[1], left);
         walked
             .constraints
@@ -1877,7 +1844,7 @@ mod tests {
                 incident: right_incident,
             },
         );
-        let walked = committed.enter_committed_inline_child(right_incident);
+        let walked = committed;
         let between_incident = incident(&prepared, atoms[2], between);
         let committed = attempt(
             &walked,
@@ -1885,7 +1852,7 @@ mod tests {
                 incident: between_incident,
             },
         );
-        let walked = committed.enter_committed_inline_child(between_incident);
+        let walked = committed;
         let closing = incident(&prepared, atoms[1], left);
         assert_eq!(walked.structural_frontier().ring_closures(), &[closing]);
         let closing_candidate = StructuralCandidate::RingClose {
@@ -1960,7 +1927,7 @@ mod tests {
                 incident: children[0],
             },
         );
-        let branch = committed.enter_committed_branch_child(children[0]);
+        let branch = committed;
         assert_eq!(
             branch.structural_frontier().path_completion(),
             Some(PathCompletion::CloseBranch)
@@ -1977,7 +1944,7 @@ mod tests {
                 incident: children[1],
             },
         );
-        let branch = committed.enter_committed_branch_child(children[1]);
+        let branch = committed;
         let restored = attempt(&branch, StructuralCandidate::CloseBranch);
         assert_eq!(
             restored.structural_frontier().inline_children(),
@@ -2025,8 +1992,7 @@ mod tests {
             StructuralCandidate::BranchChild {
                 incident: branch_incident,
             },
-        )
-        .enter_committed_branch_child(branch_incident);
+        );
         assert_eq!(
             branch.structural_frontier().path_completion(),
             Some(PathCompletion::CloseBranch)
@@ -2045,11 +2011,9 @@ mod tests {
             StructuralCandidate::InlineChild {
                 incident: remaining,
             },
-        )
-        .enter_committed_inline_child(remaining);
+        );
         let next = incident(&prepared, atoms[2], between);
-        let walked = attempt(&walked, StructuralCandidate::InlineChild { incident: next })
-            .enter_committed_inline_child(next);
+        let walked = attempt(&walked, StructuralCandidate::InlineChild { incident: next });
         let closure = incident(&prepared, atoms[1], left);
         assert_eq!(walked.structural_frontier().ring_closures(), &[closure]);
         let closed = attempt(

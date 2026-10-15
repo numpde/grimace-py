@@ -26,7 +26,7 @@ use crate::traversal::LocalLayoutContext;
 use crate::walker::{ComponentOrder, WriterRegime};
 #[cfg(test)]
 use crate::writer_state::ObservedWriterState;
-use crate::writer_state::{StructuralCandidate, WriterState};
+use crate::writer_state::{PreparedChildEntry, StructuralCandidate, WriterState};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -1963,13 +1963,6 @@ enum PendingEmission {
     },
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum PendingAtomEntry {
-    AlreadyEntered,
-    Inline(AdjacentBond),
-    Branch(AdjacentBond),
-}
-
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ObservedPending {
@@ -2333,19 +2326,19 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         let pending = self.pending.map(|pending| match pending {
             PendingEmission::SegmentRootAtom(root) => ObservedPending::ComponentAtom { root },
             PendingEmission::InlineAtom(incident) => ObservedPending::InlineAtom {
-                parent: active_endpoint(),
+                parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
                 child: incident.atom(),
                 bond: incident.bond(),
             },
             PendingEmission::BranchTraversalEmission(incident) => {
                 ObservedPending::BranchTraversalEmission {
-                    parent: active_endpoint(),
+                    parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
                     child: incident.atom(),
                     bond: incident.bond(),
                 }
             }
             PendingEmission::BranchAtom(incident) => ObservedPending::BranchAtom {
-                parent: active_endpoint(),
+                parent: self.surface.molecule().graph().bond(incident.bond()).unwrap().other(incident.atom()).unwrap(),
                 child: incident.atom(),
                 bond: incident.bond(),
             },
@@ -3558,11 +3551,24 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<WriterState<S>>, S::Failure> {
-        if matches!(candidate, StructuralCandidate::BranchChild { .. } | StructuralCandidate::InlineChild { .. })
+        let prepared = matches!(candidate, StructuralCandidate::BranchChild { .. } | StructuralCandidate::InlineChild { .. })
+            .then(|| self.structural.prepare_child_entry(candidate));
+        self.attempt_candidate_with_prepared_transition(candidate, prepared.as_ref(), allowed_representations, restrictions, activate)
+    }
+
+    fn attempt_candidate_with_prepared_transition(
+        &self,
+        candidate: StructuralCandidate,
+        prepared: Option<&PreparedChildEntry>,
+        allowed_representations: Option<Domain>,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<WriterState<S>>, S::Failure> {
+        if prepared.is_some()
             && self.labels.has_open_labels()
             && self.labels.is_full_for(self.regime)
-            && !self.structural.may_release_held_ring_after_child_entry(
-                candidate,
+            && !prepared.unwrap().may_release_held_ring_before_opening(
+                self.surface.molecule().graph(),
                 &self.labels.bonds_by_slot.values().copied().collect::<Vec<_>>(),
             )
         {
@@ -3570,7 +3576,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
         let mut restrictions = restrictions.to_vec();
         let mut activate = activate.to_vec();
-        if let Some((budget, factors)) = self.ring_resource_entry_constraint(candidate) {
+        if let Some((budget, factors)) = self.ring_resource_entry_constraint(candidate, prepared) {
             restrictions.extend(budget);
             activate.extend(factors);
         }
@@ -3578,7 +3584,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             restrictions.extend(schedule_restrictions);
             activate.extend(schedule_factors);
         }
-        if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
+        if let Some(prepared) = prepared {
+            assert!(allowed_representations.is_none());
+            self.structural.attempt_prepared_child_with_semantic_transition(candidate, prepared, &restrictions, &activate)
+        } else if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate(candidate)
         } else if restrictions.is_empty() && activate.is_empty() {
             self.structural.attempt_candidate_with_bond_refinement(
@@ -3653,6 +3662,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     fn ring_resource_entry_constraint(
         &self,
         candidate: StructuralCandidate,
+        prepared: Option<&PreparedChildEntry>,
     ) -> Option<(Vec<(VariableId, Domain)>, Vec<FactorId>)> {
         let target = match candidate {
             StructuralCandidate::Root { atom }
@@ -3685,12 +3695,10 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             StructuralCandidate::DotSegmentRoot { atom } => {
                 self.structural.prospective_dot_segment_layout_context(atom)
             }
-            StructuralCandidate::BranchChild { incident } => {
-                self.structural.prospective_branch_child_layout_context(incident)
-            }
-            StructuralCandidate::InlineChild { incident } => {
-                self.structural.prospective_inline_child_layout_context(incident)
-            }
+            StructuralCandidate::BranchChild { .. }
+            | StructuralCandidate::InlineChild { .. } => prepared
+                .expect("child entry must be prepared before ring resource admission")
+                .layout_context(self.surface.molecule().graph()),
             StructuralCandidate::RingOpen { .. }
             | StructuralCandidate::RingClose { .. }
             | StructuralCandidate::CloseBranch
@@ -3743,6 +3751,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         structural: &WriterState<S>,
     ) -> Result<(), WriterInvariantFailure> {
         let local = structural.active_local_bond_order();
+        self.validate_tetrahedral_local_completion(structural, &local)
+    }
+
+    fn validate_tetrahedral_local_completion(
+        &self,
+        structural: &WriterState<S>,
+        local: &crate::traversal::LocalBondOrder,
+    ) -> Result<(), WriterInvariantFailure> {
         let Some(center) = self.surface.tetrahedral_center(local.atom) else {
             return Ok(());
         };
@@ -3805,6 +3821,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             }
         }
         let local = structural.active_local_bond_order();
+        self.validate_directional_local_completion(structural, &local)
+    }
+
+    fn validate_directional_local_completion(
+        &self,
+        structural: &WriterState<S>,
+        local: &crate::traversal::LocalBondOrder,
+    ) -> Result<(), WriterInvariantFailure> {
         for bond in local
             .entry_bond
             .into_iter()
@@ -3837,6 +3861,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             }
         }
         Ok(())
+    }
+
+    fn validate_inline_parent_completion(
+        &self,
+        structural: &WriterState<S>,
+        prepared: &PreparedChildEntry,
+    ) -> Result<(), WriterInvariantFailure> {
+        let parent = prepared.parent_order().expect("inline entry must capture its parent order");
+        self.validate_tetrahedral_local_completion(structural, parent)?;
+        self.validate_directional_local_completion(structural, parent)
     }
 
     fn validate_directional_component_completion(
@@ -4031,6 +4065,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 panic!("ring closures expand into endpoint-spelling candidates: {incident:?}")
             }
             StructuralCandidate::BranchChild { incident } => {
+                let prepared = self.structural.prepare_child_entry(candidate);
                 let parent = self
                     .structural
                     .active_atom()
@@ -4046,8 +4081,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     Err(failure) => return vec![CandidateAttempt::Incomplete(failure)],
                 };
                 restrictions.extend_from_slice(&anchor);
-                let structural = match self.attempt_candidate_with_transition(
+                let structural = match self.attempt_candidate_with_prepared_transition(
                     candidate,
+                    Some(&prepared),
                     None,
                     restrictions.as_slice(),
                     &[],
@@ -4079,6 +4115,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 )]
             }
             StructuralCandidate::InlineChild { incident } => {
+                let prepared = self.structural.prepare_child_entry(candidate);
                 let parent = self
                     .structural
                     .active_atom()
@@ -4096,8 +4133,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 let emissions = match self.traversal_emission_specs(incident.bond(), parent) {
                     Ok(emissions) => emissions,
                     Err(incomplete) => {
-                        let structural = match self.attempt_candidate_with_transition(
+                        let structural = match self.attempt_candidate_with_prepared_transition(
                             candidate,
+                            Some(&prepared),
                             None,
                             parent_restriction.as_slice(),
                             &[],
@@ -4110,7 +4148,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             }
                             Err(failure) => return vec![CandidateAttempt::Failed(failure)],
                         };
-                        if let Err(failure) = self.validate_active_semantic_completion(&structural)
+                        if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared)
                         {
                             return vec![CandidateAttempt::Invariant(failure)];
                         }
@@ -4122,17 +4160,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 let mut attempts = Vec::new();
                 for emission in emissions {
                     if emission.text.is_empty() {
-                        let context = self
-                            .structural
-                            .prospective_inline_child_layout_context(incident);
+                        let context = prepared.layout_context(self.surface.molecule().graph());
                         for (spelling, mut child_restriction, activate) in
                             self.atom_token_specs(incident.atom(), Some(incident.bond()), &context)
                         {
                             let mut restrictions = parent_restriction.clone();
                             restrictions.extend_from_slice(&emission.semantic_restrictions);
                             restrictions.append(&mut child_restriction);
-                            let structural = match self.attempt_candidate_with_transition(
+                            let structural = match self.attempt_candidate_with_prepared_transition(
                                 candidate,
+                                Some(&prepared),
                                 None,
                                 restrictions.as_slice(),
                                 activate.as_slice(),
@@ -4150,7 +4187,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 }
                             };
                             if let Err(failure) =
-                                self.validate_active_semantic_completion(&structural)
+                                self.validate_inline_parent_completion(&structural, &prepared)
                             {
                                 attempts.push(CandidateAttempt::Invariant(failure));
                                 return attempts;
@@ -4158,7 +4195,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             let state = Self {
                                     surface: self.surface.clone(),
                                     regime: self.regime,
-                                    structural: structural.enter_committed_inline_child(incident),
+                                    structural,
                                     labels: self.labels.clone(),
                                     pending: None,
                                     atom_spelling: None,
@@ -4184,8 +4221,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                     } else {
                         let mut restrictions = parent_restriction.clone();
                         restrictions.extend_from_slice(&emission.semantic_restrictions);
-                        let structural = match self.attempt_candidate_with_transition(
+                        let structural = match self.attempt_candidate_with_prepared_transition(
                             candidate,
+                            Some(&prepared),
                             None,
                             restrictions.as_slice(),
                             &[],
@@ -4202,7 +4240,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                                 return attempts;
                             }
                         };
-                        if let Err(failure) = self.validate_active_semantic_completion(&structural)
+                        if let Err(failure) = self.validate_inline_parent_completion(&structural, &prepared)
                         {
                             attempts.push(CandidateAttempt::Invariant(failure));
                             return attempts;
@@ -4270,19 +4308,17 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         match pending {
             PendingEmission::SegmentRootAtom(atom) => {
-                self.pending_atom_attempts(atom, None, PendingAtomEntry::AlreadyEntered, &[])
+                self.pending_atom_attempts(atom, None, &[])
             }
             PendingEmission::InlineAtom(incident) => self.pending_atom_attempts(
                 incident.atom(),
                 Some(incident.bond()),
-                PendingAtomEntry::Inline(incident),
                 &[],
             ),
             PendingEmission::BranchTraversalEmission(incident) => {
-                let parent = self
-                    .structural
-                    .active_atom()
-                    .expect("a committed branch child requires its active parent");
+                assert_eq!(self.structural.active_atom(), Some(incident.atom()));
+                let parent = self.surface.molecule().graph().bond(incident.bond()).unwrap()
+                    .other(incident.atom()).expect("incoming bond must have the active child");
                 let emissions = self
                     .traversal_emission_specs(incident.bond(), parent)
                     .expect("a published branch must have a complete traversal-emission frontier");
@@ -4293,7 +4329,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         let pending = self.pending_atom_attempts(
                             incident.atom(),
                             Some(incident.bond()),
-                            PendingAtomEntry::Branch(incident),
                             &restrictions,
                         );
                         let stop = pending.iter().any(|attempt| {
@@ -4350,7 +4385,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             PendingEmission::BranchAtom(incident) => self.pending_atom_attempts(
                 incident.atom(),
                 Some(incident.bond()),
-                PendingAtomEntry::Branch(incident),
                 &[],
             ),
             PendingEmission::RingOpeningLabel {
@@ -4420,7 +4454,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         &self,
         atom: AtomId,
         entry_bond: Option<BondId>,
-        entry: PendingAtomEntry,
         semantic_restrictions: &[(VariableId, Domain)],
     ) -> Vec<CandidateAttempt<Self, S::Failure>> {
         #[cfg(test)]
@@ -4428,15 +4461,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             .work_counters
             .pending_atom_frontier_evaluations
             .fetch_add(1, Ordering::Relaxed);
-        let context = match entry {
-            PendingAtomEntry::AlreadyEntered => self.structural.active_local_layout_context(),
-            PendingAtomEntry::Inline(incident) => self
-                .structural
-                .prospective_committed_inline_child_layout_context(incident),
-            PendingAtomEntry::Branch(incident) => self
-                .structural
-                .prospective_committed_branch_child_layout_context(incident),
-        };
+        assert_eq!(self.structural.active_atom(), Some(atom));
+        let context = self.structural.active_local_layout_context();
         collect_attempts_fail_fast(
             self.atom_token_specs(atom, entry_bond, &context)
                 .into_iter()
@@ -4450,15 +4476,6 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                             }];
                         }
                         Err(failure) => return vec![CandidateAttempt::Failed(failure)],
-                    };
-                    let structural = match entry {
-                        PendingAtomEntry::AlreadyEntered => structural,
-                        PendingAtomEntry::Inline(incident) => {
-                            structural.enter_committed_inline_child(incident)
-                        }
-                        PendingAtomEntry::Branch(incident) => {
-                            structural.enter_committed_branch_child(incident)
-                        }
                     };
                     let state = Self {
                             surface: self.surface.clone(),

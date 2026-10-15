@@ -849,8 +849,8 @@ impl<'a> OracleEngine<'a> {
         )?;
         let bond = self.surface.bonds[incidence.bond];
         let text = if explicit { "-" } else { bond.token.text_from(bond, parent) };
+        self.enter_child(&mut successor, incidence, false);
         if text.is_empty() {
-            self.enter_child(&mut successor, incidence, false);
             self.publish(self.surface.atom_texts[incidence.atom].clone(), successor)
         } else {
             successor.pending = Some(OraclePending::InlineAtom {
@@ -873,6 +873,7 @@ impl<'a> OracleEngine<'a> {
             incidence.bond,
             OraclePlanDomain::singleton(OracleBondPlan::Traversal),
         )?;
+        self.enter_child(&mut successor, incidence, true);
         successor.pending = Some(OraclePending::BranchTraversalEmission {
             parent,
             child: incidence.atom,
@@ -900,12 +901,11 @@ impl<'a> OracleEngine<'a> {
                 ))
             }
             OraclePending::InlineAtom {
-                parent,
+                parent: _,
                 child,
-                bond,
+                bond: _,
             } => {
-                assert_eq!(source.active_atom, Some(parent));
-                self.enter_child(&mut successor, OracleIncidence { atom: child, bond }, false);
+                assert_eq!(source.active_atom, Some(child));
                 Some((
                     OracleToken::Prepared(self.surface.atom_texts[child].clone()),
                     successor,
@@ -916,11 +916,10 @@ impl<'a> OracleEngine<'a> {
                 child,
                 bond,
             } => {
-                assert_eq!(source.active_atom, Some(parent));
+                assert_eq!(source.active_atom, Some(child));
                 let oracle_bond = self.surface.bonds[bond];
                 let text = if explicit { "-" } else { oracle_bond.token.text_from(oracle_bond, parent) };
                 if text.is_empty() {
-                    self.enter_child(&mut successor, OracleIncidence { atom: child, bond }, true);
                     Some((
                         OracleToken::Prepared(self.surface.atom_texts[child].clone()),
                         successor,
@@ -935,12 +934,11 @@ impl<'a> OracleEngine<'a> {
                 }
             }
             OraclePending::BranchAtom {
-                parent,
+                parent: _,
                 child,
-                bond,
+                bond: _,
             } => {
-                assert_eq!(source.active_atom, Some(parent));
-                self.enter_child(&mut successor, OracleIncidence { atom: child, bond }, true);
+                assert_eq!(source.active_atom, Some(child));
                 Some((
                     OracleToken::Prepared(self.surface.atom_texts[child].clone()),
                     successor,
@@ -1357,10 +1355,10 @@ impl OracleEngine<'_> {
                 bond,
             } => {
                 let topology = self.surface.bonds[bond];
-                if state.active_atom != Some(parent)
-                    || state.visited[child]
+                if state.active_atom != Some(child)
+                    || !state.visited[child]
                     || topology.other(parent) != child
-                    || state.bond_progress[bond] != OracleBondProgress::Unrepresented
+                    || state.bond_progress[bond] != (OracleBondProgress::Traversed { from: parent, to: child })
                     || state.plan_domains[bond]
                         != OraclePlanDomain::singleton(OracleBondPlan::Traversal)
                 {

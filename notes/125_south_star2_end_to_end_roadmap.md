@@ -2328,4 +2328,154 @@ bounded mechanism improvement, not the governing end-to-end work bound.
 Global EventSchedule fact preparation and repeated rank/end revision remain
 open.
 
+## 2026-10-15 proposed incremental productive-transition refactor
+
+This is the current design target, not a result established by the EventSchedule
+implementation or the bounded diagnostics above. Replace whole-future traversal
+planning in next-event admission while retaining exact, jointly solved chemical
+constraints. A finished MAXIMAL walker must offer all and only productive
+labelled `(text, successor)` transitions for standard-valid serializations of
+its admitted molecular facts. Productive means that a finite, profile-valid
+accepted continuation exists. Different successors with the same text remain
+different transitions. An accepted string must realize the intended labelled
+graph and stereo assignment. RDKit writer parity is a separate profile claim.
+
+The finished runtime has one authority for actual traversal and one shared
+semantic consistency authority. It has no all-atom future visit ranks, entry
+kinds, or branch-end bits; no complete hypothetical event schedule relation or
+search; and no global schedule fallback, graph-specific fast path, support
+subset, suffix or reachable-state enumeration, proof/count DAG, or retained
+continuation plan. The existing Event model may remain privately during the
+migration and later as test-only differential evidence. These are falsifiable
+end invariants: search the production construction and transition path for the
+displaced representations and compare each returned labelled transition with
+an independent finite productive grammar on bounded instances.
+
+| Owner | Facts it may retain | Consequence |
+| --- | --- | --- |
+| Prepared molecule and profile | Immutable labelled graph, chemistry, incidence adjacency, semantic relation definitions, and rules for permitted structural and lexical events | An ordinary graph or profile change enters through these definitions, without a second traversal inventory. |
+| Live walker | Actually visited atoms and written bonds; active atom and emission phase; ordered return stack; still-writable incidences; pending actual event; held ring obligations with bond, endpoints, label, emitted endpoint spelling and direction; occupied labels | An event changes one authoritative history. Residual graph regions and boundary attachment opportunities are derived from these facts and immutable adjacency, not copied history or an opaque cache. |
+| Shared semantic solver | Unresolved role, incidence order, tetrahedral parity, carrier direction, endpoint compatibility, and resource correlations over shared identities | Domains alone can lose correlations. The solver maintains the applicable joint relations and exactly resolves a genuinely affected semantic component when propagation is insufficient. |
+| Renderer and client | Already admitted text commitments and their successor states | Rendering cannot add an unverified spelling; text grouping cannot merge distinct successors. |
+
+The proposed compact state is a candidate representation, not a sufficient
+state theorem. In particular, a residual region's boundary opportunities may
+interact through role, order, direction, ring labels, and dot placement. A
+summary that records only each opportunity's marginal domain can accept a
+combination that no shared assignment realizes.
+
+### Atomic event and admission contract
+
+For each source-local legal event, fork the current compact state and form one
+delta containing every actual structural, lexical, and semantic commitment.
+Apply it atomically, derive the affected residual interfaces, and propagate and
+if needed exactly solve their shared relations. A contradiction discards this
+candidate; backend failure aborts the choice batch with an error. Before
+publication, the still-missing completion criterion must prove that this
+successor has a finite continuation. Only then render its committed text and
+publish `(text, successor)`. Structural capacity and chemistry cannot be
+certified independently when they share a role, order, endpoint, or carrier.
+There is no opaque runtime `can_finish` call that conceals future-walk search.
+
+| Actual event | Walker commitment | Joint relation update |
+| --- | --- | --- |
+| Enter root, bonded child, or dot segment | Visit the selected atom; record incoming incidence or actual dot; advance active atom and emission phase | Restrict incoming role, component/segment attachment, incidence order, and profile rules together. |
+| Open or close a ring | Write the chosen bond endpoint and label; create or discharge the held bond/endpoints/spelling/direction obligation; update occupancy | Join role, endpoint compatibility, label capacity, local order, tetra parity, and directional carrier relations on the same identities. |
+| Push or pop a branch | Push actual return frame or restore it; consume the visible parenthesis | Update still-writable incidences and boundary opportunities; test whether the return strands a required attachment. |
+| Commit bond, atom, or stereo spelling | Advance the pending emission phase with the exact token spelling | Restrict representation, parity, carrier, and profile lexical rules before its text is offered. |
+
+The event table describes ownership and effect ordering, not a completed
+algorithm. Terminal acceptance requires finished emission, discharged stack
+and ring obligations, all graph facts represented, and a jointly consistent
+semantic assignment under the active profile.
+
+### Missing extension lemma and first proof gate
+
+The central missing lemma is an effective criterion over the *live interface*
+and the residual relations derived from it: it must hold if and only if at
+least one finite sequence of permitted actual events reaches acceptance while
+realizing one common assignment satisfying all applicable semantic relations
+and the active profile. Its formulation must specify the boundary facts, joint
+correlations, event update rules, and why each admissible residual obligation
+can be discharged in a
+finite order. Prove both directions and show that every actual event updates
+the criterion without enumerating or retaining a future traversal. A
+constructive mathematical proof or test witness may contain a future order;
+ordinary runtime admission may not. Calling a state Markov, finding a
+satisfiable semantic domain, or showing equivalence to EventSchedule is not
+the extension lemma. If the only exact criterion is the entire future
+traversal under another name, this architecture has not been obtained.
+
+First build an independent **test-only** finite labelled event grammar with a
+fixed small structural vocabulary, lexical representatives, and label
+budgets. Bound atom visits, bond-endpoint occurrences, and branch events so
+the raw transition graph is finite; backward marking in that graph cannot
+become production admission. The grammar applies local syntax and incidence
+legality but includes structurally legal incomplete raw states that have no
+accepting completion. Mark productive raw states backward from accepted states
+in this finite
+reference, and compare *each* proposed labelled `(text, successor)` transition
+against productive successors, checking false acceptance and false rejection.
+Do not compare only counts or text sets. A raw legal dead end is a useful
+negative witness; an already illegal inline move is not a reachable
+production state. The production API's reachable successors must be
+productive, while the raw reference deliberately has a wider state space.
+
+Anchor the matrix in ordinary, tetrahedral, ring, and branch cases: the
+subdivided diamond with one label must reject the X-first move and retain its
+C-first and D-first siblings; its ordinary root has a tetrahedral B. An
+isolated spectator cannot rescue that move, while a separate case with a real
+held label can restore a branch after returning through `)`. Nested returns,
+label reuse, and interacting incidence orders must challenge independent
+local tests. Existing anchors in
+`rust/south_star2/src/nonstereo_writer_tests.rs` are
+`ordinary_root_subdivided_diamond_first_branch_respects_future_ring_schedule`,
+`disconnected_spectator_cannot_rescue_subdivided_diamond_first_branch`,
+`releasing_a_real_held_label_restores_diamond_branch`, and
+`tetrahedral_diamond_first_child_respects_future_ring_schedule`; the new
+reference must assess their labelled transitions independently. Keep the
+existing Event relation as another differential witness, not the sole authority.
+This finite harness cannot prove unrestricted MAXIMAL chemistry or lexical
+completeness. Later enumerations or probes use the bounded runner, with slow
+ones behind a named diagnostic runner; exhausted budgets are unqualified
+failures, never silently truncated evidence or grounds for automatic budget
+increase.
+
+### Authority replacement and cost gate
+
+First inventory the live facts and event deltas, then formulate and try to
+falsify a concrete compact completion criterion on the adversarial cases.
+Prove the general structural extension case and its composition with the
+shared semantic relations and profile lexical rules before treating the
+private implementation as a replacement. The first implementation slice can
+introduce the compact facts and independent finite harness; it is not the
+completed refactor and must not quietly reduce productivity. Switch production
+authority once exact labelled-transition comparison and the extension proof
+justify it, then delete the displaced runtime schedule machinery. If the
+lemma fails, stop this replacement and report the counterexample and required
+new fact; do not preserve dual authorities as an end design. Retain finite
+witnesses and regressions after the switch.
+
+The deletion map is `nonstereo_writer.rs` preparation near line 831 (future
+rank/kind/end allocation), its `event_schedule_transition` near line 3592 and
+the second semantic transition, `event_schedule.rs` complete-event relation,
+and `native.rs` schedule activation near line 731, `event_rank_branches` near
+line 832, plus search,
+search, and model plumbing. Remove ordinary order variables only where they
+exist solely to reconstruct hypothetical schedules; keep real semantic order
+constraints. Recheck current locations when editing.
+
+The work target remains per non-determinized state and includes preparation,
+fork/copy cost, every failed candidate, relation revision, and exact search,
+as well as returned transitions. A global scan of genuinely affected residual
+facts is not automatically disallowed, but its dependencies and cost must be
+stated. No output-proportional bound follows from this proposal. Optimizing
+EventSchedule leaves whole-future planning in authority; local consistency
+alone can publish dead ends; compact region summaries remain unproved until
+they preserve shared correlations. A graph algorithm over live obligations
+may be the right criterion, provided its state and cost are honest. As an
+evolution check, a profile that forbids dot and changes the ring-label
+namespace must flow through the same event model and joint relations, with
+early admission effects rather than an output filter.
+
 Qualification of the frozen Rust candidate from baseline `eb108c05d177af58d502a27432df3a5494706d7d` used `/tmp/grimace-lazy-children-eb108c05`; the build-time tracked-source comparison found only this note, `native.rs`, `work_diagnostic.rs`, and `nonstereo_writer_tests.rs` changed, with `native.rs` SHA-256 `96b291bbd6581388f6226f566ef5d8673cbfb1351afb1f82e39f6f843bc54be3`. The bounded offline release wheel at `/tmp/grimace-lazy-qualification-eb108c05/dist/grimace_py-0.1.10-cp312-cp312-manylinux_2_34_x86_64.whl` has SHA-256 `ae3c090b9e1d421fef384231ab48de60622d5c15040fb4f1c8071c9a53973505`; its sole `_core` extension has SHA-256 `10b8fd9e896e9600c8819ba01162d6ce7053a0a5a500d8d14f25cce388aba8f9`. Import checks resolved `grimace` and `_core` to the extracted wheel, and all 16 public-prefix tests passed there. The prior ignored checkout extension (SHA-256 `b816afcdd7404b54f88d592f68f5df4582619b141e2cfd6ab94c26a27a496661`) was backed up at `/tmp/grimace-lazy-qualification-eb108c05/checkout-core-before.so`; the refreshed checkout extension matches the wheel bytes and resolved from the checkout package. The focused South Star 2 semantic selection (`test_standard_smiles_semantics`, `test_compact_language`, `test_leading_dot_tetra_semantics`, `test_kekule_semantics`) passed 37 tests. Every bounded build/import/test run reported `verified_no_live_members`; logs are `/tmp/grimace-lazy-qualification-eb108c05/{wheel-build,wheel-import,wheel-public-prefix,checkout-import,checkout-south-star2-semantics}.log`. This qualifies the represented public and semantic paths, without establishing a speedup or the broader work bound.

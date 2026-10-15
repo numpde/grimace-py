@@ -2814,5 +2814,79 @@ the work. This bound is deliberately not called practical at the writer's
 100-label namespace, nor output proportional. Focused tests compare small
 raw interleaving peaks under external contexts, association up to domination,
 capacity shifts, and the valley counterexample `[2,0,2]` versus `[2]`.
-No tree-decomposition introduce/forget proof, LIFO branch or shared chemistry
-model, general Event replacement, or runtime admission claim follows.
+On its own, this one-word module proves no graph decomposition, LIFO branch or
+shared chemistry model, general Event replacement, or runtime admission claim.
+
+### Private boundary-cut relation prototype (2026-10-15)
+
+The test-only `boundary_cut_relation` module lifts bounded load words to a
+supplied decomposition of a loop-free physical multigraph. A piece is
+`P=(V,E,B)`: owned vertices, owned physical edge IDs, and boundary vertices
+`B` contained in `V`. The graph owns edge endpoints; distinct IDs preserve
+parallel edges. The piece owns isolated vertices explicitly because zero cut
+loads cannot count visits. A raw row comes from one permutation of `V`, grouped
+by its boundary order `pi`, with one cut-load word in each of the `|B|+1` gaps.
+Each gap includes its endpoint cuts. For capacity `K`, let `R_K(P)` be these
+raw rows whose peak is at most `K`. Write `x <= y` when monotone repetitions
+align their entries with every entry of `x` at most the corresponding entry of
+`y`; compare tuples componentwise only for the same `pi`.
+
+The stored antichain `S(P)` has this invariant: every `r` in `R_K(P)` has some
+`s` in `S(P)` with `s <= r`, and every `s` in `S(P)` has some `r` in `R_K(P)`
+with `r <= s`. Thus `S` and the raw relation mutually cover each other for
+existence under any nonnegative outside load, while `S` is not an exact trace
+inventory. Pruning a row only against another *whole tuple* with the same
+`pi` preserves both directions by transitivity. Independent gap unions would
+mix incompatible choices from different child permutations.
+
+The operator induction starts with the empty piece's single zero gap.
+Introducing an isolated boundary vertex inserts it at one cut of one child
+gap and duplicates that cut load as the two new gap endpoints. If `a <= b`
+has aligned repetitions, any split of `b` admits an aligned split of `a`;
+truncating the alignment on both sides gives two componentwise dominating
+subwords. The reverse coverage uses the same alignment with roles exchanged
+where the child rows mutually cover. Crucially, choose one *whole child row*
+before splitting; the other gaps stay correlated. Introducing an owned edge
+between boundary endpoints adds one to exactly the gaps strictly between their
+positions, preserving the preorder. Forgetting a boundary vertex concatenates
+the adjacent gaps, retaining both its possibly different pre-visit and
+post-visit cut values. The old boundary orders partition all physical orders,
+and word-concatenation monotonicity preserves coverage.
+
+At a join, the two pieces have identical `B`, disjoint owned edge IDs, and
+intersecting vertex sets exactly `B`; invalid ownership fails at the operator.
+Every parent permutation restricts to one permutation per child with the same
+`pi`, and every pair of such child permutations combines by independently
+interleaving their internal vertices inside each gap. Edge ownership makes
+the cut loads add. In *each* coverage direction, select one whole raw witness
+per child first, then apply merge monotonicity gap by gap and take the product
+inside that fixed row pair. The word merge covers grid interleavings up to
+domination: a diagonal step from repeated extensions can be refined into two
+single-piece steps, placing a decreasing step first so the intermediate sum
+does not exceed the larger endpoint sum; stationary repeats disappear in the
+typical quotient. This is the merge congruence cited above. Capacity filtering
+preserves the invariant: insertion and forgetting retain the same loads and
+peak, while edge introduction and joins add nonnegative load, so no later
+operator can rescue an over-capacity child trace; a dominating row cannot
+raise its peak.
+
+For the anchored variant, every bag contains `z`, the leaf has `B={z}` and
+two zero gaps, no vertex is inserted before `z`, and `z` is never forgotten.
+Joins require the common anchor. By induction there is no interior visit in
+the pre-`z` gap, and restriction of any `z`-first parent order is `z`-first in
+each piece. This is an operational invariant, not an inference from `[0]`.
+The theorem therefore covers `z`-first orders on a *valid supplied* nice
+decomposition whose root owns the intended physical graph; the root relation
+is empty exactly when no such order satisfies capacity `K`.
+
+Independent labelled permutations check mutual coverage after every operator
+on small unanchored and anchored pieces, including isolated vertices,
+parallel edges, true joins, two decompositions of one graph, and small `K`.
+Joining two three-leaf stars at their center rejects `K=2` for the six-leaf
+star, exposing false support from independent gap minima. These finite tests
+check the implementation; the operator induction above supplies the general
+claim. With boundary size `b` and `t(K)` typical words, a coarse row inventory
+is `b! * t(K)^(b+1)`, with separate metadata and row-product construction
+costs. There is no supplied-decomposition generator or live update driver,
+practical `K=100` bound, output-linear claim, or LIFO, stereo, role-choice,
+shared-chemistry, production admission, or EventSchedule replacement result.

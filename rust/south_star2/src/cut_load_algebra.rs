@@ -4,10 +4,10 @@
 //! mutual domination under repetitions, not equality of attainable schedules.
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct LoadWord(Vec<usize>);
+pub(super) struct LoadWord(pub(super) Vec<usize>);
 
 impl LoadWord {
-    fn new(loads: &[usize], capacity: usize) -> Option<Self> {
+    pub(super) fn new(loads: &[usize], capacity: usize) -> Option<Self> {
         assert!(!loads.is_empty(), "a load word needs an endpoint cut");
         let mut word = Self(Vec::new());
         for &load in loads {
@@ -42,7 +42,7 @@ impl LoadWord {
         }
     }
 
-    fn dominates(&self, other: &Self) -> bool {
+    pub(super) fn dominates(&self, other: &Self) -> bool {
         let (a, b) = (&self.0, &other.0);
         let mut reachable = vec![vec![false; b.len()]; a.len()];
         reachable[0][0] = a[0] <= b[0];
@@ -70,7 +70,7 @@ fn insert_antichain(profiles: &mut Vec<LoadWord>, candidate: LoadWord) {
     profiles.push(candidate);
 }
 
-fn merge(a: &LoadWord, b: &LoadWord, capacity: usize) -> Vec<LoadWord> {
+pub(super) fn merge(a: &LoadWord, b: &LoadWord, capacity: usize) -> Vec<LoadWord> {
     let rows = a.0.len();
     let cols = b.0.len();
     let mut cells = vec![vec![Vec::new(); cols]; rows];

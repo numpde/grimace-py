@@ -94,6 +94,15 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
         self.transitioned(&[], &[])
     }
 
+    /// Check a prepared physical-cut factor against this candidate's actual
+    /// writer state in the same joint assignment search. The factor stays
+    /// latent in the returned solver state.
+    fn admit_live_ring_cut(
+        &self,
+        factor: FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure>;
+
     /// Return the exact projected domain after exact transitions, or a
     /// conservative bound after a writer feasibility transition. Return
     /// `None` when the variable does not belong to the prepared model.

@@ -3122,6 +3122,23 @@ check preserves all surviving domain alternatives.
 production step is to replace its future-event authority with a joint owner
 relation that reads this actual successor and proves productive labelled
 continuations. This admission move does not yet establish that replacement.
+
+An isolated Rust candidate adds a necessary live ring-cut factor to native assignment search.
+Its scope joins physical bond roles, forest roots, and local incidence orders before decomposition. Native search checks
+each fixed physical scope before temporal Event branching, defers unresolved scope to its existing branch choice, and checks
+complete leaves; a passed check belongs only to that branch. When genuine held rings are below capacity, the cut is tautological
+and its scope is not scanned. For a fixed physical scope, a wholly unvisited rooted Tree child-subtree is
+rejected if held rings forced to close later in the same physical tree plus one
+wholly unwritten internal Ring edge exceed visible capacity. No order between
+different physical trees is assumed. The walker supplies actual visited/bond
+progress and allocator-owned labels for admission; a pending closed ring still
+owns its slot but is not a held obligation through a future subtree. No writer
+snapshot persists in solver successors. Focused seed, native joint-admission,
+writer-prefix (including both C child orders and two-slot controls), dot-order, and held-label rescue tests pass, without a general
+completeness or performance claim. `EventSchedule` retains full completion authority and future-event allocations.
+With `V` atoms, `E` bonds, `H` held rings, and `P` local-order pairs: `O(P + E log E + V(V+E+H))` time,
+`O(V+E+H)` transient storage per checked assignment; native search is not output-bounded.
+
 The existing pending-atom parity-branch and lexical-frontier work-count tests
 fail identically on clean `023a90a0`; they remain separate follow-up work and
 their expectations were not weakened here.

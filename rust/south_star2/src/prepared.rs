@@ -323,6 +323,14 @@ impl PreparedConstraintAssembly {
             .expect("prepared tetrahedral layout rows must define a valid latent factor")
     }
 
+    pub(crate) fn add_latent_live_ring_cut(
+        &mut self,
+        factor: crate::live_ring_cut::LiveRingCutFactor,
+    ) -> FactorId {
+        self.builder.add_latent_live_ring_cut(factor)
+            .expect("prepared live ring cut must define a valid latent factor")
+    }
+
     pub(crate) fn add_latent_event_schedule(
         &mut self,
         visits: Arc<[crate::event_schedule::EventVisit]>,

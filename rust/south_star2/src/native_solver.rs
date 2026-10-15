@@ -13,6 +13,7 @@ use crate::solver::{Consistency, ConstraintSolver};
 pub(crate) enum NativeSolverFailure {
     UnknownVariable(VariableId),
     UnknownFactor(FactorId),
+    LiveRingCutRequiresContext(FactorId),
 }
 
 impl fmt::Display for NativeSolverFailure {
@@ -24,6 +25,8 @@ impl fmt::Display for NativeSolverFailure {
             Self::UnknownFactor(factor) => {
                 write!(formatter, "unknown constraint factor {factor:?}")
             }
+            Self::LiveRingCutRequiresContext(factor) => write!(formatter,
+                "live ring-cut factor {factor:?} requires an actual writer admission context"),
         }
     }
 }
@@ -41,6 +44,9 @@ fn classify(
         }
         Err(NativeSolverError::UnknownFactor(factor)) => {
             Err(NativeSolverFailure::UnknownFactor(factor))
+        }
+        Err(NativeSolverError::LiveRingCutRequiresContext(factor)) => {
+            Err(NativeSolverFailure::LiveRingCutRequiresContext(factor))
         }
     }
 }
@@ -98,6 +104,12 @@ impl ConstraintSolver for NativeSolverState {
 
     fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
         classify(NativeSolverState::admit_exact(self))
+    }
+
+    fn admit_live_ring_cut(&self, factor: FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        classify(NativeSolverState::admit_live_ring_cut(self, factor, context))
     }
 
     fn domain_bound(&self, variable: VariableId) -> Option<Domain> {

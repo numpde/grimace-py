@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
 use crate::event_schedule::EventScheduleFactor;
+use crate::live_ring_cut::LiveRingCutContext;
 use crate::model::{
     BinaryRelationFactor, ConstraintModel, DirectionalRingPlacementFactor, EdgeRolePartition,
     FactorActivation, FactorDefinition, TetrahedralLayoutFactor, TraversalTopologyFactor,
@@ -29,8 +30,17 @@ pub(crate) struct NativeSolverState {
     activated_factors_by_variable: PagedStore<Arc<[FactorId]>>,
     /// Feasible writer transitions may retain unsupported future values.
     projected_exact: bool,
+    live_ring_context: Option<Arc<LiveRingCutContext>>,
     #[cfg(test)]
     mixed_search_branches: Arc<AtomicUsize>,
+    #[cfg(test)]
+    live_cut_checks: Arc<AtomicUsize>,
+    #[cfg(test)]
+    live_cut_scope_scans: Arc<AtomicUsize>,
+    #[cfg(test)]
+    live_cut_deferred_nodes: Arc<AtomicUsize>,
+    #[cfg(test)]
+    event_search_branches: Arc<AtomicUsize>,
     #[cfg(test)]
     binary_exact_runs: Arc<AtomicUsize>,
     #[cfg(test)]
@@ -61,6 +71,7 @@ pub(crate) enum NativeSolverError {
     UnknownVariable(VariableId),
     UnknownFactor(FactorId),
     Contradiction,
+    LiveRingCutRequiresContext(FactorId),
 }
 
 impl fmt::Display for NativeSolverError {
@@ -73,6 +84,8 @@ impl fmt::Display for NativeSolverError {
                 write!(formatter, "unknown constraint factor {factor:?}")
             }
             Self::Contradiction => formatter.write_str("constraint state is contradictory"),
+            Self::LiveRingCutRequiresContext(factor) => write!(formatter,
+                "live ring-cut factor {factor:?} requires an actual writer admission context"),
         }
     }
 }
@@ -98,8 +111,17 @@ impl NativeSolverState {
                 Arc::<[FactorId]>::from([]),
             ),
             projected_exact: true,
+            live_ring_context: None,
             #[cfg(test)]
             mixed_search_branches: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            live_cut_checks: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            live_cut_scope_scans: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            live_cut_deferred_nodes: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            event_search_branches: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
             binary_exact_runs: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
@@ -140,6 +162,22 @@ impl NativeSolverState {
     #[cfg(test)]
     pub(crate) fn mixed_search_branch_count(&self) -> usize {
         self.mixed_search_branches.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_live_cut_phase_counts(&self) {
+        self.live_cut_checks.store(0, Ordering::Relaxed);
+        self.live_cut_scope_scans.store(0, Ordering::Relaxed);
+        self.live_cut_deferred_nodes.store(0, Ordering::Relaxed);
+        self.event_search_branches.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn live_cut_phase_counts(&self) -> (usize, usize, usize, usize) {
+        (self.live_cut_checks.load(Ordering::Relaxed),
+            self.live_cut_scope_scans.load(Ordering::Relaxed),
+            self.live_cut_deferred_nodes.load(Ordering::Relaxed),
+            self.event_search_branches.load(Ordering::Relaxed))
     }
 
     #[cfg(test)]
@@ -257,6 +295,31 @@ impl NativeSolverState {
         Ok(self.clone())
     }
 
+    pub(crate) fn admit_live_ring_cut(
+        &self,
+        factor: FactorId,
+        context: &LiveRingCutContext,
+    ) -> Result<Self, NativeSolverError> {
+        if !matches!(self.model.factor(factor), Some(FactorDefinition::LiveRingCut(_))) {
+            return Err(NativeSolverError::UnknownFactor(factor));
+        }
+        assert_eq!(self.factor_is_active(factor), Some(false),
+            "live ring-cut factor must remain latent outside admission");
+        let mut checked = self.clone();
+        checked.live_ring_context = Some(Arc::new(context.clone()));
+        checked.active_factors[factor.index()] = true;
+        for &variable in checked.model.factor(factor).unwrap().variables() {
+            let mut factors = checked.activated_factors_by_variable[variable.index()].to_vec();
+            factors.push(factor);
+            checked.activated_factors_by_variable[variable.index()] = Arc::from(factors);
+        }
+        let variables = checked.exact_plan.components.iter()
+            .flat_map(|component| component.projected_variables().iter().copied())
+            .collect::<Vec<_>>();
+        checked.check_exact_components_feasible(variables)?;
+        Ok(self.clone())
+    }
+
     fn with_transition_mode(
         &self,
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
@@ -275,6 +338,9 @@ impl NativeSolverState {
         }
         let mut newly_activated = BTreeSet::new();
         for factor in activate {
+            if matches!(self.model.factor(factor), Some(FactorDefinition::LiveRingCut(_))) {
+                return Err(NativeSolverError::LiveRingCutRequiresContext(factor));
+            }
             let active = self
                 .factor_is_active(factor)
                 .ok_or(NativeSolverError::UnknownFactor(factor))?;
@@ -469,6 +535,11 @@ impl NativeSolverState {
                 FactorDefinition::EventSchedule(schedule) => {
                     revise_event_schedule(schedule, &mut self.domains)?
                 }
+                FactorDefinition::LiveRingCut(_) => {
+                    assert!(self.live_ring_context.is_some(),
+                        "live ring cut must have an actual writer context");
+                    Vec::new()
+                }
             };
 
             for variable in reductions {
@@ -618,6 +689,9 @@ impl NativeSolverState {
                 FactorDefinition::OrdinaryOrder(order) => {
                     core_variables.extend(order.variables().iter().copied());
                 }
+                FactorDefinition::LiveRingCut(cut) => {
+                    core_variables.extend(cut.variables().iter().copied());
+                }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
         }
@@ -638,7 +712,7 @@ impl NativeSolverState {
         #[cfg(test)]
         self.mixed_exact_runs.fetch_add(1, Ordering::Relaxed);
 
-        if !core_variables
+        if self.live_ring_context.is_none() && !core_variables
             .iter()
             .any(|variable| self.domains[variable.index()].len() > 1)
         {
@@ -681,6 +755,9 @@ impl NativeSolverState {
                 FactorDefinition::OrdinaryOrder(order) => {
                     projected_variables.extend(order.variables().iter().copied());
                 }
+                FactorDefinition::LiveRingCut(cut) => {
+                    projected_variables.extend(cut.variables().iter().copied());
+                }
                 _ => unreachable!("potential resource IDs must retain their factor kind"),
             }
         }
@@ -692,34 +769,51 @@ impl NativeSolverState {
             .map(|variable| self.domains[variable.index()])
             .collect::<Vec<_>>();
         let mut supported = vec![Domain::empty(); projected_variables.len()];
+        #[derive(Clone, Copy)]
+        enum CutWaiting {
+            Role(VariableId, EdgeRolePartition),
+            Singleton(VariableId),
+        }
         enum SearchEntry {
-            Candidate(NativeSolverState),
+            Candidate(NativeSolverState, bool, Option<CutWaiting>),
             Pending {
                 parent: Arc<NativeSolverState>,
                 restrictions: Vec<(VariableId, Domain)>,
+                cut_checked: bool,
+                cut_waiting: Option<CutWaiting>,
             },
         }
-        let mut stack = vec![SearchEntry::Candidate(self.clone())];
+        let mut stack = vec![SearchEntry::Candidate(self.clone(), false, None)];
         let mut found_solution = false;
         let event_schedule = active_resources.iter().find_map(|factor|
             match self.model.factor(*factor) {
                 Some(FactorDefinition::EventSchedule(schedule)) => Some(schedule),
                 _ => None,
             });
+        let cut = active_resources.iter().find_map(|factor|
+            match self.model.factor(*factor) {
+                Some(FactorDefinition::LiveRingCut(cut)) => Some(cut),
+                _ => None,
+            });
+        let cut_context = self.live_ring_context.as_deref();
+        assert_eq!(cut.is_some(), cut_context.is_some(),
+            "live ring-cut factor and writer context must be activated together");
+        let cut_required = cut_context.is_some_and(|context|
+            context.held.len() >= context.capacity);
 
         #[cfg(test)]
         let mut first_node = true;
         while let Some(entry) = stack.pop() {
-            let candidate = match entry {
-                SearchEntry::Candidate(candidate) => candidate,
-                SearchEntry::Pending { parent, restrictions } => {
+            let (candidate, mut cut_checked, mut cut_waiting) = match entry {
+                SearchEntry::Candidate(candidate, checked, waiting) => (candidate, checked, waiting),
+                SearchEntry::Pending { parent, restrictions, cut_checked, cut_waiting } => {
                     #[cfg(test)]
                     crate::work_diagnostic::record(|counts| counts.sibling_proposals += 1);
                     match parent.restricted_many_and_propagated(&restrictions) {
                         Ok(child) => {
                             #[cfg(test)]
                             crate::work_diagnostic::record(|counts| counts.sibling_propagated += 1);
-                            child
+                            (child, cut_checked, cut_waiting)
                         }
                         Err(NativeSolverError::Contradiction) => continue,
                         Err(failure) => return Err(failure),
@@ -750,9 +844,60 @@ impl NativeSolverState {
                         stack.push(SearchEntry::Pending {
                             parent: Arc::clone(&parent),
                             restrictions: vec![(edge.variable, role)],
+                            cut_checked,
+                            cut_waiting,
                         });
                     }
                     continue;
+                }
+            }
+            if !cut_checked {
+                if cut_required {
+                    let cut = cut.expect("required cut must have an active factor");
+                    if !cut_waiting.is_some_and(|waiting| match waiting {
+                        CutWaiting::Singleton(variable) =>
+                            candidate.domains[variable.index()].len() > 1,
+                        CutWaiting::Role(variable, partition) => {
+                            let domain = candidate.domains[variable.index()];
+                            !domain.intersect(partition.traversal_values()).is_empty()
+                                && !domain.intersect(partition.ring_values()).is_empty()
+                        }
+                    }) {
+                        #[cfg(test)]
+                        candidate.live_cut_scope_scans.fetch_add(1, Ordering::Relaxed);
+                        cut_waiting = cut.edges.iter().find(|edge| {
+                                let domain = candidate.domains[edge.decision_variable.index()];
+                                !domain.intersect(edge.role_partition.traversal_values()).is_empty()
+                                    && !domain.intersect(edge.role_partition.ring_values()).is_empty()
+                            })
+                            .map(|edge| CutWaiting::Role(edge.decision_variable, edge.role_partition))
+                            .or_else(|| cut.roots.iter().copied().find(|variable|
+                                candidate.domains[variable.index()].len() > 1)
+                                .map(CutWaiting::Singleton))
+                            .or_else(|| cut.centers.iter().map(|center| center.order_variable)
+                                .find(|variable| candidate.domains[variable.index()].len() > 1)
+                                .map(CutWaiting::Singleton))
+                            .or_else(|| cut.ordinary_centers.iter().flat_map(|center|
+                                center.pairs.iter().map(|pair| pair.variable))
+                                .find(|variable| candidate.domains[variable.index()].len() > 1)
+                                .map(CutWaiting::Singleton));
+                        if cut_waiting.is_none() {
+                            let context = cut_context.expect("required cut must have a writer context");
+                            #[cfg(test)]
+                            candidate.live_cut_checks.fetch_add(1, Ordering::Relaxed);
+                            if !cut.permits(context, |variable| {
+                                candidate.domains[variable.index()].iter().next()
+                                    .expect("fixed physical scope must have a value")
+                            }) { continue; }
+                            cut_checked = true;
+                        }
+                    }
+                    #[cfg(test)]
+                    if !cut_checked {
+                        candidate.live_cut_deferred_nodes.fetch_add(1, Ordering::Relaxed);
+                    }
+                } else {
+                    cut_checked = true;
                 }
             }
             // todo: These branches assign future writer events to find a compatible
@@ -760,6 +905,8 @@ impl NativeSolverState {
             // feasibility preserves all productive labelled transitions.
             if let Some(branches) = event_schedule.and_then(|schedule|
                 event_rank_branches(schedule, &candidate.domains)) {
+                #[cfg(test)]
+                candidate.event_search_branches.fetch_add(1, Ordering::Relaxed);
                 #[cfg(test)]
                 candidate.mixed_search_branches.fetch_add(1, Ordering::Relaxed);
                 #[cfg(test)]
@@ -775,6 +922,8 @@ impl NativeSolverState {
                     stack.push(SearchEntry::Pending {
                         parent: Arc::clone(&parent),
                         restrictions,
+                        cut_checked,
+                        cut_waiting,
                     });
                 }
                 continue;
@@ -785,6 +934,12 @@ impl NativeSolverState {
                 .filter(|variable| candidate.domains[variable.index()].len() > 1)
                 .min_by_key(|variable| candidate.domains[variable.index()].len())
             else {
+                if candidate.live_ring_context.is_some() {
+                    if event_schedule.is_some_and(|schedule| !schedule.permits(|variable| {
+                        candidate.domains[variable.index()].iter().next()
+                            .expect("complete joint assignment must have a value")
+                    })) { continue; }
+                }
                 found_solution = true;
                 if first_solution_only { break; }
                 for (accumulator, variable) in supported
@@ -815,6 +970,8 @@ impl NativeSolverState {
                 stack.push(SearchEntry::Pending {
                     parent: Arc::clone(&parent),
                     restrictions: vec![(variable, Domain::from_bits(1_u64 << value))],
+                    cut_checked,
+                    cut_waiting,
                 });
             }
         }
@@ -1015,6 +1172,17 @@ impl NativeExactPlan {
                         potential_core_variables.extend(order.variables().iter().copied());
                         order.variables()
                     }
+                    FactorDefinition::LiveRingCut(cut) => {
+                        visited_semantic[factor_id.index()] = true;
+                        potential_resource_factors.insert(factor_id);
+                        potential_core_variables.extend(cut.variables().iter().copied());
+                        for edge in cut.edges.iter() {
+                            structural_partitions.entry(edge.decision_variable)
+                                .and_modify(|existing| assert_eq!(*existing, edge.role_partition))
+                                .or_insert(edge.role_partition);
+                        }
+                        cut.variables()
+                    }
                     FactorDefinition::AromaticMatching(_) => {
                         unreachable!(
                             "exclusive aromatic matching factors are not exact-search seeds"
@@ -1039,7 +1207,8 @@ impl NativeExactPlan {
                             | FactorDefinition::RingCountAtMost(_)
                             | FactorDefinition::OrderedRingPhase(_)
                             | FactorDefinition::OrdinaryOrder(_)
-                            | FactorDefinition::EventSchedule(_) => {
+                            | FactorDefinition::EventSchedule(_)
+                            | FactorDefinition::LiveRingCut(_) => {
                                 if !visited_semantic[neighbour.index()] {
                                     pending.push_back(neighbour);
                                 }
@@ -1075,6 +1244,7 @@ impl NativeExactPlan {
                                                 | FactorDefinition::OrderedRingPhase(_)
                                                 | FactorDefinition::OrdinaryOrder(_)
                                                 | FactorDefinition::EventSchedule(_)
+                                                | FactorDefinition::LiveRingCut(_)
                                         ) && !visited_semantic[candidate.index()]
                                         {
                                             pending.push_back(candidate);

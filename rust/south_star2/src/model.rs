@@ -478,6 +478,7 @@ impl AromaticMatchingFactor {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FactorDefinition {
+    LiveRingCut(crate::live_ring_cut::LiveRingCutFactor),
     AromaticMatching(AromaticMatchingFactor),
     BinaryRelation(BinaryRelationFactor),
     DirectionalRingPlacement(DirectionalRingPlacementFactor),
@@ -492,6 +493,7 @@ pub enum FactorDefinition {
 impl FactorDefinition {
     pub fn variables(&self) -> &[VariableId] {
         match self {
+            Self::LiveRingCut(factor) => factor.variables(),
             Self::AromaticMatching(factor) => factor.variables(),
             Self::BinaryRelation(factor) => factor.variables(),
             Self::DirectionalRingPlacement(factor) => factor.variables(),
@@ -1144,6 +1146,18 @@ impl ConstraintModelBuilder {
         )
     }
 
+    pub(crate) fn add_latent_live_ring_cut(
+        &mut self,
+        factor: crate::live_ring_cut::LiveRingCutFactor,
+    ) -> Result<FactorId, ConstraintModelError> {
+        for &variable in factor.variables() {
+            if variable.index() >= self.variables.len() {
+                return Err(ConstraintModelError::UnknownVariable(variable));
+            }
+        }
+        self.push_factor(FactorDefinition::LiveRingCut(factor), FactorActivation::Latent)
+    }
+
     pub(crate) fn add_latent_event_schedule(
         &mut self,
         visits: Arc<[crate::event_schedule::EventVisit]>,
@@ -1346,6 +1360,9 @@ impl ConstraintModelBuilder {
                 FactorDefinition::OrderedRingPhase(_) => None,
                 FactorDefinition::OrdinaryOrder(_) => None,
                 FactorDefinition::EventSchedule(schedule) => schedule.edges.iter()
+                    .find(|edge| edge.decision_variable == variable)
+                    .map(|edge| edge.role_partition),
+                FactorDefinition::LiveRingCut(cut) => cut.edges.iter()
                     .find(|edge| edge.decision_variable == variable)
                     .map(|edge| edge.role_partition),
                 FactorDefinition::TraversalTopology(spanning) => spanning

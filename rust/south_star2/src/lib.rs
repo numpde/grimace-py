@@ -18,6 +18,7 @@ mod domain;
 #[cfg(test)]
 mod work_diagnostic;
 mod event_schedule;
+mod live_ring_cut;
 mod ids;
 mod model;
 mod native;

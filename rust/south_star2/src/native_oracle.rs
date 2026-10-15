@@ -126,6 +126,19 @@ impl ConstraintSolver for ExhaustiveSolverState {
         self.transitioned(&[], &[])
     }
 
+    fn admit_live_ring_cut(&self, factor: FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        assert!(matches!(self.model.factor(factor), Some(FactorDefinition::LiveRingCut(_))));
+        assert!(!self.active_factors[factor.index()]);
+        let mut active = self.active_factors.to_vec();
+        active[factor.index()] = true;
+        Ok(if exhaustive_projected_domains_with_cut(&self.model, &self.domains,
+            &active, Some(context)).is_some() {
+            Consistency::Consistent(self.clone())
+        } else { Consistency::Contradiction })
+    }
+
     fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }
@@ -139,6 +152,15 @@ fn exhaustive_projected_domains(
     model: &ConstraintModel,
     domains: &[Domain],
     active_factors: &[bool],
+) -> Option<Box<[Domain]>> {
+    exhaustive_projected_domains_with_cut(model, domains, active_factors, None)
+}
+
+fn exhaustive_projected_domains_with_cut(
+    model: &ConstraintModel,
+    domains: &[Domain],
+    active_factors: &[bool],
+    live_ring_context: Option<&crate::live_ring_cut::LiveRingCutContext>,
 ) -> Option<Box<[Domain]>> {
     assert_eq!(domains.len(), model.variable_count());
     assert_eq!(active_factors.len(), model.factor_count());
@@ -184,6 +206,7 @@ fn exhaustive_projected_domains(
         &mut assignment,
         &mut supported,
         &mut found,
+        live_ring_context,
     );
     found.then(|| supported.into_boxed_slice())
 }
@@ -197,9 +220,10 @@ fn enumerate_assignments(
     assignment: &mut [u8],
     supported: &mut [Domain],
     found: &mut bool,
+    live_ring_context: Option<&crate::live_ring_cut::LiveRingCutContext>,
 ) {
     if variable == domains.len() {
-        if !assignment_satisfies(model, active_factors, assignment) {
+        if !assignment_satisfies(model, active_factors, assignment, live_ring_context) {
             return;
         }
         *found = true;
@@ -229,6 +253,7 @@ fn enumerate_assignments(
             assignment,
             supported,
             found,
+            live_ring_context,
         );
         return;
     }
@@ -244,6 +269,7 @@ fn enumerate_assignments(
             assignment,
             supported,
             found,
+            live_ring_context,
         );
     }
 }
@@ -252,6 +278,7 @@ fn assignment_satisfies(
     model: &ConstraintModel,
     active_factors: &[bool],
     assignment: &[u8],
+    live_ring_context: Option<&crate::live_ring_cut::LiveRingCutContext>,
 ) -> bool {
     (0..model.factor_count()).all(|index| {
         if !active_factors[index] {
@@ -318,6 +345,10 @@ fn assignment_satisfies(
             }
             FactorDefinition::EventSchedule(schedule) => {
                 schedule.permits(|variable| assignment[variable.index()])
+            }
+            FactorDefinition::LiveRingCut(cut) => {
+                cut.permits(live_ring_context.expect("active cut needs actual writer context"),
+                    |variable| assignment[variable.index()])
             }
         }
     })

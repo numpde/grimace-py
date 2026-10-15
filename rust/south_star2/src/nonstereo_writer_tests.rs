@@ -58,6 +58,13 @@ impl ConstraintSolver for FailingRestrictionSolver {
         Err(InjectedSolverFailure::Restriction)
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -114,6 +121,13 @@ impl ConstraintSolver for FailSecondVariableSolver {
                 .map_err(InjectedSolverFailure::Native)?
                 .map(Self),
         )
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -190,6 +204,13 @@ impl ConstraintSolver for FailFirstRingAlternativeSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -248,6 +269,13 @@ impl ConstraintSolver for RejectFirstVariableSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -289,6 +317,13 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
     fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
         Ok(<NativeSolverState as ConstraintSolver>::admit_exact(&self.0)
             .map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -351,6 +386,13 @@ impl ConstraintSolver for NonconformingRejectTetrahedralParitySolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -407,6 +449,13 @@ impl ConstraintSolver for NonconformingRejectEvenTetrahedralParitySolver {
                 .map_err(InjectedSolverFailure::Native)?
                 .map(Self),
         )
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -479,6 +528,13 @@ impl ConstraintSolver for FailTetrahedralRestrictionSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -516,6 +572,13 @@ impl ConstraintSolver for NonconformingNonProjectingTetrahedralSolver {
             <NativeSolverState as ConstraintSolver>::transitioned(&self.0, &[], activate)?
                 .map(Self),
         )
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -623,6 +686,13 @@ impl ConstraintSolver for WriterPolicyContradictionSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -694,6 +764,13 @@ impl ConstraintSolver for PendingContradictionSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -739,6 +816,13 @@ impl ConstraintSolver for FailDirectionalMarkSolver {
                 .map_err(InjectedSolverFailure::Native)?
                 .map(Self),
         )
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -792,6 +876,13 @@ impl ConstraintSolver for RejectPlainDirectionalMarkSolver {
         )
     }
 
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context).map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -833,6 +924,13 @@ impl ConstraintSolver for CountDirectionalRestrictionsSolver {
             <NativeSolverState as ConstraintSolver>::transitioned(&self.0, restrictions, activate)?
                 .map(Self),
         )
+    }
+
+    fn admit_live_ring_cut(&self, factor: crate::ids::FactorId,
+        context: &crate::live_ring_cut::LiveRingCutContext,
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+            &self.0, factor, context)?.map(Self))
     }
 
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
@@ -8868,6 +8966,160 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
         )
     ), "diamond branch needs two concurrent ring labels before leaving its local ring phase");
     assert_eq!(root.observe_raw(), source, "rejected branches must leave the source untouched");
+}
+
+fn live_ring_cut_writer_prefix(maximum_label: usize) ->
+    (PreparedNonStereo, State, [AtomId; 8], [BondId; 9]) {
+    let mut graph = PreparedGraphBuilder::new();
+    let atoms: [AtomId; 8] = std::array::from_fn(|_| graph.add_atom().unwrap());
+    let bonds = [(0, 1), (1, 2), (1, 3), (3, 4), (3, 5),
+        (5, 6), (5, 7), (0, 4), (6, 7)]
+        .map(|(a, b)| graph.add_bond(atoms[a], atoms[b]).unwrap());
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(graph.build()),
+        (0..8).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, maximum_label,
+    ).unwrap();
+    assert!(surface.live_ring_cut_factor.is_some());
+    let mut state = initial(&surface);
+    let fixed_roles = bonds.iter().copied().enumerate().map(|(index, bond)| {
+        (surface.molecule().bond_decision_variable(bond).unwrap(),
+            if index < 7 { BondRole::Traversal.singleton_domain() }
+            else { BondRole::Ring.singleton_domain() })
+    }).collect::<Vec<_>>();
+    state.structural = state.structural.transitioned_semantics(&fixed_roles, &[])
+        .unwrap().unwrap_consistent();
+    let (_, p) = only_root_atom(&state, atoms[0]);
+    let opened = p.choices().unwrap().into_iter().find(|choice|
+        choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[7]))
+        .expect("P opens P-H").into_successor();
+    let child = |state: State, from: usize, bond: BondId| {
+        let pending = state.choices().unwrap().into_iter().find(|choice| {
+            matches!(&choice.successor().pending,
+                Some(PendingEmission::InlineAtom(entry) | PendingEmission::BranchTraversalEmission(entry))
+                    if entry.incident == incident(&surface, atoms[from], bond))
+        }).expect("fixed traversal child is offered").into_successor();
+        only_choice(&pending, "C").1
+    };
+    let a = child(opened, 0, bonds[0]);
+    let x = child(a, 1, bonds[1]);
+    assert_eq!(x.active_atom(), Some(atoms[2]));
+    assert_eq!(x.labels.bonds_by_slot.len(), 1);
+    assert!(x.structural.factor_is_active(surface.event_schedule_factor.unwrap()));
+    (surface, x, atoms, bonds)
+}
+
+#[test]
+fn live_ring_cut_writer_prefix_keeps_h_first_while_event_rejects_c_first() {
+    let (surface, x, atoms, bonds) = live_ring_cut_writer_prefix(0);
+    let b_order = surface.ordinary_order_pairs[atoms[3].index()].iter().find(|pair|
+        [pair.first, pair.second] == [bonds[3], bonds[4]])
+        .expect("B has H/C local order");
+    let c_first = Domain::singleton(u8::from(b_order.first == bonds[3])).unwrap();
+    let h_first = Domain::singleton(u8::from(b_order.first == bonds[4])).unwrap();
+    let c = x.structural.restricted_semantic_domains_for_test(&[(b_order.variable, c_first)])
+        .unwrap();
+    let c_rejected = match c {
+        Consistency::Contradiction => true, // EventSchedule can reject during restriction.
+        Consistency::Consistent(c) => {
+            let mut c_state = x.clone();
+            c_state.structural = c;
+            matches!(c_state.admit_exact(),
+                SuccessorAttempt::Rejected(CandidateRejection::Contradiction))
+        }
+    };
+    assert!(c_rejected, "EventSchedule must reject C-before-H before publication");
+    let h = x.structural.restricted_semantic_domains_for_test(&[(b_order.variable, h_first)])
+        .unwrap().unwrap_consistent();
+    let mut h_state = x.clone();
+    h_state.structural = h;
+    assert!(matches!(h_state.admit_exact(), SuccessorAttempt::Accepted(_)));
+
+    let unresolved = x.structural.propagated_semantic_domains_for_test(&[
+        (b_order.variable, h_first)]).unwrap().unwrap_consistent();
+    let probe = unresolved.solver_for_test().clone();
+    probe.reset_live_cut_phase_counts();
+    assert!(matches!(unresolved.admit_live_ring_cut(surface.live_ring_cut_factor.unwrap(),
+        &[bonds[7]], 1).unwrap(), Consistency::Consistent(_)));
+    let (_, _, deferred, temporal) = probe.live_cut_phase_counts();
+    assert!(deferred > 0 && temporal > 0,
+        "unresolved physical scope follows ordinary Event branches without cut-driven assignment");
+
+    let c_order = surface.ordinary_order_pairs[atoms[5].index()].iter().find(|pair|
+        [bonds[5], bonds[6]].contains(&pair.first)
+            && [bonds[5], bonds[6]].contains(&pair.second)).unwrap();
+    let mut fixed_scope = atoms.iter().copied().enumerate().map(|(index, atom)|
+        (surface.molecule().root_variable(atom).unwrap(),
+            Domain::singleton(u8::from(index == 0)).unwrap())).collect::<Vec<_>>();
+    fixed_scope.extend(surface.ordinary_order_pairs.iter().flat_map(|pairs| pairs.iter())
+        .filter(|pair| pair.variable != b_order.variable && pair.variable != c_order.variable)
+        .map(|pair| (pair.variable, Domain::singleton(u8::from(
+            ([bonds[0], bonds[7]].contains(&pair.first)
+                && [bonds[0], bonds[7]].contains(&pair.second)
+                && pair.first == bonds[0])
+                || ([bonds[3], bonds[7]].contains(&pair.first)
+                    && [bonds[3], bonds[7]].contains(&pair.second)
+                    && pair.first == bonds[7]))).unwrap())));
+    let fixed_case = |b: Domain, c: u8| {
+        let mut restrictions = fixed_scope.clone();
+        restrictions.push((b_order.variable, b));
+        restrictions.push((c_order.variable, Domain::singleton(c).unwrap()));
+        x.structural.propagated_semantic_domains_for_test(&restrictions)
+            .unwrap().unwrap_consistent()
+    };
+    let obstructed = fixed_case(c_first, 0);
+    assert!(surface.event_schedule_visits.iter().flat_map(|visit| visit.rank_bits.iter())
+        .any(|rank| obstructed.solver_for_test().domain_bound(*rank).unwrap().len() > 1));
+    assert!(matches!(obstructed.clone().admit_exact().unwrap(), Consistency::Contradiction));
+    let probe = obstructed.solver_for_test().clone();
+    probe.reset_live_cut_phase_counts();
+    assert!(matches!(obstructed.admit_live_ring_cut(surface.live_ring_cut_factor.unwrap(),
+        &[bonds[7]], 1).unwrap(), Consistency::Contradiction));
+    let (checks, scans, deferred, temporal) = probe.live_cut_phase_counts();
+    assert_eq!((checks, scans, deferred, temporal), (1, 1, 0, 0),
+        "fixed obstruction must be rejected before any Event branch");
+    for c in [0, 1] {
+        let surviving = fixed_case(h_first, c);
+        assert!(matches!(surviving.clone().admit_exact().unwrap(), Consistency::Consistent(_)),
+            "Event supports C child order {c} after H closes P-H");
+        let probe = surviving.solver_for_test().clone();
+        probe.reset_live_cut_phase_counts();
+        assert!(matches!(surviving.admit_live_ring_cut(surface.live_ring_cut_factor.unwrap(),
+            &[bonds[7]], 1).unwrap(), Consistency::Consistent(_)));
+        let (checks, _, _, temporal) = probe.live_cut_phase_counts();
+        assert_eq!(checks, 1, "fixed physical assignment is checked once");
+        assert!(temporal > 0, "Event still completes the surviving physical assignment");
+    }
+}
+
+#[test]
+fn live_ring_cut_two_slots_preserve_both_b_and_c_child_orders() {
+    let (surface, x, atoms, bonds) = live_ring_cut_writer_prefix(1);
+    let b_order = surface.ordinary_order_pairs[atoms[3].index()].iter().find(|pair|
+        [bonds[3], bonds[4]].contains(&pair.first)
+            && [bonds[3], bonds[4]].contains(&pair.second)).unwrap();
+    let c_order = surface.ordinary_order_pairs[atoms[5].index()].iter().find(|pair|
+        [bonds[5], bonds[6]].contains(&pair.first)
+            && [bonds[5], bonds[6]].contains(&pair.second)).unwrap();
+    for b in [0, 1] {
+        for c in [0, 1] {
+            let restricted = x.structural.propagated_semantic_domains_for_test(&[
+                (b_order.variable, Domain::singleton(b).unwrap()),
+                (c_order.variable, Domain::singleton(c).unwrap()),
+            ]).unwrap().unwrap_consistent();
+            assert!(matches!(restricted.clone().admit_exact().unwrap(), Consistency::Consistent(_)),
+                "two-slot Event reference supports B={b}, C={c}");
+            let probe = restricted.solver_for_test().clone();
+            probe.reset_live_cut_phase_counts();
+            assert!(matches!(restricted.admit_live_ring_cut(surface.live_ring_cut_factor.unwrap(),
+                &[bonds[7]], 2).unwrap(), Consistency::Consistent(_)),
+                "two-slot cut admission preserves B={b}, C={c}");
+            let (checks, scans, deferred, _) = probe.live_cut_phase_counts();
+            assert_eq!((checks, scans, deferred), (0, 0, 0),
+                "one held ring below two slots skips the cut phase");
+        }
+    }
 }
 
 #[test]

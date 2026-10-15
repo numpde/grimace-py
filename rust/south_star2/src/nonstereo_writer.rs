@@ -386,6 +386,7 @@ pub(crate) struct PreparedNonStereo {
     ring_count_factors: Arc<[Option<(FactorId, Box<[VariableId]>)>]>,
     ordered_ring_factors: Arc<[Option<(FactorId, VariableId, Box<[VariableId]>)>]>,
     event_schedule_factor: Option<FactorId>,
+    live_ring_cut_factor: Option<FactorId>,
     event_schedule_visits: Arc<[EventVisit]>,
     event_schedule_capacity_bits: Arc<[VariableId]>,
     ordinary_order_pairs: Arc<[Arc<[OrdinaryOrderPair]>]>,
@@ -788,7 +789,7 @@ impl PreparedNonStereo {
         let possible_ring_count = if allow_segments { graph.bond_count() } else { cycle_count };
         let prepare_schedule = graph.bond_count() > 0 &&
             ring_count_exceeds_schedule_capacity(possible_ring_count, regime, maximum_spelling_label);
-        let (event_schedule_factor, event_schedule_visits, event_schedule_capacity_bits,
+        let (event_schedule_factor, live_ring_cut_factor, event_schedule_visits, event_schedule_capacity_bits,
             ordinary_order_pairs) = if prepare_schedule {
             let edges: Arc<[ScheduleEdge]> = graph.bond_ids().map(|bond| {
                 let edge = graph.bond(bond).expect("prepared schedule bond must exist");
@@ -846,10 +847,15 @@ impl PreparedNonStereo {
             let forest_roots = if allow_segments {
                 assembly.prepare_forest_root_variables()
             } else { Arc::from(Vec::<VariableId>::new()) };
+            let ordinary_centers: Arc<[ScheduleOrdinaryCenter]> = ordinary_centers.into();
+            let live_ring_cut_factor = (graph.bond_count() > schedule_namespace_capacity(regime, maximum_spelling_label))
+                .then(|| assembly.add_latent_live_ring_cut(crate::live_ring_cut::LiveRingCutFactor::new(
+                    Arc::clone(&edges), Arc::clone(&centers), Arc::clone(&ordinary_centers),
+                    Arc::clone(&forest_roots))));
             let factor = assembly.add_latent_event_schedule(visits.clone(), edges, centers,
-                ordinary_centers.into(), Arc::clone(&capacity_bits), forest_roots, allow_segments);
-            (Some(factor), visits, capacity_bits, ordinary_pairs.into())
-        } else { (None, Arc::from(Vec::<EventVisit>::new()), Arc::from(Vec::<VariableId>::new()),
+                ordinary_centers, Arc::clone(&capacity_bits), forest_roots, allow_segments);
+            (Some(factor), live_ring_cut_factor, visits, capacity_bits, ordinary_pairs.into())
+        } else { (None, None, Arc::from(Vec::<EventVisit>::new()), Arc::from(Vec::<VariableId>::new()),
             vec![Arc::<[OrdinaryOrderPair]>::from(Vec::new()); graph.atom_count()].into()) };
         let segment_topology = allow_segments;
         let molecule = if segment_topology {
@@ -869,6 +875,7 @@ impl PreparedNonStereo {
             ring_count_factors: Arc::from(ring_count_factors.into_boxed_slice()),
             ordered_ring_factors: Arc::from(ordered_ring_factors.into_boxed_slice()),
             event_schedule_factor,
+            live_ring_cut_factor,
             event_schedule_visits,
             event_schedule_capacity_bits,
             ordinary_order_pairs,
@@ -4464,7 +4471,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
     }
 
     fn admit_exact(mut self) -> SuccessorAttempt<Self, S::Failure> {
-        match self.structural.admit_exact() {
+        let admission = if let Some(factor) = self.surface.live_ring_cut_factor {
+            let occupied = self.labels.bonds_by_slot.values().copied().collect::<Vec<_>>();
+            let capacity = schedule_namespace_capacity(self.regime, self.labels.maximum_spelling_label());
+            self.structural.admit_live_ring_cut(factor, &occupied, capacity)
+        } else {
+            self.structural.admit_exact()
+        };
+        match admission {
             Ok(Consistency::Consistent(structural)) => {
                 self.structural = structural;
                 SuccessorAttempt::Accepted(self)

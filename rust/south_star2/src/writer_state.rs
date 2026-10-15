@@ -172,6 +172,21 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     #[cfg(test)]
+    pub(crate) fn propagated_semantic_domains_for_test(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+    ) -> Result<Consistency<Self>, S::Failure> {
+        Ok(self.constraints.transitioned_propagated(restrictions, &[])?.map(|constraints| {
+            let mut next = self.clone();
+            next.constraints = constraints;
+            next
+        }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn solver_for_test(&self) -> &S { &self.constraints }
+
+    #[cfg(test)]
     pub(crate) fn restricted_bond_domains_for_test(
         &self,
         restrictions: &[(BondId, Domain)],
@@ -649,6 +664,20 @@ impl<S: ConstraintSolver> WriterState<S> {
         }))
     }
 
+    pub(crate) fn admit_live_ring_cut(
+        mut self,
+        factor: FactorId,
+        occupied_bonds: &[BondId],
+        capacity: usize,
+    ) -> Result<Consistency<Self>, S::Failure> {
+        let context = self.traversal.live_ring_cut_context(
+            self.prepared.graph(), occupied_bonds, capacity);
+        Ok(self.constraints.admit_live_ring_cut(factor, &context)?.map(|constraints| {
+            self.constraints = constraints;
+            self
+        }))
+    }
+
     pub(crate) fn transitioned_semantics(
         &self,
         restrictions: &[(VariableId, Domain)],
@@ -1092,6 +1121,12 @@ mod tests {
             Ok(Consistency::Consistent(self.clone()))
         }
 
+        fn admit_live_ring_cut(&self, _factor: FactorId,
+            _context: &crate::live_ring_cut::LiveRingCutContext,
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            Ok(Consistency::Consistent(self.clone()))
+        }
+
         fn domain_bound(&self, _variable: VariableId) -> Option<Domain> {
             None
         }
@@ -1154,6 +1189,17 @@ mod tests {
                 domain_reads: Arc::clone(&self.domain_reads),
                 restriction_calls: Arc::clone(&self.restriction_calls),
             }))
+        }
+
+        fn admit_live_ring_cut(&self, factor: FactorId,
+            context: &crate::live_ring_cut::LiveRingCutContext,
+        ) -> Result<Consistency<Self>, Self::Failure> {
+            Ok(<NativeSolverState as ConstraintSolver>::admit_live_ring_cut(
+                &self.native, factor, context)?.map(|native| Self {
+                    native,
+                    domain_reads: Arc::clone(&self.domain_reads),
+                    restriction_calls: Arc::clone(&self.restriction_calls),
+                }))
         }
 
         fn domain_bound(&self, variable: VariableId) -> Option<Domain> {

@@ -774,6 +774,44 @@ impl TraversalState {
         self.progress.atom_is_visited(atom)
     }
 
+    pub(crate) fn live_ring_cut_context(
+        &self,
+        graph: &PreparedGraph,
+        occupied_bonds: &[BondId],
+        capacity: usize,
+    ) -> crate::live_ring_cut::LiveRingCutContext {
+        let held = occupied_bonds.iter().filter_map(|&bond| {
+            let BondProgress::RingOpen { first_endpoint } = self.progress.bond_progress(bond) else {
+                // A closure awaiting its label spelling still owns a slot, but
+                // releases it before any future physical subtree can be entered.
+                assert!(matches!(self.progress.bond_progress(bond), BondProgress::RingClosed { .. }));
+                return None;
+            };
+            let target = graph.bond(bond).expect("held bond must be prepared")
+                .other(*first_endpoint).expect("held endpoint must belong to its bond");
+            Some((bond, target))
+        }).collect();
+        let mut has_incoming = vec![false; graph.atom_count()];
+        for bond in graph.bond_ids() {
+            if let BondProgress::Traversed { to, .. } = self.progress.bond_progress(bond) {
+                has_incoming[to.index()] = true;
+            }
+        }
+        let actual_roots = graph.atom_ids().filter(|atom|
+            self.atom_is_visited(*atom) && !has_incoming[atom.index()]).collect::<Vec<_>>();
+        crate::live_ring_cut::LiveRingCutContext {
+            visited: graph.atom_ids().map(|atom| self.atom_is_visited(atom))
+                .collect::<Vec<_>>().into_boxed_slice(),
+            unwritten: graph.bond_ids().map(|bond|
+                matches!(self.progress.bond_progress(bond), BondProgress::Unrepresented))
+                .collect::<Vec<_>>().into_boxed_slice(),
+            held,
+            capacity,
+            actual_tree_root: (actual_roots.len() == 1)
+                .then(|| actual_roots[0]),
+        }
+    }
+
     /// A necessary, deliberately optimistic condition for the first ring-label release.
     /// Future dots, traversal roles, and local order are all granted freely.
     pub(crate) fn may_release_held_ring_before_opening(

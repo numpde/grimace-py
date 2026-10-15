@@ -115,6 +115,42 @@ pub(super) fn merge(a: &LoadWord, b: &LoadWord, capacity: usize) -> Vec<LoadWord
 mod tests {
     use super::{merge, LoadWord};
 
+    fn small_words(capacity: usize, max_len: usize) -> Vec<Vec<usize>> {
+        let mut words = Vec::new();
+        for len in 1..=max_len {
+            for mut code in 0..(capacity + 1).pow(len as u32) {
+                words.push(
+                    (0..len)
+                        .map(|_| {
+                            let value = code % (capacity + 1);
+                            code /= capacity + 1;
+                            value
+                        })
+                        .collect(),
+                );
+            }
+        }
+        words
+    }
+
+    // Literal monotone stutter schedules, independent of LoadWord::dominates.
+    fn raw_stutter_leq(a: &[usize], b: &[usize]) -> bool {
+        fn visit(a: &[usize], b: &[usize], i: usize, j: usize) -> bool {
+            if a[i] > b[j] {
+                return false;
+            }
+            if i + 1 == a.len() && j + 1 == b.len() {
+                return true;
+            }
+            (i + 1 < a.len() && visit(a, b, i + 1, j))
+                || (j + 1 < b.len() && visit(a, b, i, j + 1))
+                || (i + 1 < a.len()
+                    && j + 1 < b.len()
+                    && visit(a, b, i + 1, j + 1))
+        }
+        visit(a, b, 0, 0)
+    }
+
     fn word(loads: &[usize], k: usize) -> LoadWord {
         LoadWord::new(loads, k).unwrap()
     }
@@ -248,12 +284,185 @@ mod tests {
                     assert_eq!(reduced.0.last(), loads.last());
                     assert_eq!(reduced.0.iter().max(), loads.iter().max());
                     assert!(reduced.0.len() <= 2 * k + 1);
-                    let raw = LoadWord(loads);
+                    let raw = LoadWord(loads.clone());
                     assert!(raw.dominates(&reduced));
                     assert!(reduced.dominates(&raw));
+                    assert_eq!(word(&reduced.0, k), reduced, "loads={loads:?}");
+                    assert!(reduced.0.windows(2).all(|pair| pair[0] != pair[1]));
+                    for start in 0..reduced.0.len() {
+                        for end in start + 2..reduced.0.len() {
+                            let lo = reduced.0[start].min(reduced.0[end]);
+                            let hi = reduced.0[start].max(reduced.0[end]);
+                            assert!(
+                                reduced.0[start + 1..end]
+                                    .iter()
+                                    .any(|&v| v < lo || v > hi),
+                                "loads={loads:?}, reduced={reduced:?}"
+                            );
+                        }
+                    }
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_small_elementary_reduction_preserves_outside_peak() {
+        for (capacity, word_len, context_len, word_count, context_count) in
+            [(1, 4, 3, 30, 14), (2, 3, 3, 39, 39)]
+        {
+            let words = small_words(capacity, word_len);
+            let contexts = small_words(capacity, context_len);
+            assert_eq!((words.len(), contexts.len()), (word_count, context_count));
+            assert!(words.len() * word_len * word_len * contexts.len() <= 14_000);
+            for raw in &words {
+                let mut reductions = Vec::new();
+                for i in 0..raw.len() - 1 {
+                    if raw[i] == raw[i + 1] {
+                        let mut reduced = raw.clone();
+                        reduced.remove(i + 1);
+                        reductions.push(reduced);
+                    }
+                }
+                for start in 0..raw.len() {
+                    for end in start + 2..raw.len() {
+                        let lo = raw[start].min(raw[end]);
+                        let hi = raw[start].max(raw[end]);
+                        if raw[start + 1..end].iter().all(|&v| lo <= v && v <= hi) {
+                            let mut reduced = raw.clone();
+                            reduced.drain(start + 1..end);
+                            reductions.push(reduced);
+                        }
+                    }
+                }
+                for reduced in reductions {
+                    assert!(raw_stutter_leq(raw, &reduced));
+                    assert!(raw_stutter_leq(&reduced, raw));
+                    for outside in &contexts {
+                        assert_eq!(
+                            raw_peak(raw, &[0], outside),
+                            raw_peak(&reduced, &[0], outside),
+                            "K={capacity}, raw={raw:?}, reduced={reduced:?}, outside={outside:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_small_raw_split_is_covered_and_each_retained_split_lifts() {
+        for (capacity, max_len, expected) in [(1, 4, 30), (2, 3, 39)] {
+            let words = small_words(capacity, max_len);
+            assert_eq!(words.len(), expected);
+            assert!(words.len() * max_len <= 120);
+            for raw in words {
+                let reduced = word(&raw, capacity).0;
+                for i in 0..raw.len() {
+                    assert!(
+                        (0..reduced.len()).any(|j| {
+                            raw_stutter_leq(&reduced[..=j], &raw[..=i])
+                                && raw_stutter_leq(&reduced[j..], &raw[i..])
+                        }),
+                        "K={capacity}, raw={raw:?}, reduced={reduced:?}, raw_split={i}"
+                    );
+                }
+                for j in 0..reduced.len() {
+                    assert!(
+                        (0..raw.len()).any(|i| {
+                            raw_stutter_leq(&raw[..=i], &reduced[..=j])
+                                && raw_stutter_leq(&reduced[..=j], &raw[..=i])
+                                && raw_stutter_leq(&raw[i..], &reduced[j..])
+                                && raw_stutter_leq(&reduced[j..], &raw[i..])
+                        }),
+                        "K={capacity}, raw={raw:?}, reduced={reduced:?}, retained_split={j}"
+                    );
+                }
+            }
+        }
+        let alternating = word(&[2, 0, 2, 0, 2], 2);
+        assert_eq!(alternating.0, vec![2, 0, 2]);
+        assert_eq!(word(&[1, 1, 2, 2], 2).0, vec![1, 2]);
+    }
+
+    #[test]
+    fn constant_loads_and_gap_concatenation_preserve_small_contexts() {
+        for (capacity, max_len, expected) in [(1, 3, 14), (2, 2, 12)] {
+            let words = small_words(capacity, max_len);
+            assert_eq!(words.len(), expected);
+            assert!(words.len().pow(3) <= 2_800);
+            for raw in &words {
+                for offset in 0..=2 {
+                    let shifted: Vec<_> = raw.iter().map(|&v| v + offset).collect();
+                    let reduced_shifted: Vec<_> = word(raw, capacity)
+                        .0
+                        .iter()
+                        .map(|&v| v + offset)
+                        .collect();
+                    assert_eq!(word(&shifted, capacity + offset).0, reduced_shifted);
+                    for outside in &words {
+                        let before = raw_peak(raw, &[0], outside).unwrap();
+                        let after = raw_peak(&shifted, &[0], outside).unwrap();
+                        // A fixed edge contributes at every cut; the outside
+                        // word may move, but its load at each cut is unchanged.
+                        assert_eq!(after, before + offset);
+                    }
+                }
+                for right in &words {
+                    // Forgetting a bag vertex retains both adjacent endpoint
+                    // cuts, even when their loads differ.
+                    let raw_concat: Vec<_> = raw.iter().chain(right).copied().collect();
+                    let reduced_concat: Vec<_> = word(raw, capacity)
+                        .0
+                        .iter()
+                        .chain(&word(right, capacity).0)
+                        .copied()
+                        .collect();
+                    assert!(raw_stutter_leq(&raw_concat, &reduced_concat));
+                    assert!(raw_stutter_leq(&reduced_concat, &raw_concat));
+                    for outside in &words {
+                        assert_eq!(
+                            raw_peak(&raw_concat, &[0], outside),
+                            raw_peak(&reduced_concat, &[0], outside),
+                            "K={capacity}, left={raw:?}, right={right:?}, outside={outside:?}"
+                        );
+                    }
+                }
+            }
+        }
+        assert_eq!(word(&[0, 1, 2, 1, 0], 2).0, vec![0, 2, 0]);
+    }
+
+    #[test]
+    fn bounded_join_matches_independent_raw_interleaving_feasibility() {
+        for (capacity, max_len, expected) in [(1, 3, 14), (2, 2, 12)] {
+            let words = small_words(capacity, max_len);
+            assert_eq!(words.len(), expected);
+            assert!(words.len().pow(3) <= 2_800);
+            for left in &words {
+                for right in &words {
+                    let profiles = merge(&word(left, capacity), &word(right, capacity), capacity);
+                    for outside in &words {
+                        let raw = raw_peak(left, right, outside).unwrap();
+                        let compressed = profile_peak(&profiles, outside);
+                        assert_eq!(
+                            compressed.is_some_and(|peak| peak <= capacity),
+                            raw <= capacity,
+                            "K={capacity}, left={left:?}, right={right:?}, outside={outside:?}"
+                        );
+                        if raw <= capacity {
+                            assert_eq!(compressed, Some(raw));
+                        }
+                    }
+                }
+            }
+        }
+        // A valley permits an outside peak to sit inside the joined interval.
+        let profiles = merge(&word(&[2, 0, 2], 4), &word(&[0, 2, 0], 4), 4);
+        assert_eq!(
+            profile_peak(&profiles, &[0, 2, 0]),
+            raw_peak(&[2, 0, 2], &[0, 2, 0], &[0, 2, 0])
+        );
     }
 
     #[test]

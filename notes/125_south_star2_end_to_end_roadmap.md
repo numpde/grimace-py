@@ -3186,3 +3186,26 @@ writer facts and incremental constraints, without a compiled future-support
 relation. It must preserve joint chemistry and ring-resource correctness and
 account for the work and retained state of each changed successor. The
 future-support compilation boundary and that update proof remain unresolved.
+
+### Cut-load profile obligations checked against raw schedules (2026-10-16)
+
+The existing test-only `cut_load_algebra` now checks the proposed word quotient
+against literal small schedules. Write `a <= c` when finite repetitions align
+both words and every aligned load of `a` is at most the corresponding load of
+`c`. The checks enumerate every word over `0..=1` through length four (30
+words) and over `0..=2` through length three (39 words) for each applicable
+elementary deletion and introduce split. Outside words have length at most
+three. Every tested elementary deletion preserves the minimum peak under raw
+outside interleavings. A compressed split dominates both sides of every raw
+split; each compressed split lifts to a raw split whose two sides are mutually
+dominating. Normalization retains endpoints, is idempotent, has no further
+permissible deletion, and meets the `2K+1` bound on the existing broader test.
+
+For composition, smaller capped inventories (14 words for `K=1`, 12 for
+`K=2`) check constant nonnegative shifts, concatenation retaining both cuts,
+and join feasibility against independently enumerated raw horizontal/vertical
+interleavings with an outside word. These are finite falsification checks, not
+a general proof of contextual congruence. The proof still needs the split
+lifting and join monotonicity arguments for arbitrary words and the joint
+physical/control facts at a separator. `EventSchedule` remains the authority;
+this module asserts no production admission, runtime bound, or replacement.

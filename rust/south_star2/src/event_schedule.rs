@@ -97,6 +97,9 @@ impl EventScheduleFactor {
 
     pub(crate) fn variables(&self) -> &[VariableId] { &self.variables }
 
+    // todo: This validates a complete hypothetical visit and branch-return order.
+    // Replace the full schedule relation when the walker owns those current
+    // structural facts and compact constraints retain exact productive support.
     pub(crate) fn permits(&self, mut value: impl FnMut(VariableId) -> u8) -> bool {
         let count = self.visits.len();
         if count == 0 { return true; }

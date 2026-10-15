@@ -828,6 +828,9 @@ impl PreparedNonStereo {
             let capacity_bits: Arc<[VariableId]> = (0..7).map(|_| {
                 assembly.add_isolated_variable(Domain::from_bits(3))
             }).collect::<Vec<_>>().into();
+            // todo: This allocates future visit ranks, entry kinds, and branch ends as
+            // CSP facts for every atom. Move traversal bookkeeping into the live walker
+            // once compact feasibility facts preserve every productive labelled choice.
             let rank_width = (usize::BITS - (graph.atom_count() - 1).leading_zeros()) as usize;
             let visits: Arc<[EventVisit]> = (0..graph.atom_count()).map(|index| EventVisit {
                 atom: AtomId::new(u32::try_from(index).unwrap()),
@@ -3586,6 +3589,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         structural.transitioned_semantics(&schedule_restrictions, &schedule_factors)
     }
 
+    // todo: This copies each observed writer event into a whole-future CSP schedule.
+    // Keep its exact admission check until current walker state and affected
+    // constraints can prove the same productive labelled transitions.
     fn event_schedule_transition(
         &self,
         candidate: StructuralCandidate,

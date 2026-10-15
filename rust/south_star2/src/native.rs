@@ -728,6 +728,9 @@ impl NativeSolverState {
                     continue;
                 }
             }
+            // todo: These branches assign future writer events to find a compatible
+            // full schedule. Replace this search dependency only when current-state
+            // feasibility preserves all productive labelled transitions.
             if let Some(branches) = event_schedule.and_then(|schedule|
                 event_rank_branches(schedule, &candidate.domains)) {
                 #[cfg(test)]

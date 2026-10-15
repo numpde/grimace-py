@@ -12,6 +12,8 @@ mod atom_spelling;
 mod cut_load_algebra;
 #[cfg(test)]
 mod boundary_cut_relation;
+#[cfg(test)]
+mod boundary_cut_plan;
 mod domain;
 #[cfg(test)]
 mod work_diagnostic;

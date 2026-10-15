@@ -5,14 +5,14 @@ use std::collections::BTreeSet;
 
 use crate::cut_load_algebra::{merge, LoadWord};
 
-struct Graph {
-    vertices: usize,
+pub(super) struct Graph {
+    pub(super) vertices: usize,
     // The position is the physical edge ID, so parallel edges remain distinct.
-    edges: Vec<(usize, usize)>,
+    pub(super) edges: Vec<(usize, usize)>,
 }
 
 impl Graph {
-    fn new(vertices: usize, edges: &[(usize, usize)]) -> Self {
+    pub(super) fn new(vertices: usize, edges: &[(usize, usize)]) -> Self {
         assert!(edges
             .iter()
             .all(|&(u, v)| u < vertices && v < vertices && u != v));
@@ -24,13 +24,13 @@ impl Graph {
 }
 
 #[derive(Clone, Debug)]
-struct Row {
-    order: Vec<usize>,
-    gaps: Vec<LoadWord>,
+pub(super) struct Row {
+    pub(super) order: Vec<usize>,
+    pub(super) gaps: Vec<LoadWord>,
 }
 
 impl Row {
-    fn dominates(&self, other: &Self) -> bool {
+    pub(super) fn dominates(&self, other: &Self) -> bool {
         self.order == other.order
             && self
                 .gaps
@@ -48,18 +48,18 @@ fn retain_row(rows: &mut Vec<Row>, candidate: Row) {
     rows.push(candidate);
 }
 
-struct Relation<'g> {
+pub(super) struct Relation<'g> {
     graph: &'g Graph,
     capacity: usize,
     anchor: Option<usize>,
     vertices: BTreeSet<usize>,
     edges: BTreeSet<usize>,
-    boundary: BTreeSet<usize>,
-    rows: Vec<Row>,
+    pub(super) boundary: BTreeSet<usize>,
+    pub(super) rows: Vec<Row>,
 }
 
 impl<'g> Relation<'g> {
-    fn empty(graph: &'g Graph, capacity: usize) -> Self {
+    pub(super) fn empty(graph: &'g Graph, capacity: usize) -> Self {
         Self {
             graph,
             capacity,
@@ -74,7 +74,7 @@ impl<'g> Relation<'g> {
         }
     }
 
-    fn anchored_leaf(graph: &'g Graph, capacity: usize, anchor: usize) -> Self {
+    pub(super) fn anchored_leaf(graph: &'g Graph, capacity: usize, anchor: usize) -> Self {
         assert!(anchor < graph.vertices);
         Self {
             graph,
@@ -90,7 +90,7 @@ impl<'g> Relation<'g> {
         }
     }
 
-    fn introduce_vertex(mut self, vertex: usize) -> Self {
+    pub(super) fn introduce_vertex(mut self, vertex: usize) -> Self {
         assert!(vertex < self.graph.vertices && !self.vertices.contains(&vertex));
         self.vertices.insert(vertex);
         self.boundary.insert(vertex);
@@ -120,7 +120,7 @@ impl<'g> Relation<'g> {
         self
     }
 
-    fn introduce_edge(mut self, edge: usize) -> Self {
+    pub(super) fn introduce_edge(mut self, edge: usize) -> Self {
         assert!(edge < self.graph.edges.len() && !self.edges.contains(&edge));
         let (u, v) = self.graph.edges[edge];
         assert!(self.boundary.contains(&u) && self.boundary.contains(&v));
@@ -149,7 +149,7 @@ impl<'g> Relation<'g> {
         self
     }
 
-    fn forget(mut self, vertex: usize) -> Self {
+    pub(super) fn forget(mut self, vertex: usize) -> Self {
         assert!(self.boundary.contains(&vertex) && self.anchor != Some(vertex));
         self.boundary.remove(&vertex);
         let mut rows = Vec::new();
@@ -169,7 +169,7 @@ impl<'g> Relation<'g> {
         self
     }
 
-    fn join(mut self, other: Self) -> Self {
+    pub(super) fn join(mut self, other: Self) -> Self {
         assert!(std::ptr::eq(self.graph, other.graph));
         assert_eq!(self.capacity, other.capacity);
         assert_eq!(self.anchor, other.anchor);

@@ -2890,3 +2890,48 @@ is `b! * t(K)^(b+1)`, with separate metadata and row-product construction
 costs. There is no supplied-decomposition generator or live update driver,
 practical `K=100` bound, output-linear claim, or LIFO, stereo, role-choice,
 shared-chemistry, production admission, or EventSchedule replacement result.
+
+### Private boundary-cut plan over the relation (2026-10-15)
+
+The test-only `boundary_cut_plan` prepares an immutable, capacity-independent
+nice decomposition of a labelled loop-free physical multigraph. It chooses the
+remaining vertex with minimum current filled degree, breaking ties by original
+vertex ID. Eliminating `v` records the bag consisting of `v` and its remaining
+neighbors, completes those neighbors to a clique, and removes `v`. When
+anchored, `z` is retained last and auxiliary fill connects it to every other
+vertex. Fill edges only shape bags; original physical edge IDs alone carry load.
+The internal alternate-order constructor demonstrates that elimination is a
+decomposition choice, not a restriction on writer atom permutations.
+
+For each eliminated vertex, the earliest later neighbor is its parent; a
+component without such a neighbor attaches to the empty virtual root, or to
+`z` in the anchored case. Clique completion gives the separator containment:
+every remaining neighbor in the child's bag also belongs to the parent's bag.
+Consequently, bags containing any vertex form a connected subtree. The
+construction recursively joins child pieces at the current bag, introduces
+missing bag vertices, introduces each original edge at its earlier eliminated
+endpoint, then forgets vertices outside the parent bag. Every original edge's
+two endpoints are in that owner's bag, and its ID is introduced exactly once.
+Leaf, introduce-vertex, introduce-edge, forget, and join nodes have stable
+child-before-parent IDs and one parent each. Root pieces join at empty or
+`{z}` boundary. Structural validation checks transitions, joins' exact shared
+vertices, edge ownership, vertex coverage including isolates, connected bags,
+and root coverage. The planner stores no descendant footprint sets; validation
+computes temporary sets and discards them.
+
+The conditional relation theorem above then applies to this generated valid
+decomposition: for each capacity, bottom-up evaluation uses its existing
+operators and retains unrestricted labelled orders (or `z`-first orders).
+Independent raw permutation cut profiles mutually dominate its root rows for
+every simple graph through four vertices, each anchor, and capacities from
+zero through the number of edges. Additional finite checks cover disconnected
+components, isolates, parallel physical edges, two elimination orders, and the
+six-leaf star's rejection at capacity two and acceptance at three. These finite
+checks exercise the construction; they are not a general compiler proof.
+
+Capacity quotienting alone cannot certify joint writer productivity. Domination
+is valid only within a complete shared traversal/stereo interface assignment;
+such scopes may require larger bags before a fact can be forgotten. The next
+gate is one real immutable-fact projection and walker delta, without rebuilding
+a candidate future graph or adding a second authority. This plan carries no
+future trace orders, caches, runtime admission, or production bypass.

@@ -3572,24 +3572,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             restrictions.extend(schedule_restrictions);
             activate.extend(schedule_factors);
         }
-        if let Some(prepared) = prepared {
-            assert!(allowed_representations.is_none());
-            self.structural.attempt_prepared_child_with_semantic_transition(candidate, prepared, &restrictions, &activate)
-        } else if allowed_representations.is_none() && restrictions.is_empty() && activate.is_empty() {
-            self.structural.attempt_candidate(candidate)
-        } else if restrictions.is_empty() && activate.is_empty() {
-            self.structural.attempt_candidate_with_bond_refinement(
-                candidate,
-                allowed_representations.expect("ring transition must retain a representation"),
-            )
-        } else {
-            self.structural.attempt_candidate_with_semantic_transition(
-                candidate,
-                allowed_representations,
-                &restrictions,
-                &activate,
-            )
-        }
+        self.structural.attempt_candidate_provisionally(
+            candidate, prepared, allowed_representations, &restrictions, &activate,
+        )
     }
 
     // TODO: Legacy EventSchedule copies each observed writer event into a whole-future CSP schedule.
@@ -3729,8 +3714,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         if restrictions.is_empty() && activate.is_empty() {
             Ok(Consistency::Consistent(self.structural.clone()))
         } else {
-            self.structural
-                .transitioned_semantics(restrictions, activate)
+            self.structural.provisional_semantics(restrictions, activate)
         }
     }
 
@@ -4391,7 +4375,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
 
     fn normalize_and_check(mut self) -> SuccessorAttempt<Self, S::Failure> {
         if self.atom_spelling.is_some() {
-            return SuccessorAttempt::Accepted(self);
+            return self.admit_exact();
         }
         if let Some(pending) = self.pending.clone() {
             assert!(
@@ -4429,7 +4413,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 }
             }
             if viable {
-                return SuccessorAttempt::Accepted(self);
+                return self.admit_exact();
             }
             return match spelling_rejection {
                 Some(reason) => SuccessorAttempt::Rejected(reason),
@@ -4444,14 +4428,14 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         }
         loop {
             if self.is_accepted() {
-                return SuccessorAttempt::Accepted(self);
+                return self.admit_exact();
             }
             let batch = self.structural.derive_candidates();
             if batch.is_contradiction() || batch.candidates().is_empty() {
                 return SuccessorAttempt::Rejected(CandidateRejection::Contradiction);
             }
             if batch.candidates() != [StructuralCandidate::FinishSegment] {
-                return SuccessorAttempt::Accepted(self);
+                return self.admit_exact();
             }
             assert!(
                 self.structural.prepared_topology()
@@ -4476,6 +4460,19 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                 None,
                 "component completion must not restore a branch parent"
             );
+        }
+    }
+
+    fn admit_exact(mut self) -> SuccessorAttempt<Self, S::Failure> {
+        match self.structural.admit_exact() {
+            Ok(Consistency::Consistent(structural)) => {
+                self.structural = structural;
+                SuccessorAttempt::Accepted(self)
+            }
+            Ok(Consistency::Contradiction) => {
+                SuccessorAttempt::Rejected(CandidateRejection::Contradiction)
+            }
+            Err(failure) => SuccessorAttempt::Failed(failure),
         }
     }
 

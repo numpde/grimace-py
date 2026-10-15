@@ -124,6 +124,12 @@ pub(crate) struct WriterState<S> {
     candidate_batch_derivations: Arc<AtomicUsize>,
 }
 
+#[derive(Clone, Copy)]
+enum RestrictionCheck {
+    Exact,
+    Propagated,
+}
+
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ObservedWriterState {
@@ -539,7 +545,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         candidate: StructuralCandidate,
     ) -> Result<Consistency<Self>, S::Failure> {
-        self.attempt_candidate_with_refinement(candidate, None, &[], &[], None)
+        self.attempt_candidate_with_refinement(candidate, None, &[], &[], None, RestrictionCheck::Exact)
     }
 
     pub(crate) fn attempt_candidate_with_bond_refinement(
@@ -558,7 +564,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             ),
             "only a ring endpoint candidate accepts a visible bond refinement"
         );
-        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[], &[], None)
+        self.attempt_candidate_with_refinement(candidate, Some(allowed_representations), &[], &[], None, RestrictionCheck::Exact)
     }
 
     pub(crate) fn attempt_candidate_with_semantic_transition(
@@ -578,6 +584,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             restrictions,
             activate,
             None,
+            RestrictionCheck::Exact,
         )
     }
 
@@ -600,14 +607,34 @@ impl<S: ConstraintSolver> WriterState<S> {
         PreparedChildEntry { traversal, parent_order }
     }
 
-    pub(crate) fn attempt_prepared_child_with_semantic_transition(
+    pub(crate) fn attempt_candidate_provisionally(
         &self,
         candidate: StructuralCandidate,
-        prepared_entry: &PreparedChildEntry,
+        prepared_entry: Option<&PreparedChildEntry>,
+        allowed_representations: Option<Domain>,
         restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<Self>, S::Failure> {
-        self.attempt_candidate_with_refinement(candidate, None, restrictions, activate, Some(prepared_entry))
+        self.attempt_candidate_with_refinement(
+            candidate, allowed_representations, restrictions, activate,
+            prepared_entry, RestrictionCheck::Propagated,
+        )
+    }
+
+    pub(crate) fn provisional_semantics(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, S::Failure> {
+        Ok(self.restricted_constraints(None, None, restrictions, activate, RestrictionCheck::Propagated)?
+            .map(|constraints| Self { constraints, ..self.clone() }))
+    }
+
+    pub(crate) fn admit_exact(mut self) -> Result<Consistency<Self>, S::Failure> {
+        Ok(self.constraints.admit_exact()?.map(|constraints| {
+            self.constraints = constraints;
+            self
+        }))
     }
 
     pub(crate) fn transitioned_semantics(
@@ -620,7 +647,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             "a semantic transition must restrict or activate prepared state"
         );
         Ok(self
-            .restricted_constraints(None, None, restrictions, activate)?
+            .restricted_constraints(None, None, restrictions, activate, RestrictionCheck::Exact)?
             .map(|constraints| Self {
                 prepared: self.prepared.clone(),
                 component_order: self.component_order,
@@ -638,6 +665,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         semantic_restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
         prepared_entry: Option<&PreparedChildEntry>,
+        check: RestrictionCheck,
     ) -> Result<Consistency<Self>, S::Failure> {
         #[cfg(test)]
         crate::work_diagnostic::record(|counts| counts.candidate_attempts += 1);
@@ -729,6 +757,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 bond_domain,
                 &restrictions,
                 activate,
+                check,
             )?
             .map(|constraints| {
                 let mut traversal = child_entry.as_ref().map_or_else(|| self.traversal.clone(), |entry| entry.traversal.clone());
@@ -841,6 +870,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         bond_domain: Option<Domain>,
         semantic_restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
+        check: RestrictionCheck,
     ) -> Result<Consistency<S>, S::Failure> {
         assert_eq!(bond.is_some(), bond_domain.is_some());
         let mut merged = BTreeMap::<VariableId, Domain>::new();
@@ -868,8 +898,11 @@ impl<S: ConstraintSolver> WriterState<S> {
         {
             return Ok(Consistency::Consistent(self.constraints.clone()));
         }
-        self.constraints
-            .transitioned_feasible(&merged.into_iter().collect::<Vec<_>>(), activate)
+        let restrictions = merged.into_iter().collect::<Vec<_>>();
+        match check {
+            RestrictionCheck::Exact => self.constraints.transitioned_feasible(&restrictions, activate),
+            RestrictionCheck::Propagated => self.constraints.transitioned_propagated(&restrictions, activate),
+        }
     }
 
     #[cfg(test)]

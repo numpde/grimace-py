@@ -86,6 +86,20 @@ impl ConstraintSolver for NativeSolverState {
         ))
     }
 
+    fn transitioned_propagated(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        classify(NativeSolverState::with_propagated_transition(
+            self, restrictions.iter().copied(), activate.iter().copied(),
+        ))
+    }
+
+    fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
+        classify(NativeSolverState::admit_exact(self))
+    }
+
     fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
         NativeSolverState::domain_bound(self, variable)
     }

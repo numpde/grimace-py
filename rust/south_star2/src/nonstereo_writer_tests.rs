@@ -286,6 +286,11 @@ impl ConstraintSolver for RejectEveryRestrictionSolver {
         Ok(Consistency::Contradiction)
     }
 
+    fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
+        Ok(<NativeSolverState as ConstraintSolver>::admit_exact(&self.0)
+            .map_err(InjectedSolverFailure::Native)?.map(Self))
+    }
+
     fn domain_bound(&self, variable: crate::ids::VariableId) -> Option<crate::domain::Domain> {
         self.0.domain_bound(variable)
     }
@@ -8856,11 +8861,13 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
     assert!(surface.event_schedule_factor.is_some(),
         "ordinary-only cycle graphs prepare the event schedule in the test namespace");
     let (_, root) = only_root_atom(&state, atoms[0]);
+    let source = root.observe_raw();
     assert!(!root.choices().unwrap().iter().any(|choice|
         matches!(&choice.successor().pending, Some(PendingEmission::BranchTraversalEmission(entry)) if entry.incident ==
             incident(&surface, atoms[0], bonds[0])
         )
     ), "diamond branch needs two concurrent ring labels before leaving its local ring phase");
+    assert_eq!(root.observe_raw(), source, "rejected branches must leave the source untouched");
 }
 
 fn diamond_schedule_fits(

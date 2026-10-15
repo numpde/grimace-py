@@ -3089,3 +3089,20 @@ either guarantees the minimum-ended premise or proves the omitted
 interleavings irrelevant under their complete control and writer facts. It is
 not sufficient by itself: an actual serialization-preserving joint interface
 and its update proof remain open before replacing `EventSchedule`.
+
+### Joint admission at the actual successor
+
+Nonstereo candidate restriction now activates latent factors and propagates
+domains provisionally. After the prospective traversal, visible ring labels,
+and lexical phase exist, every published successor passes one exact native
+joint feasibility check over active factors. The no-op transition case also
+runs this check. Rejected attempts discard their tentative state; a successful
+check preserves all surviving domain alternatives.
+
+`EventSchedule` remains an active exact constraint in that check. The next
+production step is to replace its future-event authority with a joint owner
+relation that reads this actual successor and proves productive labelled
+continuations. This admission move does not yet establish that replacement.
+The existing pending-atom parity-branch and lexical-frontier work-count tests
+fail identically on clean `023a90a0`; they remain separate follow-up work and
+their expectations were not weakened here.

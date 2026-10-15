@@ -79,6 +79,21 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
         self.transitioned(restrictions, activate)
     }
 
+    /// Restrict and activate factors for a private writer attempt. Domain
+    /// propagation may reject it, but cannot certify a publishable successor.
+    fn transitioned_propagated(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(restrictions, activate)
+    }
+
+    /// Check all active factors jointly even if the attempt added no domains.
+    fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(&[], &[])
+    }
+
     /// Return the exact projected domain after exact transitions, or a
     /// conservative bound after a writer feasibility transition. Return
     /// `None` when the variable does not belong to the prepared model.

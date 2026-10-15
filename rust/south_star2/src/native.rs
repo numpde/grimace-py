@@ -49,6 +49,13 @@ pub(crate) struct NativeSolverState {
     potential_layout_checks: Arc<AtomicUsize>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransitionMode {
+    Exact,
+    Feasible,
+    Propagated,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NativeSolverError {
     UnknownVariable(VariableId),
@@ -222,7 +229,7 @@ impl NativeSolverState {
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
         activate: impl IntoIterator<Item = FactorId>,
     ) -> Result<Self, NativeSolverError> {
-        self.with_transition_mode(restrictions, activate, false)
+        self.with_transition_mode(restrictions, activate, TransitionMode::Exact)
     }
 
     pub(crate) fn with_feasible_transition(
@@ -230,14 +237,31 @@ impl NativeSolverState {
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
         activate: impl IntoIterator<Item = FactorId>,
     ) -> Result<Self, NativeSolverError> {
-        self.with_transition_mode(restrictions, activate, true)
+        self.with_transition_mode(restrictions, activate, TransitionMode::Feasible)
+    }
+
+    pub(crate) fn with_propagated_transition(
+        &self,
+        restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
+        activate: impl IntoIterator<Item = FactorId>,
+    ) -> Result<Self, NativeSolverError> {
+        self.with_transition_mode(restrictions, activate, TransitionMode::Propagated)
+    }
+
+    pub(crate) fn admit_exact(&self) -> Result<Self, NativeSolverError> {
+        let mut checked = self.clone();
+        let variables = checked.exact_plan.components.iter()
+            .flat_map(|component| component.projected_variables().iter().copied())
+            .collect::<Vec<_>>();
+        checked.check_exact_components_feasible(variables)?;
+        Ok(self.clone())
     }
 
     fn with_transition_mode(
         &self,
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
         activate: impl IntoIterator<Item = FactorId>,
-        feasibility_only: bool,
+        mode: TransitionMode,
     ) -> Result<Self, NativeSolverError> {
         let mut domains_by_variable = BTreeMap::new();
         let mut contradictory = false;
@@ -294,7 +318,7 @@ impl NativeSolverState {
             changed_variables.extend(variables);
         }
 
-        if !feasibility_only && !successor.projected_exact {
+        if mode == TransitionMode::Exact && !successor.projected_exact {
             changed_variables.extend(successor.exact_plan.components.iter()
                 .flat_map(|component| component.projected_variables().iter().copied()));
         }
@@ -302,7 +326,10 @@ impl NativeSolverState {
             return Ok(successor);
         }
 
-        if feasibility_only && (0..successor.model.factor_count()).any(|index|
+        if mode == TransitionMode::Propagated {
+            successor.propagate(seed_factors)?;
+            successor.projected_exact = false;
+        } else if mode == TransitionMode::Feasible && (0..successor.model.factor_count()).any(|index|
             successor.active_factors[index] && matches!(successor.model.factor(factor_id_from_index(index)),
                 Some(FactorDefinition::EventSchedule(_)))) {
             successor.enforce_feasibility(seed_factors, changed_variables)?;
@@ -2262,6 +2289,31 @@ mod tests {
         assert_eq!(native.domain_bound(roles[0]), Some(BondRole::role_domain()));
         assert_eq!(native.domain_bound(roles[1]), Some(BondRole::role_domain()));
         assert_eq!(native.domain_bound(budget), Some(Domain::singleton(1).unwrap()));
+    }
+
+    #[test]
+    fn final_admission_rejects_jointly_impossible_propagated_ring_roles() {
+        let mut builder = ConstraintModelBuilder::new();
+        let roles = (0..3).map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let budget = builder.add_variable(Domain::singleton(1).unwrap()).unwrap();
+        for left in 0..3 {
+            for right in left + 1..3 {
+                builder.add_binary_relation(roles[left], roles[right],
+                    [(0, 1), (1, 0), (1, 1)]).unwrap();
+            }
+        }
+        let bonds = roles.iter().enumerate().map(|(index, &variable)|
+            SpanningTreeEdge::with_role_partition(variable, AtomId::new(0),
+                AtomId::new((index + 1) as u32), EdgeRolePartition::bond_role()));
+        let factor = builder.add_latent_ring_count_at_most(bonds, [budget]).unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        let provisional = source.with_propagated_transition([], [factor]).unwrap();
+        assert_eq!(provisional.factor_is_active(factor), Some(true));
+        assert!(roles.iter().all(|&role| provisional.domain_bound(role) == Some(BondRole::role_domain())));
+        assert!(matches!(provisional.admit_exact(), Err(NativeSolverError::Contradiction)));
+        assert_eq!(source.factor_is_active(factor), Some(false));
+        assert!(roles.iter().all(|&role| source.domain_bound(role) == Some(BondRole::role_domain())));
     }
 
     #[test]

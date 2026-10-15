@@ -113,6 +113,19 @@ impl ConstraintSolver for ExhaustiveSolverState {
         )
     }
 
+    fn transitioned_propagated(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+        activate: &[FactorId],
+    ) -> Result<Consistency<Self>, Self::Failure> {
+        // The tiny exhaustive reference has no separate propagation engine.
+        self.transitioned(restrictions, activate)
+    }
+
+    fn admit_exact(&self) -> Result<Consistency<Self>, Self::Failure> {
+        self.transitioned(&[], &[])
+    }
+
     fn domain_bound(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }

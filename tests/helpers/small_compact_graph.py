@@ -3,7 +3,7 @@
 from rdkit import Chem
 
 
-def small_compact_graph(smiles: str) -> str:
+def small_compact_molecule(smiles: str) -> Chem.Mol:
     """Interpret selected C/O, branch, dot, and one-digit ring spellings.
 
     This temporary witness builds a graph independently of both the production
@@ -71,5 +71,10 @@ def small_compact_graph(smiles: str) -> str:
         fail(f"unclosed ring labels {sorted(rings)!r}")
     molecule = graph.GetMol()
     Chem.SanitizeMol(molecule)
-    return Chem.MolToSmiles(molecule, canonical=True, isomericSmiles=True)
+    return molecule
+
+
+def small_compact_graph(smiles: str) -> str:
+    """Return a canonical comparison spelling for the interpreted graph."""
+    return Chem.MolToSmiles(small_compact_molecule(smiles), canonical=True, isomericSmiles=True)
 

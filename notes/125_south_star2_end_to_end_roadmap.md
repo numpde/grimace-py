@@ -2624,6 +2624,38 @@ writer rejects both delayed A-B branch witnesses through the live relation.
 A separate reachable tree witness retains an inline child while its saved
 frame owns the held target. These are finite structural and native admission
 witnesses, not exact public support equality or a dot-complete grammar proof.
+The raw reference omits dot events, so its reverse reachability cannot establish
+a MAXIMAL restriction. A smaller fixed-role triangle contract uses carbon atoms
+A, B, T: A-B and A-T are committed Traversal bonds and B-T is a Ring bond.
+The fixed graph has the ordinary SMILES witness `C(C0)C0`: A saves a return
+before entering B, B opens the ring to T, the writer returns to A, enters T
+through A-T, and closes the ring. The actual writer accepts this event path;
+the test does not assert that exact lexical spelling. The grammar-legal `CC0`
+prefix has B active and no saved A; even a later
+dot entry to T cannot write the committed A-T Traversal incidence, because a
+dot creates a new segment and cannot reintroduce the same A atom. The actual
+writer rejects inline B before publication. This establishes only that an
+unresolved committed Traversal incidence must retain whether its visited
+endpoint is usable as a parent. Necessity of the full saved-stack order, local
+phase, and stereo or capacity congruence remains unproved. This contract does
+not replace the Event relation or establish a bounded completion algorithm.
+
+Owner-set equality alone appears insufficient for a stronger capacity
+criterion. In a five-carbon labelled graph, commit A-T and B-U to Traversal
+and B-T, X-T, T-U to Ring. The leading-dot branch prefixes `A(.B0(.X1` and
+`B0(.A(.X1` can have the same visited atoms, active X, held labels, and
+available owner set `{A, B}`, but reverse the saved nesting. The first order
+must finish B-U before A-T; the second can reach T first. With two labels,
+opening U-T before closing X-T needs a third slot, whereas closing X-T first
+releases one. Candidate complete spellings are `C0(.C(.C1)C010)C0` for the
+T-first order and `C(.C0(.C1)C2)C012` for the U-first order with a third label.
+The existing C/O dot-branch grammar witness interprets both spellings
+independently of the production decoder and RDKit's SMILES parser; its test
+asserts the exact labelled bonds in visit order. The two-label versus
+three-label scheduling argument is limited to these fixed roles and orders;
+the test does not prove unrestricted capacity minimality or RDKit writer
+parity. Whether a reduced ordered-owner obligation suffices alongside stereo,
+local phase, and cut constraints remains open.
 A direct traversal test separately confirms that a held target with no
 unwritten visited-boundary entry may be visited by a dot branch and close its
 ring, and a spare-label admission test confirms that the relation does not

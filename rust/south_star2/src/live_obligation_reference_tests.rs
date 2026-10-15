@@ -267,6 +267,117 @@ fn held_target_in_the_dead_branch_component_still_requires_its_saved_owner() {
 }
 
 #[test]
+fn committed_triangle_traversal_keeps_its_saved_parent_available() {
+    use super::*;
+    use crate::native::NativeSolverState;
+    use crate::prepared::PreparedGraphBuilder;
+    use crate::traversal::ObservedBondProgress;
+
+    // A-B and A-T are committed traversals; B-T is a ring. Dot syntax may
+    // introduce T, but it cannot make a second occurrence of A represent A-T.
+    let graph = Graph { atoms: &["C", "C", "C"], edges: vec![
+        (0, 1, Role::Tree), (1, 2, Role::Ring), (0, 2, Role::Tree),
+    ], root: 0, labels: 1 };
+    let mut builder = PreparedGraphBuilder::new();
+    let atoms = (0..3).map(|_| builder.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = graph.edges.iter().map(|&(a, b, _)|
+        builder.add_bond(atoms[a], atoms[b]).unwrap()).collect::<Vec<_>>();
+    let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(builder.build()),
+        vec![PreparedAtomToken::Fixed("C".to_owned()); 3],
+        vec![NonStereoBondToken::Elided; 3], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
+    ).unwrap();
+    let mut state = NonStereoWriterState::<NativeSolverState>::initial(&surface)
+        .unwrap().unwrap_consistent();
+    let restrictions = bonds.iter().zip(&graph.edges).map(|(bond, &(_, _, role))| {
+        let partition = surface.molecule().bond_role_partition(*bond).unwrap();
+        (surface.molecule().bond_decision_variable(*bond).unwrap(),
+            match role { Role::Tree => partition.traversal_values(),
+                Role::Ring => partition.ring_values() })
+    }).collect::<Vec<_>>();
+    state.structural = state.structural.transitioned_semantics(&restrictions, &[])
+        .unwrap().unwrap_consistent();
+    let (root_text, a) = super::tests::only_root_atom(&state, atoms[0]);
+    let source = a.observe_raw();
+    assert_eq!(source.structural.traversal.visited_atoms, vec![atoms[0]]);
+    assert_eq!(source.structural.traversal.bond_progress,
+        vec![ObservedBondProgress::Unrepresented; 3]);
+    let choices = a.choices().unwrap();
+    assert!(!choices.iter().any(|choice|
+        matches!(&choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[0])),
+        "inline B would discard A, the only visited endpoint of committed A-T");
+    let branch_choice = choices.into_iter().find(|choice|
+        matches!(&choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[0]))
+        .expect("A can save a return before entering B");
+    assert_eq!(branch_choice.text(), "(");
+    let branch_text = branch_choice.text().to_owned();
+    let branch = branch_choice.into_successor();
+    let b_states = super::tests::completed_atom_witnesses(&branch, atoms[1]);
+    assert_eq!(b_states.len(), 1);
+    let (b_text, b) = b_states.into_iter().next().unwrap();
+    assert_eq!(b_text, "C");
+    let observed_b = b.observe_raw();
+    assert!(std::ptr::eq(a.surface.molecule().graph(), b.surface.molecule().graph()));
+    assert_eq!(source.structural.bond_plan_domains, observed_b.structural.bond_plan_domains);
+    assert_eq!(observed_b.structural.traversal.visited_atoms, vec![atoms[0], atoms[1]]);
+    assert_eq!(observed_b.structural.traversal.bond_progress[0],
+        ObservedBondProgress::Traversed { from: atoms[0], to: atoms[1] });
+    assert_eq!(observed_b.structural.traversal.branch_returns.len(), 1);
+    assert_eq!(observed_b.structural.traversal.branch_returns[0].atom, atoms[0]);
+    let opened_choice = b.choices().unwrap().into_iter().find(|choice|
+        choice.text() == "0" && choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == bonds[1]))
+        .expect("B opens the committed B-T ring");
+    let opened_text = opened_choice.text().to_owned();
+    let opened = opened_choice.into_successor();
+    let observed_open = opened.observe_raw();
+    assert!(std::ptr::eq(b.surface.molecule().graph(), opened.surface.molecule().graph()));
+    assert_eq!(observed_open.structural.traversal.bond_progress[1],
+        ObservedBondProgress::RingOpen { first_endpoint: atoms[1] });
+    assert_eq!(observed_open.structural.traversal.bond_progress[2],
+        ObservedBondProgress::Unrepresented);
+    let returned_choice = opened.choices().unwrap().into_iter().find(|choice| choice.text() == ")")
+        .expect("saved A remains available");
+    let returned_text = returned_choice.text().to_owned();
+    let returned = returned_choice.into_successor();
+    let inline_t_choice = returned.choices().unwrap().into_iter().find(|choice|
+        matches!(&choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[2]))
+        .expect("A enters T through its committed traversal");
+    assert_eq!(inline_t_choice.text(), "-");
+    let inline_t_text = inline_t_choice.text().to_owned();
+    let inline_t = inline_t_choice.into_successor();
+    let t_states = super::tests::completed_atom_witnesses(&inline_t, atoms[2]);
+    assert_eq!(t_states.len(), 1);
+    let (t_text, t) = t_states.into_iter().next().unwrap();
+    assert_eq!(t_text, "C");
+    let closed_choice = t.choices().unwrap().into_iter().find(|choice|
+        choice.text() == "0" && choice.successor().labels.is_clean())
+        .expect("T closes its ring to B");
+    assert_eq!(format!("{root_text}{branch_text}{b_text}{opened_text}{returned_text}{inline_t_text}{t_text}{}",
+        closed_choice.text()), "C(C0)-C0");
+    let closed = closed_choice.into_successor();
+    assert!(closed.is_accepted(), "the selected explicit-bond triangle path must finish");
+
+    // CC0 is a legal raw prefix with B active and no saved A. Its only
+    // unvisited atom is T; a dot-started T cannot traverse the committed A-T
+    // bond because A is neither active nor saved, and A cannot be reintroduced.
+    let mut inline = graph.initial();
+    inline.visited |= 1 << 1;
+    inline.active = 1;
+    inline.started_child |= 1;
+    inline.bonds[0] = BondState::Tree;
+    let raw_open = graph.raw_steps(&inline).into_iter().find(|step|
+        step.event == Event::Open { bond: 1, label: 1 })
+        .expect("CC0 is grammar-legal");
+    assert_eq!(raw_open.next.returns, Vec::<usize>::new());
+    assert_eq!(raw_open.next.bonds[2], BondState::Unwritten);
+    assert_eq!(raw_open.next.visited, 0b011);
+}
+
+#[test]
 fn one_label_diamond_production_first_branches_match_reference_successors() {
     use super::*;
     use crate::native::NativeSolverState;

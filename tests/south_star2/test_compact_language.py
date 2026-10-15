@@ -10,6 +10,7 @@ from rdkit import Chem
 
 from grimace import decoding
 from tests.helpers.small_compact_graph import small_compact_graph as _small_compact_graph
+from tests.helpers.small_compact_graph import small_compact_molecule as _small_compact_molecule
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "opensmiles_examples" / "compact_language.json"
@@ -189,6 +190,22 @@ class CompactLanguageTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 with self.assertRaises(ValueError):
                     _small_compact_graph(invalid)
+
+    def test_leading_dot_owner_orders_preserve_labelled_graphs(self) -> None:
+        cases = (
+            ("B,A,X,T,U", "C0(.C(.C1)C010)C0", {(0, 3), (0, 4), (1, 3), (2, 3), (3, 4)}),
+            ("A,B,X,U,T", "C(.C0(.C1)C2)C012", {(0, 4), (1, 3), (1, 4), (2, 4), (3, 4)}),
+        )
+        for visit_order, spelling, expected_edges in cases:
+            with self.subTest(visit_order=visit_order, spelling=spelling):
+                molecule = _small_compact_molecule(spelling)
+                self.assertEqual(5, molecule.GetNumAtoms())
+                self.assertTrue(all(atom.GetSymbol() == "C" for atom in molecule.GetAtoms()))
+                actual_edges = {
+                    tuple(sorted((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())))
+                    for bond in molecule.GetBonds()
+                }
+                self.assertEqual(expected_edges, actual_edges)
 
     def test_compact_atoms_preserve_isotope_map_charge_hydrogens_and_stereo(self) -> None:
         examples = (

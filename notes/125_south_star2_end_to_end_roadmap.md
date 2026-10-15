@@ -2754,3 +2754,42 @@ every physical prefix length. They check the factor and renderer contracts;
 focused adjacent tetrahedral, shared carrier, and Event tests passed. This is
 one local semantic authority only. Lexical writer-policy totality, general
 forest productivity, and EventSchedule retirement remain open.
+
+### A fixed-Ring residual width proof gate
+
+One exact structural subproblem exposes why an immediate release check is
+insufficient. Fix every bond to `Ring`, allow every atom to be a dot root, give
+ordinary atoms unrestricted incidence order, and count labels only at complete
+atom-block boundaries. Let `P` be visited atoms, `U` unvisited atoms, and `H`
+the held physical ring-bond identities. For a valid prefix, every held bond has
+one endpoint in `P` and one in `U`. Completing `v` closes its incident bonds in
+`H` before opening its other incidences to `U \ {v}`; consequently
+`H' = (H \ incident(v)) union E(v, U \ {v})`. The minimum peak within this
+block is `max(|H|, |H'|)`. Each dot-separated atom permutation is realizable;
+return events do not reduce occupancy between complete blocks. Thus a valid
+prefix has a completion with capacity `K` exactly when its residual edge-cut
+width, starting at `H`, is at most `K`.
+Necessity follows because every continuation crosses its sequence of cuts;
+sufficiency follows by choosing a minimum-width atom permutation, closing
+before opening at each block, and reusing freed label slots in its dot visits.
+For test-only finite reference, define
+`c(S)` as held bonds whose target is outside visited suffix set `S` plus
+edges between `S` and `U \ S`; then `d(empty)=|H|` and
+`d(S)=max(c(S), min_{v in S} d(S \ {v}))`. This enumerates subsets to check
+the theorem, and is not a runtime admission algorithm or work bound.
+
+For labelled `K4`, every first atom leaves three held labels, so visiting any
+second atom releases one; nevertheless every two-atom cut has four edges.
+The bond identities may reuse literal label slots once closed; `K` counts
+simultaneous occupancy, while the production namespace has 100 slots. Capacity
+three admits no full order, while capacity four admits all 24 labelled orders.
+A three-atom prefix has residual future width three, but no such prefix
+is reachable at capacity three because its past crossed a four-edge cut. The
+finite test checks each physical cut and update at every prefix, and compares
+two fully fixed dot assignments with the existing Event relation. This only
+establishes the stated structural case: general role choices, branch stacks,
+semantic correlations, and a compact incremental exact criterion with bounded
+choice work remain unresolved. The finished target is still an actual-event
+walker plus one joint live semantic constraint authority, without future visit
+ranks, entry kinds, branch-end search, continuation assets, a fallback, or a
+runtime fast path for this case.

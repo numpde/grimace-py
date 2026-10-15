@@ -560,4 +560,128 @@ mod tests {
         assert!(matches!(solver.transitioned(&restrictions, &[factor]).unwrap(),
             Consistency::Contradiction));
     }
+
+    #[test]
+    fn fixed_ring_k4_complete_block_width_matches_the_event_relation() {
+        // This reference is deliberately exponential and test-only. Every bond
+        // is Ring, so a dot visit closes earlier incidences before opening later ones.
+        let pairs: [(usize, usize); 6] = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
+        let cut = |visited: u8| pairs.iter().filter(|&&(a, b)|
+            (visited & (1 << a) != 0) != (visited & (1 << b) != 0)).count();
+        let residual_width = |prefix: u8| {
+            let mut width = [0_usize; 16];
+            for remaining_size in 1..=4 {
+                for subset in 1_u8..16 {
+                    if subset.count_ones() != remaining_size || subset & prefix != 0 { continue; }
+                    let visited = prefix | subset;
+                    let prior = (0..4).filter(|&atom| subset & (1 << atom) != 0)
+                        .map(|atom| width[(subset & !(1 << atom)) as usize])
+                        .min().unwrap();
+                    width[subset as usize] = cut(visited).max(prior);
+                }
+            }
+            width[(15 ^ prefix) as usize].max(cut(prefix))
+        };
+
+        let mut orders = 0;
+        for a in 0..4 {
+            for b in 0..4 {
+                for c in 0..4 {
+                    for d in 0..4 {
+                        let order = [a, b, c, d];
+                        if order.iter().copied().collect::<BTreeSet<_>>().len() != 4 { continue; }
+                        orders += 1;
+                        let mut visited = 0_u8;
+                        let mut held = BTreeSet::new();
+                        let mut peak = 0;
+                        for (rank, atom) in order.into_iter().enumerate() {
+                            let old = held.clone();
+                            let incident = pairs.iter().enumerate().filter(|(_, &(x, y))|
+                                x == atom || y == atom).map(|(id, _)| id).collect::<BTreeSet<_>>();
+                            let closing = old.intersection(&incident).copied().collect::<BTreeSet<_>>();
+                            let opening = incident.difference(&old).copied().filter(|&id| {
+                                let (x, y) = pairs[id];
+                                visited & (1 << if x == atom { y } else { x }) == 0
+                            }).collect::<BTreeSet<_>>();
+                            held = old.difference(&closing).copied().chain(opening).collect();
+                            visited |= 1 << atom;
+                            assert_eq!(held.len(), cut(visited), "order {order:?}, rank {rank}");
+                            assert_eq!(residual_width(visited), [4, 4, 3, 0][rank],
+                                "residual future width after order {order:?}, rank {rank}");
+                            peak = peak.max(old.len()).max(held.len());
+                        }
+                        assert!(held.is_empty());
+                        assert_eq!(peak, 4, "order {order:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!(orders, 24); // Six suffix orders for each of four labelled roots.
+        assert_eq!(residual_width(0), 4);
+
+        // Two complete, fixed assignments check the existing Event relation.
+        // They do not test propagation over unknown future CSP variables.
+        let mut builder = ConstraintModelBuilder::new();
+        let visits: Arc<[EventVisit]> = (0..4).map(|atom| EventVisit {
+            atom: AtomId::new(atom as u32),
+            rank_bits: (0..2).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+                .collect::<Vec<_>>().into(),
+            kind: builder.add_variable(EntryKind::domain()).unwrap(),
+            end_bits: (0..4).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+                .collect::<Vec<_>>().into(),
+        }).collect::<Vec<_>>().into();
+        let roles = (0..6).map(|_| builder.add_variable(BondRole::Ring.singleton_domain()).unwrap())
+            .collect::<Vec<_>>();
+        let edges: Arc<[ScheduleEdge]> = pairs.iter().enumerate().map(|(id, &(a, b))| ScheduleEdge {
+            bond: BondId::new(id as u32), a: AtomId::new(a as u32), b: AtomId::new(b as u32),
+            decision_variable: roles[id], role_partition: EdgeRolePartition::bond_role(),
+        }).collect::<Vec<_>>().into();
+        let ordinary: Arc<[ScheduleOrdinaryCenter]> = (0..4).map(|atom| {
+            let incident = (0..6).filter(|&id| pairs[id].0 == atom || pairs[id].1 == atom)
+                .collect::<Vec<_>>();
+            let pairs = incident.iter().enumerate().flat_map(|(i, &first)|
+                incident[i + 1..].iter().map(move |&second| (first, second)))
+                .map(|(first, second)| OrdinaryOrderPair {
+                    first: BondId::new(first as u32), second: BondId::new(second as u32),
+                    variable: builder.add_variable(Domain::from_bits(3)).unwrap(),
+                }).collect::<Vec<_>>();
+            ScheduleOrdinaryCenter { atom: AtomId::new(atom as u32), pairs: pairs.into() }
+        }).collect::<Vec<_>>().into();
+        let capacity = (0..3).map(|_| builder.add_variable(Domain::from_bits(3)).unwrap())
+            .collect::<Vec<_>>();
+        let roots = (0..4).map(|_| builder.add_variable(Domain::singleton(1).unwrap()).unwrap())
+            .collect::<Vec<_>>();
+        let factor = EventScheduleFactor::new(visits.clone(), edges, Arc::from([]), ordinary.clone(),
+            capacity.clone().into(), roots.clone().into(), true);
+        for limit in [3_usize, 4] {
+            let mut values = BTreeMap::new();
+            for (atom, visit) in visits.iter().enumerate() {
+                for (bit, variable) in visit.rank_bits.iter().enumerate() {
+                    values.insert(*variable, ((atom >> bit) & 1) as u8);
+                }
+                values.insert(visit.kind, if atom == 0 { 0 } else { 4 });
+                for variable in visit.end_bits.iter() { values.insert(*variable, 0); }
+            }
+            for role in &roles { values.insert(*role, BondRole::Ring.value_index()); }
+            for center in ordinary.iter() {
+                for pair in center.pairs.iter() {
+                    // At each block, close bonds to visited atoms before openings.
+                    let first = pair.first.index();
+                    let second = pair.second.index();
+                    let other = |id: usize| if pairs[id].0 == center.atom.index() {
+                        pairs[id].1
+                    } else { pairs[id].0 };
+                    let first_key = (other(first) > center.atom.index(), first);
+                    let second_key = (other(second) > center.atom.index(), second);
+                    values.insert(pair.variable, u8::from(first_key > second_key));
+                }
+            }
+            for (bit, variable) in capacity.iter().enumerate() {
+                values.insert(*variable, ((limit >> bit) & 1) as u8);
+            }
+            for root in &roots { values.insert(*root, 1); }
+            assert_eq!(factor.permits(|variable| values[&variable]), limit == 4,
+                "fixed dot order 0,1,2,3 at capacity {limit}");
+        }
+    }
 }

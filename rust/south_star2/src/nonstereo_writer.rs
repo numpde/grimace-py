@@ -1865,6 +1865,18 @@ struct RingLabels {
 }
 
 impl RingLabels {
+    fn first_spelling_slot(regime: WriterRegime) -> usize {
+        match regime {
+            WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
+            WriterRegime::RdkitRandomNoncanonical => 1,
+        }
+    }
+
+    fn is_full_for(&self, regime: WriterRegime) -> bool {
+        self.next_available_from(Self::first_spelling_slot(regime)).index()
+            > self.maximum_spelling_label()
+    }
+
     fn next_available(&self) -> RingLabelSlot {
         self.next_available_from(0)
     }
@@ -2651,10 +2663,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             };
             let available = self.available_ring_label_options();
             if available.is_empty() {
-                let first = match self.regime {
-                    WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
-                    WriterRegime::RdkitRandomNoncanonical => 1,
-                };
+                let first = RingLabels::first_spelling_slot(self.regime);
                 attempts.push(self.ring_label_exhaustion_attempt(
                     self.labels.next_available_from(first).index(),
                 ));
@@ -2727,8 +2736,9 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
 
     fn available_ring_label_options(&self) -> Vec<(RingLabelSlot, String)> {
         let maximum = self.labels.maximum_spelling_label();
+        let first = RingLabels::first_spelling_slot(self.regime);
         match self.regime {
-            WriterRegime::Generic { .. } => (0..=maximum)
+            WriterRegime::Generic { .. } => (first..=maximum)
                 .map(RingLabelSlot)
                 .filter(|slot| !self.labels.bonds_by_slot.contains_key(slot))
                 .flat_map(|slot| {
@@ -2737,16 +2747,8 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
                         .map(move |text| (slot, text))
                 })
                 .collect(),
-            WriterRegime::GenericCompact => {
-                let slot = self.labels.next_available_from(0);
-                if slot.index() <= maximum {
-                    vec![(slot, ring_label_number_text(slot.index()))]
-                } else {
-                    Vec::new()
-                }
-            }
-            WriterRegime::RdkitRandomNoncanonical => {
-                let slot = self.labels.next_available_from(1);
+            WriterRegime::GenericCompact | WriterRegime::RdkitRandomNoncanonical => {
+                let slot = self.labels.next_available_from(first);
                 if slot.index() <= maximum {
                     vec![(slot, ring_label_number_text(slot.index()))]
                 } else {
@@ -2893,10 +2895,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
             };
             let available = self.available_ring_label_options();
             if available.is_empty() {
-                let first = match self.regime {
-                    WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
-                    WriterRegime::RdkitRandomNoncanonical => 1,
-                };
+                let first = RingLabels::first_spelling_slot(self.regime);
                 attempts.push(self.ring_label_exhaustion_attempt(
                     self.labels.next_available_from(first).index(),
                 ));
@@ -3559,6 +3558,16 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         restrictions: &[(VariableId, Domain)],
         activate: &[FactorId],
     ) -> Result<Consistency<WriterState<S>>, S::Failure> {
+        if matches!(candidate, StructuralCandidate::BranchChild { .. } | StructuralCandidate::InlineChild { .. })
+            && self.labels.has_open_labels()
+            && self.labels.is_full_for(self.regime)
+            && !self.structural.may_release_held_ring_after_child_entry(
+                candidate,
+                &self.labels.bonds_by_slot.values().copied().collect::<Vec<_>>(),
+            )
+        {
+            return Ok(Consistency::Contradiction);
+        }
         let mut restrictions = restrictions.to_vec();
         let mut activate = activate.to_vec();
         if let Some((budget, factors)) = self.ring_resource_entry_constraint(candidate) {
@@ -3658,10 +3667,7 @@ impl<S: ConstraintSolver> NonStereoWriterState<S> {
         };
         let degree = self.surface.molecule().graph().neighbors(target)
             .expect("prepared atom must have adjacency").len();
-        let first = match self.regime {
-            WriterRegime::Generic { .. } | WriterRegime::GenericCompact => 0,
-            WriterRegime::RdkitRandomNoncanonical => 1,
-        };
+        let first = RingLabels::first_spelling_slot(self.regime);
         let maximum = self.labels.maximum_spelling_label();
         let capacity = maximum.saturating_add(1).saturating_sub(first);
         let occupied = self.labels.bonds_by_slot.keys().filter(|slot| {

@@ -4695,6 +4695,36 @@ fn closed_labels_are_immediately_reusable() {
 }
 
 #[test]
+fn ring_label_fullness_uses_only_regime_spelling_slots() {
+    let regimes = [
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder },
+        WriterRegime::GenericCompact,
+    ];
+    for regime in regimes {
+        let mut labels = RingLabels::default();
+        labels.maximum_spelling_label = Some(0);
+        assert!(!labels.is_full_for(regime));
+        labels.allocate_at(RingLabelSlot(0), BondId::new(0));
+        assert!(labels.is_full_for(regime));
+        labels.maximum_spelling_label = Some(1);
+        assert!(!labels.is_full_for(regime));
+        labels.allocate_at(RingLabelSlot(1), BondId::new(1));
+        assert!(labels.is_full_for(regime));
+    }
+
+    let mut rdkit = RingLabels::default();
+    rdkit.maximum_spelling_label = Some(0);
+    assert!(rdkit.is_full_for(WriterRegime::RdkitRandomNoncanonical));
+    rdkit.maximum_spelling_label = Some(1);
+    assert!(!rdkit.is_full_for(WriterRegime::RdkitRandomNoncanonical));
+    rdkit.allocate_at(RingLabelSlot(0), BondId::new(0));
+    assert!(!rdkit.is_full_for(WriterRegime::RdkitRandomNoncanonical),
+        "slot zero is outside RDKit's spelling range");
+    rdkit.allocate_at(RingLabelSlot(1), BondId::new(1));
+    assert!(rdkit.is_full_for(WriterRegime::RdkitRandomNoncanonical));
+}
+
+#[test]
 fn ring_label_spelling_matches_the_selected_smiles_dialect() {
     assert_eq!(ring_label_number_text(1), "1");
     assert_eq!(ring_label_number_text(9), "9");

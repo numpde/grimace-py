@@ -771,6 +771,93 @@ impl TraversalState {
         self.progress.atom_is_visited(atom)
     }
 
+    /// A necessary, deliberately optimistic condition for the first ring-label release.
+    /// Future dots, traversal roles, and local order are all granted freely.
+    pub(crate) fn may_release_held_ring_before_opening(
+        &self,
+        graph: &PreparedGraph,
+        held_bonds: &[BondId],
+    ) -> bool {
+        assert!(!held_bonds.is_empty());
+        let mut boundary_by_atom = vec![Vec::<AtomId>::new(); graph.atom_count()];
+        let mut unvisited_edges = vec![Vec::<AtomId>::new(); graph.atom_count()];
+        for bond in graph.bond_ids() {
+            if self.progress.bond_progress(bond) != &BondProgress::Unrepresented {
+                continue;
+            }
+            let edge = *graph.bond(bond).expect("prepared bond must exist");
+            match (
+                self.progress.atom_is_visited(edge.a()),
+                self.progress.atom_is_visited(edge.b()),
+            ) {
+                (true, false) => boundary_by_atom[edge.b().index()].push(edge.a()),
+                (false, true) => boundary_by_atom[edge.a().index()].push(edge.b()),
+                (false, false) => {
+                    unvisited_edges[edge.a().index()].push(edge.b());
+                    unvisited_edges[edge.b().index()].push(edge.a());
+                }
+                (true, true) => {}
+            }
+        }
+
+        let mut owners = BTreeSet::new();
+        for &bond in held_bonds {
+            let first = self.progress.ring_first_endpoint(bond)
+                .expect("a held label must belong to an open structural ring");
+            let target = graph.bond(bond).unwrap().other(first).unwrap();
+            if self.progress.atom_is_visited(target) || boundary_by_atom[target.index()].is_empty() {
+                return true;
+            }
+            if boundary_by_atom[target.index()].len() == 1 {
+                owners.insert(boundary_by_atom[target.index()][0]);
+            }
+        }
+
+        let mut component_by_atom = vec![None; graph.atom_count()];
+        let mut drainable = Vec::new();
+        for root in graph.atom_ids().filter(|atom| !self.progress.atom_is_visited(*atom)) {
+            if component_by_atom[root.index()].is_some() { continue; }
+            let component = drainable.len();
+            let mut stack = vec![root];
+            component_by_atom[root.index()] = Some(component);
+            let (mut vertices, mut twice_edges, mut boundary) = (0, 0, Vec::new());
+            while let Some(atom) = stack.pop() {
+                vertices += 1;
+                twice_edges += unvisited_edges[atom.index()].len();
+                boundary.extend_from_slice(&boundary_by_atom[atom.index()]);
+                for &next in &unvisited_edges[atom.index()] {
+                    if component_by_atom[next.index()].is_none() {
+                        component_by_atom[next.index()] = Some(component);
+                        stack.push(next);
+                    }
+                }
+            }
+            drainable.push(twice_edges / 2 + 1 == vertices && boundary.len() == 1);
+        }
+
+        let mut frame = self.active.as_deref();
+        let mut saved = self.branch_returns.as_deref();
+        while frame.is_some() || saved.is_some() {
+            let current = if let Some(active) = frame.take() {
+                active
+            } else {
+                let node = saved.take().unwrap();
+                saved = node.parent.as_deref();
+                node.frame.as_ref()
+            };
+            if owners.contains(&current.atom) { return true; }
+            for incident in graph.neighbors(current.atom).unwrap() {
+                if self.progress.bond_progress(incident.bond()) == &BondProgress::Unrepresented
+                    && !self.progress.atom_is_visited(incident.atom())
+                    && !drainable[component_by_atom[incident.atom().index()].unwrap()]
+                {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
     #[cfg(test)]
     pub(crate) fn observe_raw(&self) -> ObservedTraversalState {
         let visited_atoms = (0..self.progress.visited_atoms.universe_len)
@@ -1633,6 +1720,23 @@ mod tests {
         assert_no_abandoned_incidence(&graph, &state, atoms[2]);
         assert_eq!(state.complete_path(&graph), None);
         assert_no_abandoned_incidence(&graph, &state, atoms[0]);
+    }
+
+    #[test]
+    fn held_target_without_unwritten_visited_entry_can_release_through_dot() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let pa = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let ph = builder.add_bond(atoms[0], atoms[2]).unwrap();
+        let graph = builder.build();
+        let mut state = TraversalState::new_with_segments(&graph, true);
+        state.begin_segment(&graph, atoms[0]);
+        state.open_ring_endpoint(&graph, incident(&graph, atoms[0], ph));
+        enter_inline(&mut state, &graph, incident(&graph, atoms[0], pa));
+        assert!(state.may_release_held_ring_before_opening(&graph, &[ph]));
+        state.begin_dot_branch(&graph, atoms[2]);
+        state.close_ring_endpoint(&graph, incident(&graph, atoms[2], ph));
+        assert!(!state.ring_is_open(ph));
     }
 
     #[test]

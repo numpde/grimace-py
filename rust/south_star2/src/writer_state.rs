@@ -901,9 +901,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         incident: AdjacentBond,
     ) -> LocalLayoutContext {
-        let mut traversal = self.traversal.clone();
-        traversal.commit_active_child(incident);
-        traversal.enter_inline_child(self.prepared.graph(), incident);
+        let traversal = self.prospective_child_traversal(StructuralCandidate::InlineChild { incident });
         traversal.active_local_layout_context(self.prepared.graph())
     }
 
@@ -911,10 +909,33 @@ impl<S: ConstraintSolver> WriterState<S> {
         &self,
         incident: AdjacentBond,
     ) -> LocalLayoutContext {
-        let mut traversal = self.traversal.clone();
-        traversal.commit_active_child(incident);
-        traversal.enter_branch_child(self.prepared.graph(), incident);
+        let traversal = self.prospective_child_traversal(StructuralCandidate::BranchChild { incident });
         traversal.active_local_layout_context(self.prepared.graph())
+    }
+
+    fn prospective_child_traversal(&self, candidate: StructuralCandidate) -> TraversalState {
+        let mut traversal = self.traversal.clone();
+        match candidate {
+            StructuralCandidate::InlineChild { incident } => {
+                traversal.commit_active_child(incident);
+                traversal.enter_inline_child(self.prepared.graph(), incident);
+            }
+            StructuralCandidate::BranchChild { incident } => {
+                traversal.commit_active_child(incident);
+                traversal.enter_branch_child(self.prepared.graph(), incident);
+            }
+            _ => panic!("child preview requires a child candidate"),
+        }
+        traversal
+    }
+
+    pub(crate) fn may_release_held_ring_after_child_entry(
+        &self,
+        candidate: StructuralCandidate,
+        held_bonds: &[BondId],
+    ) -> bool {
+        self.prospective_child_traversal(candidate)
+            .may_release_held_ring_before_opening(self.prepared.graph(), held_bonds)
     }
 
     pub(crate) fn prospective_committed_inline_child_layout_context(

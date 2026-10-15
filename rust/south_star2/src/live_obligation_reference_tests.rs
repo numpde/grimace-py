@@ -240,6 +240,33 @@ fn raw_grammar_exposes_productive_paths_and_legal_dead_ends() {
 }
 
 #[test]
+fn held_target_in_the_dead_branch_component_still_requires_its_saved_owner() {
+    // P,A,H,B,C,D: A owns the sole unrepresented entry to held H. H is
+    // connected to the B-C-D cycle through D-H, but that path cannot release
+    // P-H before the cycle needs a label.
+    let graph = Graph { atoms: &["P", "A", "H", "B", "C", "D"], edges: vec![
+        (0, 1, Role::Tree), (0, 2, Role::Ring), (1, 2, Role::Tree),
+        (1, 3, Role::Tree), (3, 4, Role::Tree), (4, 5, Role::Ring),
+        (5, 3, Role::Tree), (5, 2, Role::Ring)], root: 0, labels: 1 };
+    let reference = Reference::build(&graph);
+    let opened = reference.transitions[0].iter().find_map(|(event, _, next)|
+        (*event == Event::Open { bond: 1, label: 1 }).then_some(*next)).unwrap();
+    let at_a = reference.transitions[opened].iter().find_map(|(event, _, next)|
+        (*event == Event::Inline { bond: 0 }).then_some(*next)).unwrap();
+    let raw = reference.raw_set(at_a);
+    assert!(raw.iter().any(|(text, _)| text == "(B"));
+    assert_eq!(reference.choice_set(at_a).iter().map(|(text, _)| text.as_str())
+        .collect::<Vec<_>>(), vec!["(H"]);
+    let h = reference.transitions[at_a].iter().find_map(|(event, _, next)|
+        (*event == Event::Branch { bond: 2 }).then_some(*next)).unwrap();
+    let closed = reference.transitions[h].iter().find_map(|(event, _, next)|
+        (*event == Event::Close { bond: 1, label: 1 }).then_some(*next)).unwrap();
+    let opened_hd = reference.transitions[closed].iter().find_map(|(event, _, next)|
+        (*event == Event::Open { bond: 7, label: 1 }).then_some(*next)).unwrap();
+    assert!(reference.productive.contains(&opened_hd));
+}
+
+#[test]
 fn one_label_diamond_production_first_branches_match_reference_successors() {
     use super::*;
     use crate::native::NativeSolverState;
@@ -526,8 +553,8 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
         choice.successor().labels.is_clean()).expect("D closes C-D").into_successor();
     assert!(cd_closed.is_accepted());
 
-    // Test-only removal of the latent factor activation keeps the prepared
-    // variable namespace and every other solver relation identical.
+    // With only the future Event factor disabled, the live child-entry rule
+    // still rejects A-B before publishing a branch.
     let mut local_surface = surface.clone();
     local_surface.event_schedule_factor = None;
     let local_state = NonStereoWriterState::<NativeSolverState>::initial(&local_surface)
@@ -542,15 +569,126 @@ fn held_label_makes_b_triangle_first_branch_unproductive() {
         .unwrap().into_successor();
     let (_, local_a) = super::tests::completed_atom_witnesses(&local_pa, atoms[1])
         .into_iter().next().unwrap();
-    let local_ab = local_a.choices().unwrap().into_iter().find(|choice|
+    let local_choices = local_a.choices().unwrap();
+    assert!(!local_choices.iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3])));
+    assert!(local_choices.iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2])));
+
+    let mut builder = PreparedGraphBuilder::new();
+    let spare_atoms = (0..6).map(|_| builder.add_atom().unwrap()).collect::<Vec<_>>();
+    let spare_bonds = edges.map(|(a, b)| builder.add_bond(spare_atoms[a], spare_atoms[b]).unwrap());
+    let mut spare_surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(builder.build()),
+        ["C", "N", "O", "F", "Cl", "Br"].into_iter()
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; spare_bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 1,
+    ).unwrap();
+    spare_surface.event_schedule_factor = None;
+    let spare_state = NonStereoWriterState::<NativeSolverState>::initial(&spare_surface)
+        .unwrap().unwrap_consistent();
+    let (_, spare_p) = super::tests::only_root_atom(&spare_state, spare_atoms[0]);
+    let spare_ph = spare_p.choices().unwrap().into_iter().find(|choice|
+        choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
+            .any(|bond| *bond == spare_bonds[0])).unwrap().into_successor();
+    let spare_pa = spare_ph.choices().unwrap().into_iter().find(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == spare_bonds[1]))
+        .unwrap().into_successor();
+    let (_, spare_a) = super::tests::completed_atom_witnesses(&spare_pa, spare_atoms[1])
+        .into_iter().next().unwrap();
+    assert!(spare_a.choices().unwrap().iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == spare_bonds[3])));
+}
+
+#[test]
+fn held_target_in_same_residual_component_rejects_b_branch() {
+    use super::*;
+    use crate::native::NativeSolverState;
+    use crate::prepared::PreparedGraphBuilder;
+
+    let edges = [(0, 1), (0, 2), (1, 2), (1, 3), (3, 4), (4, 5), (5, 3), (5, 2)];
+    let mut builder = PreparedGraphBuilder::new();
+    let atoms = (0..6).map(|_| builder.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = edges.map(|(a, b)| builder.add_bond(atoms[a], atoms[b]).unwrap());
+    let mut surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(builder.build()),
+        ["P", "A", "H", "B", "C", "D"].into_iter()
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
+    ).unwrap();
+    surface.event_schedule_factor = None;
+    let state = NonStereoWriterState::<NativeSolverState>::initial(&surface)
+        .unwrap().unwrap_consistent();
+    let (_, p) = super::tests::only_root_atom(&state, atoms[0]);
+    let ph = p.choices().unwrap().into_iter().find(|choice|
+        choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
+            .any(|bond| *bond == bonds[1])).unwrap().into_successor();
+    let pa = ph.choices().unwrap().into_iter().find(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[0]))
+        .unwrap().into_successor();
+    let (_, a) = super::tests::completed_atom_witnesses(&pa, atoms[1])
+        .into_iter().next().unwrap();
+    assert!(a.structural.derive_candidates().candidates().iter().any(|candidate|
+        matches!(candidate, StructuralCandidate::BranchChild { incident }
+            if incident.bond() == bonds[3])));
+    let choices = a.choices().unwrap();
+    assert!(!choices.iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3])));
+    assert!(choices.iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[2])));
+}
+
+#[test]
+fn tree_inline_child_can_drain_to_saved_ring_target_owner() {
+    use super::*;
+    use crate::native::NativeSolverState;
+    use crate::prepared::PreparedGraphBuilder;
+
+    // P holds P-H; X owns the sole X-H traversal entry. X-A branches into
+    // a tree, where A-B can drain inline before returning to X.
+    let edges = [(0, 1), (0, 2), (1, 2), (1, 3), (3, 4)];
+    let mut builder = PreparedGraphBuilder::new();
+    let atoms = (0..5).map(|_| builder.add_atom().unwrap()).collect::<Vec<_>>();
+    let bonds = edges.map(|(a, b)| builder.add_bond(atoms[a], atoms[b]).unwrap());
+    let mut surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+        PreparedMolecule::new(builder.build()),
+        ["P", "X", "H", "A", "B"].into_iter()
+            .map(|text| PreparedAtomToken::Fixed(text.to_owned())).collect(),
+        vec![NonStereoBondToken::Elided; bonds.len()], Vec::new(),
+        WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true, 0,
+    ).unwrap();
+    surface.event_schedule_factor = None;
+    let state = NonStereoWriterState::<NativeSolverState>::initial(&surface)
+        .unwrap().unwrap_consistent();
+    let (_, p) = super::tests::only_root_atom(&state, atoms[0]);
+    let ph = p.choices().unwrap().into_iter().find(|choice|
+        choice.text() == "0" && choice.successor().labels.bonds_by_slot.values()
+            .any(|bond| *bond == bonds[1])).unwrap().into_successor();
+    let px = ph.choices().unwrap().into_iter().find(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[0]))
+        .unwrap().into_successor();
+    let (_, x) = super::tests::completed_atom_witnesses(&px, atoms[1])
+        .into_iter().next().unwrap();
+    let xa = x.choices().unwrap().into_iter().find(|choice|
         matches!(choice.successor().pending,
             Some(PendingEmission::BranchTraversalEmission(incident)) if incident.bond() == bonds[3]))
-        .expect("local relations admit A-B before seeing the future ring demand")
-        .into_successor();
-    let (_, local_b) = super::tests::completed_atom_witnesses(&local_ab, atoms[3])
+        .expect("the tree branch drains to saved X").into_successor();
+    let (_, a) = super::tests::completed_atom_witnesses(&xa, atoms[3])
         .into_iter().next().unwrap();
-    assert!(matches!(local_b.choices(),
-        Err(ChoiceFailure::Invariant(WriterInvariantFailure::AllCandidatesSemanticallyRejected {
-            candidate_count: 2
-        }))), "without the future event relation, A-B is published and then B stalls");
+    assert!(a.structural.derive_candidates().candidates().iter().any(|candidate|
+        matches!(candidate, StructuralCandidate::InlineChild { incident }
+            if incident.bond() == bonds[4])));
+    assert!(a.choices().unwrap().iter().any(|choice|
+        matches!(choice.successor().pending,
+            Some(PendingEmission::InlineAtom(incident)) if incident.bond() == bonds[4])));
 }

@@ -2587,3 +2587,69 @@ passed 37 tests. Every bounded build and test run reported
 `/tmp/grimace-live-event-qualification-994027e0/`. These checks qualify the
 represented public and semantic paths, not the unproved completion criterion,
 general support equality, or latency.
+
+### First-release necessary relation (candidate slice)
+
+At a full, nonempty visible ring-label set, a child traversal can be rejected
+when even an optimistic path cannot reach its first held-ring closure. The
+preview uses the actual traversal operations to commit and enter the proposed
+branch or inline child, then reads visited atoms, unrepresented bonds, held
+ring targets, active frame, and saved returns. A visited held target or one
+with no unrepresented edge to a visited atom may release (the latter grants a
+direct dot). Otherwise, a held target with one such edge has a unique visited
+owner; targets with more have no usable entry before a release. Each unvisited
+component is summarized from all unrepresented edges and all visited-boundary
+incidences, including discarded frames. In active-then-saved return order, a
+frame may reach its own held target; otherwise it can drain only components
+that are trees with one boundary incidence to that frame. Exhausting the
+frames without release contradicts the candidate.
+
+The relation is necessary only: it grants arbitrary dots and ignores role,
+local order, stereo, and source phase limits. It runs only for branch and inline
+child candidates before the existing Event transition; false becomes the
+existing candidate contradiction. Other candidate classes and the later
+lexical child-entry transaction remain as they were. The legacy Event relation
+still decides all admitted futures, and no general completion theorem or
+speedup is claimed. Each applicable attempt adds a copy-on-write traversal
+preview, a graph scan, and ordered-set owner operations, including attempts
+later rejected by another relation.
+The full-slot guard checks occupied physical slots without generating label
+spellings; an occupied label with a spare slot bypasses the graph preview.
+
+The independent finite structural grammar marks the stronger P,A,H,B,C,D
+example unproductive after A-B even though held H shares B's unvisited
+component through D-H; H-first remains productive and releases P-H before
+reusing the label. With Event activation disabled only in tests, the actual
+writer rejects both delayed A-B branch witnesses through the live relation.
+A separate reachable tree witness retains an inline child while its saved
+frame owns the held target. These are finite structural and native admission
+witnesses, not exact public support equality or a dot-complete grammar proof.
+A direct traversal test separately confirms that a held target with no
+unwritten visited-boundary entry may be visited by a dot branch and close its
+ring, and a spare-label admission test confirms that the relation does not
+restrict the same delayed branch before capacity is full.
+A separate bounded full-crate qualification attempt reported 362 passing tests,
+5 ignored tests, and one exhaustive growth diagnostic stopped at its
+300-second CPU limit. The cause remains unresolved; it does not establish a
+regression from this slice. Focused first-release and layout checks passed.
+
+Final focused native qualification passed 13 tests in seven filters; every
+bounded run reported `verified_no_live_members`. A bounded offline host build
+produced the CPython wheel in 18.531 seconds. The initial sandbox build stopped
+after 2.36 seconds on namespace accounting, with verified cleanup; the host
+process view was then used for the successful build. The wheel SHA-256 is
+`560b9486726a179c9ad4ba13230bb04b3f43f4ffbd315b01458055ab2f1a0de2`;
+its `_core` SHA-256 is
+`01f4b6c21b4d83752854d2009dfc337d68bc1c2b0eff9563257ccc0002b1e3cd`.
+Isolated exact-artifact provenance passed. Against that artifact, all 16 public
+prefix API tests and 37 tests in the standard SMILES, compact language,
+leading-dot tetrahedral, and Kekule semantic modules passed. These runs also
+reported verified cleanup. Logs and artifacts are under
+`/tmp/grimace-first-release-qualification-9db9adf8/final/`. The exhaustive
+growth diagnostic above remains unqualified, with no established cause.
+Root checkout provenance then passed: the five Rust source hashes and tracked
+Python wrappers matched the archive, and the ignored checkout `_core` was
+backed up and replaced with bytes identical to the qualified wheel. A bounded
+root import resolved the checkout package, core, and preparation code and
+confirmed the core SHA-256 above; command and runner exited successfully with
+`verified_no_live_members`.

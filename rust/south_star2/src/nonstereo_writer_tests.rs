@@ -8870,6 +8870,83 @@ fn positive_ring_capacity_rejects_diamond_branch_requiring_two_openings() {
     assert_eq!(root.observe_raw(), source, "rejected branches must leave the source untouched");
 }
 
+#[test]
+fn fixed_ring_path_dot_order_changes_peak_label_demand() {
+    fn accepted_suffix(start: State) -> Option<State> {
+        let mut pending = vec![start];
+        let mut explored = 0;
+        while let Some(state) = pending.pop() {
+            explored += 1;
+            assert!(explored < 10_000, "three-atom path suffix must stay finite");
+            if state.is_accepted() { return Some(state); }
+            pending.extend(state.choices().unwrap().into_iter().map(Choice::into_successor));
+        }
+        None
+    }
+
+    for maximum_label in [0, 1] {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let ab = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let bc = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let surface = PreparedNonStereo::with_ring_label_maximum_for_test(
+            PreparedMolecule::new(graph.build()),
+            (0..3).map(|_| PreparedAtomToken::Fixed("C".to_owned())).collect(),
+            vec![NonStereoBondToken::Elided; 2], Vec::new(),
+            WriterRegime::Generic { component_order: ComponentOrder::AnyOrder }, true,
+            0,
+        ).unwrap();
+        let mut start = initial(&surface);
+        start.labels.maximum_spelling_label = Some(maximum_label);
+        let (_, rooted) = only_root_atom(&start, atoms[0]);
+        let mut rooted = rooted;
+        let order = &surface.ordinary_order_pairs[atoms[1].index()];
+        assert_eq!(order.len(), 1);
+        assert_eq!((order[0].first, order[0].second), (ab, bc));
+        let mut physical = atoms.into_iter().map(|atom|
+            (surface.molecule().root_variable(atom).unwrap(), Domain::singleton(1).unwrap())
+        ).collect::<Vec<_>>();
+        physical.push((order[0].variable, Domain::singleton(0).unwrap()));
+        rooted.structural = rooted.structural.restricted_semantic_domains_for_test(&physical)
+            .unwrap().unwrap_consistent();
+        rooted.structural = rooted.structural.restricted_bond_domains_for_test(&[
+            (ab, BondRole::Ring.singleton_domain()),
+            (bc, BondRole::Ring.singleton_domain()),
+        ]).unwrap().unwrap_consistent();
+        let opened = rooted.choices().unwrap().into_iter().filter(|choice|
+            choice.successor().pending.is_none()
+                && choice.successor().labels.bonds_by_slot.values().any(|bond| *bond == ab)
+        ).map(Choice::into_successor).collect::<Vec<_>>();
+        assert!(!opened.is_empty(), "A must be able to open fixed ring AB");
+        for state in opened {
+            assert_eq!(state.labels.bonds_by_slot.len(), 1);
+            let offered = state.choices().unwrap().into_iter().filter_map(|choice|
+                match choice.successor().pending {
+                    Some(PendingEmission::SegmentRootAtom(atom)) if atom == atoms[1] || atom == atoms[2] =>
+                        Some((atom, choice.text().to_owned(), choice.into_successor())),
+                    _ => None,
+                }
+            ).collect::<Vec<_>>();
+            assert!(offered.iter().any(|(atom, _, _)| *atom == atoms[1]),
+                "B-first must be offered at either label capacity");
+            assert_eq!(offered.iter().any(|(atom, _, _)| *atom == atoms[2]), maximum_label == 1,
+                "C-first needs two simultaneously open ring labels");
+            for (atom, text, pending_root) in offered {
+                let terminal = accepted_suffix(pending_root).unwrap_or_else(||
+                    panic!("offered dot root {atom:?} via {text:?} needs an accepted suffix"));
+                assert_eq!(terminal.structural.bond_decision_domain(ab), BondRole::Ring.singleton_domain());
+                assert_eq!(terminal.structural.bond_decision_domain(bc), BondRole::Ring.singleton_domain());
+                for atom in atoms {
+                    assert_eq!(terminal.structural.semantic_domain(surface.molecule().root_variable(atom).unwrap()),
+                        Domain::singleton(1).unwrap());
+                }
+                assert_eq!(terminal.structural.semantic_domain(order[0].variable),
+                    Domain::singleton(0).unwrap(), "B emits AB before BC");
+            }
+        }
+    }
+}
+
 fn diamond_schedule_fits(
     bonds: &[BondId; 5], parent_reference: &[TetrahedralLigand; 4],
     child_reference: &[TetrahedralLigand; 4], parent_value: u8, child_value: u8, first: BondId,

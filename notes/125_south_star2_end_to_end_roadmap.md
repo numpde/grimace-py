@@ -2887,6 +2887,25 @@ walker plus one joint live semantic constraint authority, without future visit
 ranks, entry kinds, branch-end search, continuation assets, a fallback, or a
 runtime fast path for this case.
 
+### Native fixed-role dot-order regression
+
+A focused candidate Rust test, `fixed_ring_path_dot_order_changes_peak_label_demand`,
+uses the connected path A-B-C. Both bonds are fixed `Ring`, all three atoms
+are fixed forest roots, and B's physical incidence order is fixed AB before BC.
+After A opens AB, the actual writer offers a B-first dot root with one label;
+that path reaches acceptance by closing AB before opening BC. With two labels
+it also offers a C-first dot root, which opens BC while AB remains held and
+reaches acceptance after B closes both rings. With one label, C-first is absent.
+The test checks every labelled A-opening and offered dot-root successor, then
+checks accepted suffixes against the same fixed role, root, and order facts.
+Its isolated bounded run passed one selected test with verified process cleanup.
+
+The two peaks show that a fixed physical assignment leaves future dot-root
+order free. They do not rule out an exact graph-resource predicate that
+quantifies that order without event variables. A general decision procedure
+and its incremental joint-factor contract remain unresolved; no production
+resource factor has been integrated from this regression.
+
 ### Private cut-load word algebra prototype (2026-10-15)
 
 The test-only `cut_load_algebra` module represents a bounded nonnegative load

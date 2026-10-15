@@ -11,6 +11,9 @@ use crate::ids::{AtomId, BondId};
 use crate::persistent::PagedStore;
 use crate::prepared::{AdjacentBond, PreparedGraph};
 
+#[cfg(test)]
+pub(crate) mod live_cut_cursor;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DenseSet {
     universe_len: usize,

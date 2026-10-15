@@ -893,6 +893,16 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     #[cfg(test)]
+    pub(crate) fn live_cut_cursor<'a>(
+        &'a self,
+        cut: &crate::traversal::live_cut_cursor::PhysicalCut<'_>,
+    ) -> crate::traversal::live_cut_cursor::LiveCutCursor<'a, S> {
+        crate::traversal::live_cut_cursor::LiveCutCursor::project(
+            &self.traversal, &self.constraints, self.prepared.graph(), cut,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn observe_raw(&self) -> ObservedWriterState {
         let bond_plan_domains = self
             .prepared
@@ -2049,4 +2059,138 @@ mod tests {
         assert_eq!(rooted.structural_frontier().ring_openings(), &openings);
         assert!(rooted.structural_frontier().branch_children().is_empty());
     }
+    #[test]
+    fn live_cut_cursor_return_commutes_across_physical_partitions() {
+        use std::collections::BTreeSet;
+        use crate::traversal::live_cut_cursor::{IncidenceSide, PhysicalCut};
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 5] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let ab = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let bt = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let at = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let prepared = forest(graph.build());
+        let root = rooted(&prepared, atoms[0]);
+        let branch = offered_step(&root, StructuralCandidate::BranchChild {
+            incident: incident(&prepared, atoms[0], ab),
+        });
+        let opened = offered_step(&branch, StructuralCandidate::RingOpen {
+            incident: incident(&prepared, atoms[1], bt),
+        });
+        let at_x = offered_step(&opened, StructuralCandidate::DotBranchRoot { atom: atoms[3] });
+        let at_y = offered_step(&at_x, StructuralCandidate::DotBranchRoot { atom: atoms[4] });
+        let returned_x = offered_step(&at_y, StructuralCandidate::CloseBranch);
+        let at_b = offered_step(&returned_x, StructuralCandidate::CloseBranch);
+        let at_a = offered_step(&at_b, StructuralCandidate::CloseBranch);
+
+        for atom_mask in 0..(1 << atoms.len()) {
+            let left_atoms = atoms.iter().enumerate()
+                .filter_map(|(i, &atom)| (atom_mask & (1 << i) != 0).then_some(atom))
+                .collect::<BTreeSet<_>>();
+            for bond_mask in 0..(1 << prepared.graph().bond_count()) {
+                let left_bonds = prepared.graph().bond_ids().filter(|bond| {
+                    bond_mask & (1 << bond.index()) != 0
+                }).collect::<BTreeSet<_>>();
+                let cut = PhysicalCut::new(prepared.graph(), &left_atoms, &left_bonds);
+                let before = at_y.live_cut_cursor(&cut);
+                assert_eq!(before.active, Some(atoms[4]));
+                assert_eq!(before.saved, vec![atoms[0]]);
+                assert_eq!(before.held, vec![(bt, atoms[1])]);
+                assert!(std::ptr::eq(before.assignment, at_y.constraints_for_test()));
+                assert!(before.unresolved.iter().any(|item| item.owner == atoms[0] && item.bond == at));
+                let first_return = before.after_actual_return(
+                    &at_y.traversal, &returned_x.traversal, returned_x.constraints_for_test(),
+                    prepared.graph(), &cut,
+                );
+                let projected_x = returned_x.live_cut_cursor(&cut);
+                assert_eq!(first_return.active, projected_x.active);
+                assert_eq!(first_return.active_phase, projected_x.active_phase);
+                assert_eq!(first_return.saved, projected_x.saved);
+                assert_eq!(first_return.held, projected_x.held);
+                assert_eq!(first_return.unresolved, projected_x.unresolved);
+                assert_eq!(first_return.active, Some(atoms[3]));
+                assert_eq!(first_return.saved, vec![atoms[0]]);
+                let updated = first_return.after_actual_return(
+                    &returned_x.traversal, &at_b.traversal, at_b.constraints_for_test(),
+                    prepared.graph(), &cut,
+                );
+                let projected = at_b.live_cut_cursor(&cut);
+                assert_eq!(updated.active, projected.active);
+                assert_eq!(updated.active_phase, projected.active_phase);
+                assert_eq!(updated.saved, projected.saved);
+                assert_eq!(updated.held, projected.held);
+                assert_eq!(updated.unresolved, projected.unresolved);
+                assert_eq!(updated.active, Some(atoms[1]));
+                assert_eq!(updated.saved, vec![atoms[0]]);
+                assert_eq!(updated.held, vec![(bt, atoms[1])]);
+                let updated_again = updated.after_actual_return(
+                    &at_b.traversal, &at_a.traversal, at_a.constraints_for_test(),
+                    prepared.graph(), &cut,
+                );
+                let projected_again = at_a.live_cut_cursor(&cut);
+                assert_eq!(updated_again.active, projected_again.active);
+                assert_eq!(updated_again.active_phase, projected_again.active_phase);
+                assert_eq!(updated_again.saved, projected_again.saved);
+                assert_eq!(updated_again.held, projected_again.held);
+                assert_eq!(updated_again.unresolved, projected_again.unresolved);
+                assert_eq!(updated_again.active, Some(atoms[0]));
+                assert!(updated_again.saved.is_empty());
+                if cut.boundary().contains(&atoms[0]) || cut.boundary().contains(&atoms[2]) {
+                    assert!(before.unresolved.iter().any(|item| item.bond == at
+                        && item.side == IncidenceSide::Boundary));
+                }
+                if !cut.boundary().contains(&atoms[0])
+                    && !cut.boundary().contains(&atoms[2])
+                    && left_atoms.contains(&atoms[0]) == left_atoms.contains(&atoms[2])
+                    && left_atoms.contains(&atoms[0]) == left_bonds.contains(&at)
+                {
+                    assert!(before.unresolved.iter().any(|item| item.bond == at
+                        && item.side == IncidenceSide::PiecePrivate));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn live_cut_cursor_preserves_actual_saved_owner_order() {
+        use std::collections::BTreeSet;
+        use crate::traversal::live_cut_cursor::PhysicalCut;
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 5] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let ab = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let at = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let bu = graph.add_bond(atoms[1], atoms[3]).unwrap();
+        let prepared = forest(graph.build());
+        let prefixes = [
+            (atoms[0], atoms[1], vec![atoms[1], atoms[0]]),
+            (atoms[1], atoms[0], vec![atoms[0], atoms[1]]),
+        ];
+        let left_atoms = BTreeSet::from([atoms[0], atoms[2], atoms[4]]);
+        let left_bonds = BTreeSet::from([at]);
+        let cut = PhysicalCut::new(prepared.graph(), &left_atoms, &left_bonds);
+        for (root_atom, inner_atom, expected_saved) in prefixes {
+            let root = rooted(&prepared, root_atom);
+            let branch = offered_step(&root, StructuralCandidate::BranchChild {
+                incident: incident(&prepared, root_atom, ab),
+            });
+            let x = offered_step(&branch, StructuralCandidate::DotBranchRoot { atom: atoms[4] });
+            let before = x.live_cut_cursor(&cut);
+            assert_eq!(before.active, Some(atoms[4]));
+            assert_eq!(before.saved, expected_saved);
+            assert!(before.unresolved.iter().any(|item| item.owner == atoms[0] && item.bond == at));
+            assert!(before.unresolved.iter().any(|item| item.owner == atoms[1] && item.bond == bu));
+            let restored = offered_step(&x, StructuralCandidate::CloseBranch);
+            let updated = before.after_actual_return(
+                &x.traversal, &restored.traversal, restored.constraints_for_test(),
+                prepared.graph(), &cut,
+            );
+            assert_eq!(updated.active, Some(inner_atom));
+            assert_eq!(updated.saved, vec![root_atom]);
+            let projected = restored.live_cut_cursor(&cut);
+            assert_eq!(updated.active_phase, projected.active_phase);
+            assert_eq!(updated.unresolved, projected.unresolved);
+        }
+    }
+
 }

@@ -3028,3 +3028,33 @@ such scopes may require larger bags before a fact can be forgotten. The next
 gate is one real immutable-fact projection and walker delta, without rebuilding
 a candidate future graph or adding a second authority. This plan carries no
 future trace orders, caches, runtime admission, or production bypass.
+
+### Actual-state live cut cursor (private structural interface)
+
+A test-only cursor now projects the actual traversal and native solver state
+onto a caller-supplied two-piece physical ownership cut. Every atom and bond
+has one piece owner; each piece's scope includes endpoints of its owned edges,
+and the scope intersection supplies boundary ports. These independent element
+ownership choices are not claimed to be nice-decomposition nodes. It borrows the joint
+solver assignment, retains the active frame and its actual local phase, orders
+saved owner IDs by return order, keeps held rings as physical bond ID plus
+first endpoint, and classifies unresolved owner-side incidences by piece-private
+or boundary ownership. No future ranks, branch ends, or separate feasibility
+result are stored. A saved owner is erased only when every incident bond has
+been represented at that owner: an open ring counts at its first endpoint only.
+The actual writer still owns every return token and its legality.
+
+For actual admitted returns, the cursor update starts with the prior projected
+saved chain, pops the restored owner exactly when retained, and otherwise
+reactivates the erased owner while leaving the older chain alone. The update
+checks the actual return popped one frame and changed no physical progress.
+A focused native-writer prefix with two consecutive erased dot-branch owners,
+an older retained owner, an isolated atom, and a held ring checks that update
+commutes with fresh projection across every supplied atom and bond ownership
+split of the five-atom graph. A second admitted five-atom prefix pair roots
+opposite ends of the same branch and confirms that the same retained owner
+set has different saved return orders. The ownership sweep checks
+unresolved piece-private and boundary incidences. These checks establish the structural return law for
+those finite fixtures and the implementation's ownership classification. It does
+not establish stereo sealing, a sufficient completion criterion, a guarded
+join, or replacement of EventSchedule.

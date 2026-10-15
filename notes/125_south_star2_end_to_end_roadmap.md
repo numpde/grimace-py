@@ -3253,3 +3253,49 @@ to cache full Relation values, but their repeated private vertex/edge sets
 would grow with forgotten interiors. The trial remains test-only; the control,
 chemistry, stereo, and label constraints still need a joint separator state
 before it can replace EventSchedule.
+
+### Pause/resume checkpoint (2026-10-16; implementation HEAD `e3df41d7`)
+
+Production feasibility still uses `EventSchedule`; no planner replacement has
+landed. `0eb4992f` added live-ring-cut admission, `c0f8aacc` codified the
+all-Ring completed-prefix edge-boundary contract, `2619c83b` strengthened
+test-only raw-schedule profile checks, and `e3df41d7` added the actual-prefix
+separator cache (12 profile checks, all test-only).
+
+The cache uses static edge IDs/owners, one visited vector, and `uv` /
+`r`-unvisited / disabled contributions; disabled IDs remain
+owned until discharged. Atom completion recomputes the exact incident-owner
+ancestor closure. Rows retain correlated boundary relations, not full interior
+footprints or future writer states. Structural fill retains `r` in bags apart
+from layout anchoring; the gadget uses the unanchored layout. Dirty closure can
+span the whole plan; storage is O(V+E) plan/index plus bounded node profiles.
+
+At this HEAD, 15 focused cut tests and one actual-writer filter test passed
+under bounded limits (120 s wall, 2048 MiB RSS, 120 s CPU, 4096 MiB address space);
+cleanup was verified. Generic checks covered 483 finish updates and
+648 current-state checks against fresh rows, raw quotient feasibility, and
+exact dirty sets. Writer-hook cases covered K=1 and cycle K=2; hook-specific
+count was not measured. 8199 is an aggregate prefix count, not a cache-hook
+count. This proves neither general composition, K=100 practicality, nor runtime qualification.
+No owned test/build is running; nothing was pushed. The main
+checkout's untracked stereo-audit fixture was untouched; do not stage on resume.
+
+The objective remains replacing production productivity and future per-atom rank,
+entry, and branch-end allocations while preserving maximal OpenSMILES
+support and every same-text labelled successor. Traversal, branch-return, local
+order, stereo, and pending lexical phase must share one joint separator relation.
+Correctness and work/runtime bounds remain open. Leading-dot branches are normative
+OpenSMILES despite RDKit rejection; parse-back is not writer-parity proof.
+
+Next proof question: can rows project to a return-frontier skeleton (boundary
+ports, residual local order, active/saved-frame commitments, ordered
+nesting/return links) plus load tuple, with equal projections interchangeable
+in every grammar-compatible outside context? Portless excursions may be
+anonymous; branch and inline composition differ. p <= Delta*|B| bounds branch
+structure O(p), not load annotations or contextual equivalence. Join only
+grammar-allowed switches and forget a completed row/return link before erasing
+its ID. The existing walker already has labelled saved owners; projection is
+the gap. Diagnostic `a-x, x-b, a-c`, Ring `b-c`, K=1, root `a` distinguishes
+`C(CC1` from `CC(C1` despite matching coarse visited/active/stack/held summaries;
+outside `)C1` supports only the first, refuting those summaries but not a full
+projection proof.

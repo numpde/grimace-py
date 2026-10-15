@@ -71,6 +71,13 @@ fn insert_antichain(profiles: &mut Vec<LoadWord>, candidate: LoadWord) {
 }
 
 pub(super) fn merge(a: &LoadWord, b: &LoadWord, capacity: usize) -> Vec<LoadWord> {
+    // If both words start and end at their global minima, serial traversal has
+    // profile [c, p, c], where c is the sum of minima and p is the larger
+    // one-word peak plus the other's minimum. Every H/V merge stays at least
+    // c and reaches at least p; hold the serial word at c until that peak,
+    // run it while the other merge stutters there, then hold it at c again.
+    // This is a resource-word domination proof only: traversal legality and
+    // writer effects need a separate shared control/serialization argument.
     let rows = a.0.len();
     let cols = b.0.len();
     let mut cells = vec![vec![Vec::new(); cols]; rows];
@@ -142,6 +149,85 @@ mod tests {
             .iter()
             .filter_map(|p| raw_peak(&p.0, &[0], outside))
             .min()
+    }
+
+    fn one_nesting(a: &[usize], b: &[usize], capacity: usize) -> Vec<LoadWord> {
+        fn insert(inner: &[usize], outer: &[usize], capacity: usize) -> Vec<LoadWord> {
+            (0..outer.len())
+                .map(|split| {
+                    let mut loads = vec![outer[0] + inner[0]];
+                    loads.extend(outer[1..split + 1].iter().map(|&v| v + inner[0]));
+                    loads.extend(inner[1..].iter().map(|&v| v + outer[split]));
+                    loads.extend(
+                        outer[split + 1..]
+                            .iter()
+                            .map(|&v| v + inner[inner.len() - 1]),
+                    );
+                    word(&loads, capacity)
+                })
+                .collect()
+        }
+        let mut profiles = insert(b, a, capacity);
+        profiles.extend(insert(a, b, capacity));
+        profiles
+    }
+
+    fn free_path(a: &[usize], b: &[usize], steps: &[usize]) -> Vec<usize> {
+        let mut at = [0, 0];
+        let words = [a, b];
+        let mut loads = vec![a[0] + b[0]];
+        for &side in steps {
+            assert!(side < 2 && at[side] + 1 < words[side].len());
+            at[side] += 1;
+            loads.push(a[at[0]] + b[at[1]]);
+        }
+        assert_eq!(at, [a.len() - 1, b.len() - 1]);
+        loads
+    }
+
+    #[test]
+    fn minimum_ended_words_have_a_dominating_serial_profile() {
+        let cases: &[(&[usize], &[usize], &[usize])] = &[
+            (&[0, 2, 0], &[0, 1, 0], &[0, 2, 0]),
+            (&[2, 3, 2], &[1, 4, 1], &[3, 6, 3]),
+            (&[1, 3, 1, 2, 1], &[2, 3, 2], &[3, 5, 3]),
+        ];
+        for &(a, b, canonical) in cases {
+            let profiles = merge(&word(a, 8), &word(b, 8), 8);
+            assert_eq!(profiles, vec![word(canonical, 8)], "a={a:?}, b={b:?}");
+        }
+    }
+
+    #[test]
+    fn equal_endpoints_do_not_make_one_nesting_complete() {
+        let cases: &[(&[usize], &[usize], &[usize], &[usize])] = &[
+            (
+                &[1, 2, 0, 1],
+                &[1, 0, 2, 1],
+                &[1, 0, 0, 1, 1, 0],
+                &[2, 1, 2, 0, 2, 1, 2],
+            ),
+            (
+                &[1, 2, 1, 0, 1],
+                &[1, 0, 1, 2, 1],
+                &[1, 0, 0, 0, 1, 1, 1, 0],
+                &[2, 1, 2, 1, 0, 1, 2, 1, 2],
+            ),
+        ];
+        for &(a, b, steps, expected) in cases {
+            let free_loads = free_path(a, b, steps);
+            assert_eq!(free_loads, expected);
+            let free = word(&free_loads, 4);
+            assert_eq!(free.0.iter().copied().max(), Some(2));
+            let profiles = merge(&word(a, 4), &word(b, 4), 4);
+            assert!(profiles.iter().any(|p| p.dominates(&free)));
+            let nested = one_nesting(a, b, 4);
+            assert!(nested
+                .iter()
+                .all(|p| p.0.iter().copied().max().unwrap() >= 3));
+            assert!(nested.iter().all(|p| !p.dominates(&free)));
+            assert!(nested.iter().any(|p| p.0.iter().copied().max() == Some(3)));
+        }
     }
 
     #[test]

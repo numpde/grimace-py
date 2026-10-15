@@ -3058,3 +3058,34 @@ unresolved piece-private and boundary incidences. These checks establish the str
 those finite fixtures and the implementation's ownership classification. It does
 not establish stereo sealing, a sufficient completion criterion, a guarded
 join, or replacement of EventSchedule.
+
+### Resource excursions and the missing joint control contract
+
+For nonnegative resource words `a,b` whose first and last values are each
+their own global minimum, let `c=a[0]+b[0]` and
+`p=max(max(a)+b[0], max(b)+a[0])`. Traversing all of `a` then all of `b`
+is a legal H/V merge with endpoints and minimum `c` and peak `p`; its typical
+word is `[c,p,c]` (or `[c]` when `p=c`). Every free H/V merge `F` stays at
+least `c` and reaches at least `p`, since it visits both component maxima
+while the other component is at least its minimum. To align the serial word
+below `F`, hold it at the initial `c` until `F` reaches its peak, run the
+entire serial word while `F` repeats that peak, then hold the final `c` while
+`F` finishes. This proves domination for resource words with these premises;
+it does not establish that the corresponding writer traversal or chemistry
+serialization is legal.
+
+Equal endpoints alone do not give this law. For `a=[1,2,0,1]` and
+`b=[1,0,2,1]`, the free path `b:1→0`, `a:1→2→0`, `b:0→2→1`, `a:0→1`
+has load word `[2,1,2,0,2,1,2]` and peak 2. Every one-nesting path that
+inserts all of one component at one cut of the other, including serial paths,
+has peak at least 3. The unit-step versions `a=[1,2,1,0,1]` and
+`b=[1,0,1,2,1]` have the same gap. These are abstract resource/control
+counterexamples, not a demonstrated runtime capacity-100 failure.
+
+Inherited resource release and reacquisition therefore require control
+information in a joint boundary relation. A necessary condition for replacing
+free interleaving by one-nesting is an observable boundary contract that
+either guarantees the minimum-ended premise or proves the omitted
+interleavings irrelevant under their complete control and writer facts. It is
+not sufficient by itself: an actual serialization-preserving joint interface
+and its update proof remain open before replacing `EventSchedule`.

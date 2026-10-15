@@ -9338,6 +9338,15 @@ fn all_up_to_three_atom_fixed_ring_layouts_match_boundary_continuations() {
                 assert_eq!(held, expected_held, "held physical identities at {prefix:?}");
                 assert_eq!(held.len(), ring_boundary_size(visited, edges));
                 assert!(state.pending.is_none() && state.atom_spelling.is_none());
+                if (edges == [(0, 1), (1, 2)] && capacity == 1)
+                    || (edges == [(0, 1), (0, 2), (1, 2)] && capacity == 2) {
+                    let actual_completed = atoms.iter().map(|&atom|
+                        state.structural.atom_is_visited(atom)).collect::<Vec<_>>();
+                    assert_eq!(actual_completed, (0..atoms.len()).map(|atom|
+                        (visited >> atom) & 1 == 1).collect::<Vec<_>>());
+                    crate::boundary_cut_plan::check_actual_completed_ring_prefix(
+                        atoms.len(), edges, capacity, prefix);
+                }
                 *prefixes += 1;
                 assert!(*prefixes <= 50_000, "ring layout concrete prefix bound");
                 if prefix.len() == atoms.len() {

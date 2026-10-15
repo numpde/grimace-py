@@ -3,7 +3,10 @@
 
 use std::collections::BTreeSet;
 
-use crate::boundary_cut_relation::{Graph, Relation};
+use crate::boundary_cut_relation::{
+    forget_rows, introduce_edge_rows, introduce_vertex_rows, join_rows, leaf_rows, Graph, Profile,
+    Relation,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Step {
@@ -39,11 +42,17 @@ impl Plan {
     // A test seam for proving that a different valid decomposition does not
     // constrain the writer's atom orders.
     fn with_order(graph: Graph, anchor: Option<usize>, order: Vec<usize>) -> Self {
+        Self::with_order_universal(graph, anchor, order, None)
+    }
+
+    fn with_order_universal(
+        graph: Graph, anchor: Option<usize>, order: Vec<usize>, universal: Option<usize>,
+    ) -> Self {
         assert!(anchor.is_none_or(|z| z < graph.vertices));
         let expected: BTreeSet<_> = (0..graph.vertices).filter(|v| Some(*v) != anchor).collect();
         assert_eq!(order.iter().copied().collect::<BTreeSet<_>>(), expected);
         assert_eq!(order.len(), expected.len());
-        let mut adjacent = filled_adjacency(&graph, anchor);
+        let mut adjacent = filled_adjacency(&graph, anchor, universal);
         let mut bags = vec![BTreeSet::new(); graph.vertices];
         for &v in &order {
             let neighbors = adjacent[v].clone();
@@ -214,6 +223,49 @@ impl Plan {
         values[self.root].take().unwrap()
     }
 
+    fn evaluate_profiles(
+        &self,
+        capacity: usize,
+        visited: &[bool],
+        prefix: usize,
+        original_edges: usize,
+    ) -> Vec<Profile> {
+        let mut values = Vec::with_capacity(self.nodes.len());
+        for id in 0..self.nodes.len() {
+            values.push(self.profile_at(
+                id, &values, capacity, visited, prefix, original_edges,
+            ));
+        }
+        values
+    }
+
+    fn profile_at(
+        &self,
+        id: usize,
+        values: &[Profile],
+        capacity: usize,
+        visited: &[bool],
+        prefix: usize,
+        original_edges: usize,
+    ) -> Profile {
+        match self.nodes[id].step {
+            Step::Leaf => leaf_rows(self.anchor),
+            Step::IntroduceVertex(v, child) => {
+                introduce_vertex_rows(&values[child], v, capacity, self.anchor)
+            }
+            Step::IntroduceEdge(edge, child) => {
+                let endpoints = if edge >= original_edges {
+                    Some(self.graph.edges[edge])
+                } else {
+                    effective_original_edge(self.graph.edges[edge], visited, prefix)
+                };
+                introduce_edge_rows(&values[child], endpoints, capacity)
+            }
+            Step::Forget(v, child) => forget_rows(&values[child], v, capacity),
+            Step::Join(left, right) => join_rows(&values[left], &values[right], capacity),
+        }
+    }
+
     fn validate(&self) {
         assert_eq!(self.nodes[self.root].parent, None);
         assert_eq!(self.nodes[self.root].bag, self.anchor.into_iter().collect());
@@ -296,13 +348,109 @@ impl Plan {
     }
 }
 
-fn filled_adjacency(graph: &Graph, anchor: Option<usize>) -> Vec<BTreeSet<usize>> {
+fn effective_original_edge(
+    (u, v): (usize, usize), visited: &[bool], prefix: usize,
+) -> Option<(usize, usize)> {
+    match (visited[u], visited[v]) {
+        (false, false) => Some((u, v)),
+        (true, false) => Some((prefix, v)),
+        (false, true) => Some((u, prefix)),
+        (true, true) => None,
+    }
+}
+
+// A test-only current assignment. Edge IDs and owner nodes never change;
+// only the visited facts and the boundary profiles do.
+struct LiveCut {
+    plan: Plan,
+    original_vertices: usize,
+    original_edges: usize,
+    incident_owners: Vec<Vec<usize>>,
+    capacity: usize,
+    visited: Vec<bool>,
+    profiles: Vec<Profile>,
+}
+
+impl LiveCut {
+    fn new(graph: Graph, capacity: usize, order: Option<Vec<usize>>) -> Self {
+        let original_vertices = graph.vertices;
+        let original_edges = graph.edges.len();
+        let prefix = original_vertices;
+        let terminal = prefix + 1;
+        let mut edges = graph.edges;
+        edges.extend(std::iter::repeat_n((prefix, terminal), capacity));
+        let augmented = Graph::new(original_vertices + 2, &edges);
+        let order = order.unwrap_or_else(|| (0..original_vertices).collect());
+        assert_eq!(order.len(), original_vertices);
+        let mut elimination = Vec::with_capacity(original_vertices + 2);
+        elimination.push(terminal);
+        elimination.extend(order);
+        elimination.push(prefix);
+        let plan = Plan::with_order_universal(augmented, None, elimination, Some(prefix));
+        // The prefix vertex is in every original edge owner's bag. This
+        // discharges all possible effective endpoints before any live update.
+        for edge in 0..original_edges {
+            let bag = &plan.nodes[plan.edge_owner[edge]].bag;
+            let (u, v) = plan.graph.edges[edge];
+            assert!(bag.contains(&prefix) && bag.contains(&u) && bag.contains(&v));
+        }
+        let mut incident_owners = vec![Vec::new(); original_vertices];
+        for (edge, &(u, v)) in plan.graph.edges[..original_edges].iter().enumerate() {
+            incident_owners[u].push(plan.edge_owner[edge]);
+            incident_owners[v].push(plan.edge_owner[edge]);
+        }
+        let visited = vec![false; original_vertices];
+        let profiles = plan.evaluate_profiles(capacity, &visited, prefix, original_edges);
+        Self { plan, original_vertices, original_edges, incident_owners, capacity, visited, profiles }
+    }
+
+    fn finish(&mut self, vertex: usize) -> BTreeSet<usize> {
+        assert!(vertex < self.original_vertices && !self.visited[vertex]);
+        self.visited[vertex] = true;
+        let mut dirty = BTreeSet::new();
+        for &owner in &self.incident_owners[vertex] {
+            let mut current = Some(owner);
+            while let Some(id) = current {
+                if !dirty.insert(id) { break; }
+                current = self.plan.nodes[id].parent;
+            }
+        }
+        for &id in &dirty {
+            self.profiles[id] = self.plan.profile_at(
+                id, &self.profiles, self.capacity, &self.visited,
+                self.original_vertices, self.original_edges,
+            );
+        }
+        dirty
+    }
+
+    fn feasible(&self) -> bool {
+        !self.profiles[self.plan.root].is_empty()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn check_actual_completed_ring_prefix(
+    atom_count: usize, edges: &[(usize, usize)], capacity: usize, completed: &[usize],
+) {
+    let mut live = LiveCut::new(Graph::new(atom_count, edges), capacity, None);
+    for &atom in completed {
+        live.finish(atom);
+        assert_eq!(live.profiles, live.plan.evaluate_profiles(
+            capacity, &live.visited, atom_count, live.original_edges));
+    }
+    assert!(live.feasible(), "actual completed ring prefix must retain a physical continuation");
+}
+
+fn filled_adjacency(
+    graph: &Graph, anchor: Option<usize>, universal: Option<usize>,
+) -> Vec<BTreeSet<usize>> {
     let mut adjacent = vec![BTreeSet::new(); graph.vertices];
     for &(u, v) in &graph.edges {
         adjacent[u].insert(v);
         adjacent[v].insert(u);
     }
-    if let Some(z) = anchor {
+    for z in [anchor, universal].into_iter().flatten() {
         for v in 0..graph.vertices {
             if v != z {
                 adjacent[v].insert(z);
@@ -314,7 +462,7 @@ fn filled_adjacency(graph: &Graph, anchor: Option<usize>) -> Vec<BTreeSet<usize>
 }
 
 fn elimination_order(graph: &Graph, anchor: Option<usize>) -> Vec<usize> {
-    let mut adjacent = filled_adjacency(graph, anchor);
+    let mut adjacent = filled_adjacency(graph, anchor, None);
     let mut remaining: BTreeSet<_> = (0..graph.vertices).filter(|&v| Some(v) != anchor).collect();
     let mut order = Vec::with_capacity(remaining.len());
     while let Some(&v) = remaining.iter().min_by_key(|&&v| (adjacent[v].len(), v)) {
@@ -332,7 +480,7 @@ fn elimination_order(graph: &Graph, anchor: Option<usize>) -> Vec<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Graph, Plan};
+    use super::{effective_original_edge, Graph, LiveCut, Plan};
     use crate::boundary_cut_relation::Row;
     use crate::cut_load_algebra::LoadWord;
     use std::collections::BTreeSet;
@@ -351,6 +499,96 @@ mod tests {
             }
         }
         result
+    }
+
+    fn raw_prefix_feasible(graph: &Graph, visited: &[bool], capacity: usize) -> bool {
+        let initial = graph.edges.iter().filter(|&&(u, v)| visited[u] != visited[v]).count();
+        if initial > capacity { return false; }
+        let remaining = (0..graph.vertices).filter(|&v| !visited[v]).collect::<Vec<_>>();
+        permutations(&remaining).into_iter().any(|order| {
+            let mut seen = visited.to_vec();
+            order.into_iter().all(|v| {
+                seen[v] = true;
+                graph.edges.iter().filter(|&&(u, w)| seen[u] != seen[w]).count() <= capacity
+            })
+        })
+    }
+
+    fn check_live(graph: Graph, capacity: usize, order: Option<Vec<usize>>,
+        finishes: &[usize]) {
+        let mut live = LiveCut::new(Graph::new(graph.vertices, &graph.edges), capacity, order);
+        let check = |live: &LiveCut| {
+            let fresh = live.plan.evaluate_profiles(capacity, &live.visited,
+                live.original_vertices, live.original_edges);
+            assert_eq!(live.profiles, fresh, "every current plan cell must match fresh evaluation");
+            assert_eq!(live.feasible(), raw_prefix_feasible(&graph, &live.visited, capacity),
+                "graph={:?}, visited={:?}, K={capacity}", graph.edges, live.visited);
+        };
+        check(&live);
+        for &v in finishes {
+            let expected = graph.edges.iter().enumerate().filter(|(_, &(u, w))| u == v || w == v)
+                .flat_map(|(edge, _)| {
+                    let mut closure = Vec::new();
+                    let mut node = Some(live.plan.edge_owner[edge]);
+                    while let Some(id) = node {
+                        closure.push(id);
+                        node = live.plan.nodes[id].parent;
+                    }
+                    closure
+                }).collect::<BTreeSet<_>>();
+            assert_eq!(live.finish(v), expected, "exact dirty ancestor closure");
+            check(&live);
+        }
+    }
+
+    #[test]
+    fn live_physical_profiles_match_fresh_cells_and_raw_prefixes() {
+        for n in 1..=3 {
+            let pairs = (0..n).flat_map(|u| (u + 1..n).map(move |v| (u, v)))
+                .collect::<Vec<_>>();
+            for mask in 0..(1 << pairs.len()) {
+                let edges = pairs.iter().enumerate().filter_map(|(bit, &edge)|
+                    ((mask >> bit) & 1 == 1).then_some(edge)).collect::<Vec<_>>();
+                let graph = Graph::new(n, &edges);
+                for k in 1..=3 {
+                    for order in permutations(&(0..n).collect::<Vec<_>>()) {
+                        check_live(Graph::new(n, &graph.edges), k, None, &order);
+                    }
+                }
+            }
+        }
+        let graph = Graph::new(4, &[(0, 1), (0, 1), (1, 2)]);
+        for order in [None, Some(vec![3, 2, 1, 0])] {
+            for k in 1..=3 {
+                check_live(Graph::new(graph.vertices, &graph.edges), k, order.clone(),
+                    &[3, 0, 1, 2]);
+            }
+        }
+    }
+
+    #[test]
+    fn terminal_gadget_allows_nonzero_current_prefix_boundary() {
+        let graph = Graph::new(3, &[(0, 1), (1, 2)]);
+        let mut live = LiveCut::new(Graph::new(3, &graph.edges), 1, None);
+        live.finish(0);
+        assert_eq!(graph.edges.iter().filter(|&&(u, v)| live.visited[u] != live.visited[v]).count(), 1);
+        assert!(raw_prefix_feasible(&graph, &live.visited, 1));
+        assert!(live.feasible());
+    }
+
+    #[test]
+    fn one_owned_edge_changes_contribution_across_both_atom_completions() {
+        let graph = Graph::new(2, &[(0, 1)]);
+        let mut live = LiveCut::new(graph, 1, None);
+        let owner = live.plan.edge_owner[0];
+        let prefix = live.original_vertices;
+        assert_eq!(effective_original_edge((0, 1), &live.visited, prefix), Some((0, 1)));
+        live.finish(0);
+        assert_eq!(live.plan.edge_owner[0], owner);
+        assert_eq!(effective_original_edge((0, 1), &live.visited, prefix), Some((prefix, 1)));
+        live.finish(1);
+        assert_eq!(live.plan.edge_owner[0], owner);
+        assert_eq!(effective_original_edge((0, 1), &live.visited, prefix), None);
     }
 
     // This reference uses only original labelled edges and atom permutations.

@@ -3209,3 +3209,47 @@ a general proof of contextual congruence. The proof still needs the split
 lifting and join monotonicity arguments for arbitrary words and the joint
 physical/control facts at a separator. `EventSchedule` remains the authority;
 this module asserts no production admission, runtime bound, or replacement.
+
+### Test-only live physical cut update trial
+
+The next trial separates three facts. Original physical edge IDs and their
+decomposition owners are immutable. A completed-atom visited set determines
+each original edge's current contribution: unvisited--unvisited stays between
+its endpoints, visited--unvisited moves to the fixed prefix vertex, and
+visited--visited is disabled while its edge ID remains owned. The relation's
+correlated boundary-order and gap-word rows are the only mutable cached
+payload. Structural piece footprints belong to one-time plan validation, not
+to every cached node.
+
+The unanchored cut plan keeps the prefix vertex in every original bag by
+structural fill only; no dummy load edges are added. It eliminates the terminal
+gadget vertex first, in a local branch, and the prefix vertex last. Anchoring
+the prefix vertex while adding the parallel-edge gadget is wrong: any positive
+current boundary would exceed capacity at the first cut. An immutable
+per-vertex incident-owner index, derived once from original edge IDs, finds
+the affected owners without scanning every edge at each completion. After one
+actual atom completion, incident edge owners and their ancestors are the exact
+dirty set. Recomputing that set in postorder publishes a new root only after
+all its child profiles agree with
+the same visited assignment. A fresh full evaluation and a small raw quotient
+permutation reference falsify this invariant. This trial does not make the
+update uniformly cheap: a dirty closure can span the whole plan. Retained
+state is the static plan, an O(V+E) incident-owner index, visited flags, and
+one bounded correlated profile per plan node. An update follows the incident
+owners' ancestor paths, inserts IDs into an ordered dirty set, and evaluates
+each dirty profile in postorder. Because ascent stops at an already marked
+ancestor, the cost is O((D + degree(v)) * log(1 + D)) for dirty-set
+bookkeeping, plus the sum of
+the D profile operator and old-profile disposal costs. Root feasibility is an
+O(1) cached-row emptiness check. An isolated completion touches no plan nodes
+or source edges. The test-only writer hook deliberately performs a fresh whole-
+plan comparison after each update; that diagnostic cost is outside the live
+update bound and is not a runtime measurement.
+
+The minimal-regret path reuses the existing relation operators for both fresh
+and cached evaluation. An alternative is a second incremental relation engine,
+but that would duplicate the row semantics and risk disagreement. Another is
+to cache full Relation values, but their repeated private vertex/edge sets
+would grow with forgotten interiors. The trial remains test-only; the control,
+chemistry, stereo, and label constraints still need a joint separator state
+before it can replace EventSchedule.

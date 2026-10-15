@@ -23,7 +23,7 @@ impl Graph {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct Row {
     pub(super) order: Vec<usize>,
     pub(super) gaps: Vec<LoadWord>,
@@ -48,6 +48,109 @@ fn retain_row(rows: &mut Vec<Row>, candidate: Row) {
     rows.push(candidate);
 }
 
+// A cached plan cell retains only this payload; piece ownership is checked once
+// by the immutable plan and is never replicated across cached cells.
+pub(super) type Profile = Vec<Row>;
+
+pub(super) fn leaf_rows(anchor: Option<usize>) -> Profile {
+    match anchor {
+        Some(z) => vec![Row {
+            order: vec![z],
+            gaps: vec![LoadWord(vec![0]), LoadWord(vec![0])],
+        }],
+        None => vec![Row {
+            order: vec![],
+            gaps: vec![LoadWord(vec![0])],
+        }],
+    }
+}
+
+pub(super) fn introduce_vertex_rows(
+    input: &[Row], vertex: usize, capacity: usize, anchor: Option<usize>,
+) -> Profile {
+    let mut rows = Vec::new();
+    for row in input {
+        for position in 0..=row.order.len() {
+            if anchor.is_some() && position == 0 { continue; }
+            let gap = &row.gaps[position].0;
+            for cut in 0..gap.len() {
+                let mut order = row.order.clone();
+                order.insert(position, vertex);
+                let mut gaps = row.gaps.clone();
+                gaps.splice(position..=position, [
+                    LoadWord::new(&gap[..=cut], capacity).unwrap(),
+                    LoadWord::new(&gap[cut..], capacity).unwrap(),
+                ]);
+                retain_row(&mut rows, Row { order, gaps });
+            }
+        }
+    }
+    rows
+}
+
+pub(super) fn introduce_edge_rows(
+    input: &[Row], contribution: Option<(usize, usize)>, capacity: usize,
+) -> Profile {
+    let Some((u, v)) = contribution else { return input.to_vec(); };
+    let mut rows = Vec::new();
+    for original in input {
+        let mut row = original.clone();
+        let a = row.order.iter().position(|&x| x == u).unwrap();
+        let b = row.order.iter().position(|&x| x == v).unwrap();
+        let (lo, hi) = (a.min(b), a.max(b));
+        let mut possible = true;
+        for gap in &mut row.gaps[lo + 1..=hi] {
+            let raised: Vec<_> = gap.0.iter().map(|&load| load + 1).collect();
+            match LoadWord::new(&raised, capacity) {
+                Some(next) => *gap = next,
+                None => { possible = false; break; }
+            }
+        }
+        if possible { retain_row(&mut rows, row); }
+    }
+    rows
+}
+
+pub(super) fn forget_rows(input: &[Row], vertex: usize, capacity: usize) -> Profile {
+    let mut rows = Vec::new();
+    for original in input {
+        let mut row = original.clone();
+        let position = row.order.iter().position(|&x| x == vertex).unwrap();
+        row.order.remove(position);
+        // The cut before the visit can differ from the cut after it.
+        let mut joined = row.gaps[position].0.clone();
+        joined.extend(&row.gaps[position + 1].0);
+        row.gaps.splice(position..=position + 1,
+            [LoadWord::new(&joined, capacity).unwrap()]);
+        retain_row(&mut rows, row);
+    }
+    rows
+}
+
+pub(super) fn join_rows(left: &[Row], right: &[Row], capacity: usize) -> Profile {
+    let mut rows = Vec::new();
+    for left in left {
+        for right in right {
+            if left.order != right.order { continue; }
+            let mut tuples = vec![Vec::new()];
+            for (a, b) in left.gaps.iter().zip(&right.gaps) {
+                let choices = merge(a, b, capacity);
+                tuples = tuples.into_iter().flat_map(|prefix| {
+                    choices.iter().map(move |word| {
+                        let mut tuple = prefix.clone();
+                        tuple.push(word.clone());
+                        tuple
+                    })
+                }).collect();
+            }
+            for gaps in tuples {
+                retain_row(&mut rows, Row { order: left.order.clone(), gaps });
+            }
+        }
+    }
+    rows
+}
+
 pub(super) struct Relation<'g> {
     graph: &'g Graph,
     capacity: usize,
@@ -67,10 +170,7 @@ impl<'g> Relation<'g> {
             vertices: BTreeSet::new(),
             edges: BTreeSet::new(),
             boundary: BTreeSet::new(),
-            rows: vec![Row {
-                order: vec![],
-                gaps: vec![LoadWord(vec![0])],
-            }],
+            rows: leaf_rows(None),
         }
     }
 
@@ -83,10 +183,7 @@ impl<'g> Relation<'g> {
             vertices: BTreeSet::from([anchor]),
             edges: BTreeSet::new(),
             boundary: BTreeSet::from([anchor]),
-            rows: vec![Row {
-                order: vec![anchor],
-                gaps: vec![LoadWord(vec![0]), LoadWord(vec![0])],
-            }],
+            rows: leaf_rows(Some(anchor)),
         }
     }
 
@@ -94,29 +191,7 @@ impl<'g> Relation<'g> {
         assert!(vertex < self.graph.vertices && !self.vertices.contains(&vertex));
         self.vertices.insert(vertex);
         self.boundary.insert(vertex);
-        let mut rows = Vec::new();
-        for row in self.rows {
-            for position in 0..=row.order.len() {
-                if self.anchor.is_some() && position == 0 {
-                    continue;
-                }
-                let gap = &row.gaps[position].0;
-                for cut in 0..gap.len() {
-                    let mut order = row.order.clone();
-                    order.insert(position, vertex);
-                    let mut gaps = row.gaps.clone();
-                    gaps.splice(
-                        position..=position,
-                        [
-                            LoadWord::new(&gap[..=cut], self.capacity).unwrap(),
-                            LoadWord::new(&gap[cut..], self.capacity).unwrap(),
-                        ],
-                    );
-                    retain_row(&mut rows, Row { order, gaps });
-                }
-            }
-        }
-        self.rows = rows;
+        self.rows = introduce_vertex_rows(&self.rows, vertex, self.capacity, self.anchor);
         self
     }
 
@@ -125,47 +200,14 @@ impl<'g> Relation<'g> {
         let (u, v) = self.graph.edges[edge];
         assert!(self.boundary.contains(&u) && self.boundary.contains(&v));
         self.edges.insert(edge);
-        let mut rows = Vec::new();
-        for mut row in self.rows {
-            let a = row.order.iter().position(|&x| x == u).unwrap();
-            let b = row.order.iter().position(|&x| x == v).unwrap();
-            let (lo, hi) = (a.min(b), a.max(b));
-            let mut possible = true;
-            for gap in &mut row.gaps[lo + 1..=hi] {
-                let raised: Vec<_> = gap.0.iter().map(|&load| load + 1).collect();
-                match LoadWord::new(&raised, self.capacity) {
-                    Some(next) => *gap = next,
-                    None => {
-                        possible = false;
-                        break;
-                    }
-                }
-            }
-            if possible {
-                retain_row(&mut rows, row);
-            }
-        }
-        self.rows = rows;
+        self.rows = introduce_edge_rows(&self.rows, Some((u, v)), self.capacity);
         self
     }
 
     pub(super) fn forget(mut self, vertex: usize) -> Self {
         assert!(self.boundary.contains(&vertex) && self.anchor != Some(vertex));
         self.boundary.remove(&vertex);
-        let mut rows = Vec::new();
-        for mut row in self.rows {
-            let position = row.order.iter().position(|&x| x == vertex).unwrap();
-            row.order.remove(position);
-            // The cut before the visit can differ from the cut after it.
-            let mut joined = row.gaps[position].0.clone();
-            joined.extend(&row.gaps[position + 1].0);
-            row.gaps.splice(
-                position..=position + 1,
-                [LoadWord::new(&joined, self.capacity).unwrap()],
-            );
-            retain_row(&mut rows, row);
-        }
-        self.rows = rows;
+        self.rows = forget_rows(&self.rows, vertex, self.capacity);
         self
     }
 
@@ -184,40 +226,10 @@ impl<'g> Relation<'g> {
         );
         self.vertices.extend(other.vertices);
         self.edges.extend(other.edges);
-        let mut rows = Vec::new();
-        for left in &self.rows {
-            for right in &other.rows {
-                if left.order != right.order {
-                    continue;
-                }
-                let mut tuples = vec![Vec::new()];
-                for (a, b) in left.gaps.iter().zip(&right.gaps) {
-                    let choices = merge(a, b, self.capacity);
-                    tuples = tuples
-                        .into_iter()
-                        .flat_map(|prefix| {
-                            choices.iter().map(move |word| {
-                                let mut tuple = prefix.clone();
-                                tuple.push(word.clone());
-                                tuple
-                            })
-                        })
-                        .collect();
-                }
-                for gaps in tuples {
-                    retain_row(
-                        &mut rows,
-                        Row {
-                            order: left.order.clone(),
-                            gaps,
-                        },
-                    );
-                }
-            }
-        }
-        self.rows = rows;
+        self.rows = join_rows(&self.rows, &other.rows, self.capacity);
         self
     }
+
 }
 
 #[cfg(test)]

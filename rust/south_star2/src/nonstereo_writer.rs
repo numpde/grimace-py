@@ -4702,6 +4702,9 @@ fn ring_label_spellings(label: usize) -> Vec<String> {
 #[cfg(test)]
 #[path = "nonstereo_writer_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "live_obligation_reference_tests.rs"]
+mod live_obligation_reference_tests;
 
 #[cfg(test)]
 #[path = "generic_ring_label_tests.rs"]

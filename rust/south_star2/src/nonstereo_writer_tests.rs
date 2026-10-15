@@ -1319,7 +1319,7 @@ fn atom_was_emitted<S: ConstraintSolver>(state: &NonStereoWriterState<S>, atom: 
     state.active_atom() == Some(atom) || state.structural.atom_is_visited(atom)
 }
 
-fn completed_atom_witnesses<S: ConstraintSolver>(
+pub(super) fn completed_atom_witnesses<S: ConstraintSolver>(
     state: &NonStereoWriterState<S>,
     atom: AtomId,
 ) -> Vec<(String, NonStereoWriterState<S>)> {
@@ -1410,7 +1410,7 @@ fn complete_atom_witness_from_prefix<S: ConstraintSolver>(
         .collect()
 }
 
-fn only_root_atom<S: ConstraintSolver>(
+pub(super) fn only_root_atom<S: ConstraintSolver>(
     state: &NonStereoWriterState<S>,
     atom: AtomId,
 ) -> (String, NonStereoWriterState<S>) {

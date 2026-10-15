@@ -2479,3 +2479,67 @@ namespace must flow through the same event model and joint relations, with
 early admission effects rather than an output filter.
 
 Qualification of the frozen Rust candidate from baseline `eb108c05d177af58d502a27432df3a5494706d7d` used `/tmp/grimace-lazy-children-eb108c05`; the build-time tracked-source comparison found only this note, `native.rs`, `work_diagnostic.rs`, and `nonstereo_writer_tests.rs` changed, with `native.rs` SHA-256 `96b291bbd6581388f6226f566ef5d8673cbfb1351afb1f82e39f6f843bc54be3`. The bounded offline release wheel at `/tmp/grimace-lazy-qualification-eb108c05/dist/grimace_py-0.1.10-cp312-cp312-manylinux_2_34_x86_64.whl` has SHA-256 `ae3c090b9e1d421fef384231ab48de60622d5c15040fb4f1c8071c9a53973505`; its sole `_core` extension has SHA-256 `10b8fd9e896e9600c8819ba01162d6ce7053a0a5a500d8d14f25cce388aba8f9`. Import checks resolved `grimace` and `_core` to the extracted wheel, and all 16 public-prefix tests passed there. The prior ignored checkout extension (SHA-256 `b816afcdd7404b54f88d592f68f5df4582619b141e2cfd6ab94c26a27a496661`) was backed up at `/tmp/grimace-lazy-qualification-eb108c05/checkout-core-before.so`; the refreshed checkout extension matches the wheel bytes and resolved from the checkout package. The focused South Star 2 semantic selection (`test_standard_smiles_semantics`, `test_compact_language`, `test_leading_dot_tetra_semantics`, `test_kekule_semantics`) passed 37 tests. Every bounded build/import/test run reported `verified_no_live_members`; logs are `/tmp/grimace-lazy-qualification-eb108c05/{wheel-build,wheel-import,wheel-public-prefix,checkout-import,checkout-south-star2-semantics}.log`. This qualifies the represented public and semantic paths, without establishing a speedup or the broader work bound.
+
+### Initial live-obligation proof gate (private candidate)
+
+The current traversal store already records visited atoms and each bond's
+unrepresented, traversed, open-ring, or closed-ring progress; active and saved
+writer frames record actual branch returns. The non-stereo layer separately
+holds occupied ring-label slots and pending lexical emission, while the shared
+solver carries role, incidence-order, and stereo relations. These facts should
+be the starting live inventory. `PreparedNonStereo` additionally allocates
+`EventVisit` rank, entry-kind, and branch-end variables and an all-future event
+factor. Those variables are the displaced authority, not live facts.
+
+A test-only, fixed-role finite raw event grammar now separates legal local
+moves from productive successors for small ordinary examples. It has explicit
+visited/bond progress, return stack, label occupancy, and ring-before-child
+phase, and reverse-marks accepted states. For the one-label subdivided diamond,
+X-first is locally legal and reaches an incomplete raw dead end; C-first and
+D-first are the exact productive labelled branch-and-atom structural successors.
+A production `observe_raw` projection compares those `(macro text, structural
+successor)` pairs at that root; a two-label variant restores X-first. Changing
+X-B from traversal to ring and B-C from ring to traversal also restores
+X-first with one label, by opening X-B, returning to A, entering C-B, closing
+X-B, and reusing its label for B-D. A separate five-atom tree case asserts
+that a productive state retains two ordered branch returns. This is a bounded
+structural gate only. It does not model tetrahedral or directional relations,
+dot rescue, all lexical representatives, or unrestricted MAXIMAL support, and
+it is not the missing compact completion criterion.
+
+An unseeded production witness reaches the actual A-X branch without
+restricting future bond roles. There, X-B traversal is absent while X-B ring
+opening is offered; the test compares normalized complete ring-token
+structural projections with the union of the three compatible fixed-role raw
+grammars. It separately retains production bond-domain vectors because the
+same text and structural projection can have distinct future endpoint
+spelling plans. An actual continuation returns to A, enters C-B, closes X-B,
+opens B-D using the released slot, returns again to A, enters D, closes B-D,
+and accepts. This still does not compare full semantic successor identities
+against a model of all those relations; the structural projection is only the
+explicitly scoped first gate.
+
+In particular, a residual boundary must retain the identity of held ring
+bonds and their joint incidence-order alternatives. At a center with ring
+incidences BC then BD and one slot, arriving with BC held permits close-then-
+open, while arriving with BD held requires opening BC before closing BD and
+exceeds the slot. The same occupied-label count and residual connectivity do
+not determine productivity. An exact candidate must jointly test this order
+with role and stereo assignments; no replacement of the runtime event factor
+is justified until the general extension lemma is established.
+
+A second, delayed obstruction is witnessed on ordinary atoms
+P,A,H,B,C,D with edges PH, PA, AH, AB, BC, BD, CD and one label. After
+P opens PH and enters A, A-H first closes PH, returns to A, and permits
+an accepted A-B-C-D continuation that reuses the freed label for CD.
+A-B first would strand the required A-H attachment behind a B branch while
+PH occupies the sole label; the B-C-D triangle needs a ring endpoint before
+that branch can return. The current Event relation rejects A-B at A. In a
+test-only clone that merely disables activation of this latent factor while
+retaining its prepared variable namespace and all other solver relations,
+A-B is offered, but the entered B state has two candidates semantically
+rejected and reports `AllCandidatesSemanticallyRejected`. This differential
+diagnostic shows a delayed local-only failure for that exact reachable prefix;
+it is not an independent grammar proof of the six-atom case. It does not
+establish a general compact completion criterion or justify disabling the
+factor in production.

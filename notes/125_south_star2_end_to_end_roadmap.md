@@ -2665,3 +2665,70 @@ Deletion gates are the committed-child entry functions, committed-child layout p
 Focused native verification passed the seven live-obligation reference cases, structural writer-state tests, inline-entry tests, selected branch/directional/tetrahedral complete walks, the small independent transition-oracle comparison, and the new final-inline and equal-parenthesis regressions. Filter runs overlap, so their counts are not an additive test total. Each final bounded receipt reported exit status 0 and `verified_no_live_members`; logs are under `/tmp/grimace-entered-child-*.log`. The earlier exhaustive support-growth diagnostic remains historically unqualified and was not rerun.
 
 A bounded offline host build of the frozen source produced a CPython wheel (SHA-256 `9433ebf9f0f0b8ba35870ac8450121f2dd792b9e77eeee4b1841421d1a8eeadd`) with `_core` SHA-256 `cc1b2a672692b9e689f200dded49e1a32056ac05257448d84037c0176097b6f5`. Isolated import and artifact-identity checks passed. Against that exact artifact, all 16 public-prefix tests and 37 tests across the four South Star 2 semantic modules passed. The 186 tracked crate and Python-wrapper files were unchanged and byte-equal to root. The root ignored ABI was backed up and refreshed with the exact qualified bytes; a bounded root import and byte-identity check passed. Every artifact qualification receipt exited 0 with `verified_no_live_members`; logs and artifact are under `/tmp/grimace-entered-child-qualification-8aeb4dac/`. This qualifies those tested paths, not EventSchedule removal, a general completion theorem, or a work bound; no speed claim follows.
+
+## Attached forced-Traversal forest: conditional semantic realization contract
+
+The proposed `MAXIMAL` lemma concerns an actually valid live state with no held
+ring labels. Every unrepresented bond is already forced to Traversal, and each
+unvisited residual component is a tree attached by exactly one physical bond
+to the actual active or saved frame. There are no unattached future roots.
+The physical edge and attachment determine each entry's incoming bond and
+source without selecting a future visit rank or branch end. The claim is
+conditional on one common assignment of every applicable semantic relation,
+with one realizable local lexical row for each entry and a finite completion
+of any pending spelling. A row includes the induced entry, bond role and
+representation, local atom spelling restrictions, and directional mark at the
+physical source; alternatives form a disjunction. If a future proof establishes
+row-to-renderer correspondence, remaining children can be emitted in a
+row-permitted order, branching except for the final inline child and returning
+through actual saved frames. The converse must project each accepting labelled
+walk onto the same joint assignment. This is a proposed construction, not a
+proved general extension theorem or a production admission rule.
+
+One test-only chain contract in `forest_realization_contract_tests.rs` checks
+a narrower case: six fixed, non-aromatic, non-tetrahedral atoms in a single
+path, with two double bonds and three directional carrier bonds. The middle
+carrier belongs to both directional relations. The relation phases are false
+and true. With physical endpoint orientation from the prepared graph, the
+independent mark rule is `m0 != m2 && m2 == m4` for marked carriers; a plain
+carrier cannot supply either required side phase. The test checks all 27
+three-valued mark tuples from each endpoint root, 54 tuples in total. Per
+orientation, exactly two tuples satisfy this rule, yielding four accepted
+row-guided traces; the other 25 have no complete compatible row
+product or contradict the joint native relation. It folds each compatible
+row product into one native solver transition, then fixes the same semantic
+inventory and follows the induced inline entries through the actual writer.
+At each step it checks the labelled bond and atom spelling, physical source,
+visited count, incoming edge, role progress, pending phase, local grammar
+successor, and final acceptance. Directional text is independently checked
+against the physical source and mark; the same mark variable is used on both
+relations. Atom lexical spellings can have more than one raw string, but this
+fixture has one semantic atom class per entry, so one finite grammar path per
+class suffices for this correspondence check.
+
+This fixture's prepared model has no EventSchedule factor or future visit,
+entry-kind, or branch-end variables. Preparation also allocates no ordinary
+pair-order variables for it. The test inventories the factor families and
+activation: topology and binary side-pattern/parity factors are active;
+ring-count and directional ring-placement factors are latent. It asserts the fixed
+atom alternatives add no semantic restrictions or factor activations. The
+writer and native solver share the prepared relation definitions, so the
+separately derived parity rule and per-step physical/grammar checks provide
+an independent check of their use for this chain, not a separate general
+solver proof. The older closed-ring-tail test from the partial archive is
+excluded: its setup failed before the intended boundary and supplies no
+normative production counterexample. Its diagnostic remains in the original
+`/tmp/grimace-forest-contract-7b3784f8` archive.
+
+General forest order, tetrahedral child order and parity, branch returns,
+closed-ring commitments, all pending lexical phases, and all semantic row
+classes beyond this fixed chain remain unproved. EventSchedule currently
+prepares ordinary pair-order variables alongside its speculative future
+variables; any truly semantic order dependence must be separated before that
+allocation and the schedule can be retired. This test makes no deletion,
+efficiency, or general completion claim.
+
+The exact focused test passed with exit status 0 and
+`verified_no_live_members` under the bounded runner; its retained log is
+`/tmp/grimace-forest-common-final2.log`. This result does not close the
+general forest proof or authorize EventSchedule retirement.

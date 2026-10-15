@@ -4726,6 +4726,10 @@ mod tests;
 mod live_obligation_reference_tests;
 
 #[cfg(test)]
+#[path = "forest_realization_contract_tests.rs"]
+mod forest_realization_contract_tests;
+
+#[cfg(test)]
 #[path = "generic_ring_label_tests.rs"]
 mod generic_ring_label_tests;
 

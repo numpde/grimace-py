@@ -1,0 +1,415 @@
+FACTORED ONLINE SMILES GENERATION: AN ATTEMPT AT A FORMAL PROBLEM
+2026-10-16
+
+Purpose
+
+This note formulates a decision/enumeration problem and a proposed algorithmic
+existence question. It does not propose a graph-separator algorithm. Natural
+constraint composition is defined as relational join, without prescribing a
+decomposition or requiring all joint assignments to be materialized.
+
+The main question is whether exact productive next-step generation admits a
+compact, incrementally maintained factorization with output-sensitive work.
+The formal bounds below are proposed research targets, not established facts.
+The particular representation restrictions are explicit hypotheses that
+experts can accept, weaken, or refute separately from the behavioral problem.
+
+1. Fix the language and distinguish physical atoms
+
+Fix an interpretation I of OpenSMILES v1.0, including its molecular identity
+convention. I is fixed before considering an algorithm or a particular input.
+For this project, use the contract in [2]: preserve graph atoms, connectivity,
+element, isotope, charge, numeric atom class, hydrogen inventory, bonding up
+to the stated aromatic equivalence, and specified/unspecified stereo.
+Explicit graph hydrogens and non-graph hydrogen counts remain distinct.
+Numeric padding and aromatic hydrogen ambiguities follow the explicit choices
+in [2]. A different interpretation is a different instance of this problem.
+
+Let G=(V,E,F) be a finite labelled molecular graph with these facts. Atom
+identifiers are distinct even when atoms are chemically indistinguishable.
+Let Sigma be the finite character alphabet of the fixed syntax, excluding
+record terminators; acceptance uses a separate end-of-string decision.
+
+A labelled serialization is a pair (s,lambda), where s is a finite string
+over Sigma and lambda maps its atom occurrences bijectively to V, preserving
+the facts under I. Denote the set of such pairs by L^lab_I(G). Its projection
+onto strings is L_I(G). The intended MAXIMAL language is exactly L_I(G),
+not the support of a particular toolkit's random writer.
+
+The interpretation permits unbounded numeric padding. Consequently L_I(G)
+may be infinite for finite G. This does not give infinitely many one-character
+choices. Every accepting path is finite; a productive state may also admit
+infinite nonaccepting paths that keep extending a padded field.
+
+2. A fixed reference model for the query
+
+Use a streaming parser for the fixed syntax, with maximal-munch atom lexing
+and a partial-token state. Its storage consists of lexical state, bracket/
+branch stack, current atom, ring table, and the partial attributed graph.
+The parser implements grammar and already-read facts; it does not ask whether
+the remaining target graph can eventually be serialized. One-character
+lookahead is represented in the partial-token state, not by reading a future
+character. Syntax tables and the interpretation are fixed parts of the
+problem, not inputs that the candidate algorithm may change.
+
+When the first character of an atom occurrence is read (including '['),
+attach a previously unused label v in V. Subsequent characters of that atom
+keep the label. An incomplete atom token need not yet agree with every fact
+of v. Its feasibility is precisely part of the subsequent query. Ring
+references refer to existing atom occurrences, not new atom labels.
+
+A reference state is q=(p,lambda_p), where p is the actual character prefix
+and lambda_p is the injective assignment to atom occurrences already begun.
+More precisely, p belongs to Pref_syn={p : some pu is a complete string of
+the fixed syntax grammar}, without any target-graph or chemical condition.
+This is a syntax-prefix test, not Live_G. Only these partial parses are
+reference states. The streaming parser state is a deterministic function
+of q. The literal prefix
+is a mathematical description of actual history; an implementation may
+replace it by sufficient incremental parser records and keep output outside
+the feasibility data structure.
+
+Define the raw local relation q --(c,v)--> q' as follows:
+
+  * Append exactly one c in Sigma and advance the syntax parser.
+  * If this starts an atom occurrence, choose one unused v in V and record
+    its assignment. Otherwise v is the distinguished symbol bottom.
+  * Reject syntax errors, inconsistent annotation, or reuse of an atom label.
+    This relation does not perform the completion-existence test below.
+
+Thus there are at most |Sigma|*(|V|+1) raw successors of a state. This is a
+definition of the candidate universe, not a requirement to scan it at every
+query. In particular, an efficient algorithm may index candidates directly.
+
+A complete pair (s,lambda) extends q if p is a character prefix of s and its
+already-started atom assignments agree with lambda_p. Define
+
+  Live_G(q) iff some (s,lambda) in L^lab_I(G) extends q.
+  Accept_G(q) iff (p,lambda_p) itself belongs to L^lab_I(G).
+
+The required query is
+
+  Next_G(q) = { (c,v,q') : q --(c,v)--> q' and Live_G(q') }.
+
+End-of-string is available exactly when Accept_G(q). This is separate from
+enumerating character successors. The empty molecular graph is included.
+
+This definition is non-determinized: different physical label assignments
+remain different successors even when c is identical. We do not replace
+them by a single state for the emitted text. Conversely, arbitrary solver
+witnesses or duplicate bookkeeping paths do not create additional outputs.
+
+This reference chooses when labels become actual commitments. Implementations
+that commit additional physical choices earlier, such as a particular ring
+edge, need an explicitly stated refinement and must count its distinct
+successors separately. A complexity theorem for the reference model does not
+automatically transfer to a different choice granularity. Whole future
+serializations are never single outputs in the principal problem.
+
+3. Factorization means a relation, not independent Boolean answers
+
+A finite factor system is F=(X,{D_x},mathcal{F}), where X is a finite set of
+variables, D_x is the finite domain of x, and each factor f has a scope
+S_f subset of X and a relation R_f subset of product_{x in S_f} D_x.
+Include the unary domain relation D_x as a factor for every x, so variables
+absent from other scopes still occur in the joined relation. Zero-ary true
+and false factors are allowed; the empty conjunction is true.
+Its solution relation is
+
+  Sol(F) = { z in product_{x in X} D_x :
+               for every f, z restricted to S_f belongs to R_f }.
+
+For relations R on A and S on B, their natural join is
+
+  R join S = { z on A union B : z|A in R and z|B in S }.
+
+For Y subset of A, projection is pi_Y(R)={z|Y : z in R}. Thus
+
+  Sol(F) = join_{f in mathcal{F}} R_f,
+  feasible(F) iff Sol(F) is nonempty.
+
+These equations define semantics, not a mandated materialization algorithm.
+When A and B are disjoint, their join is a Cartesian product. It may remain
+represented by two factors: its rows need not be expanded. When scopes
+overlap, shared-variable consistency and correlations must be retained.
+For example, separately projecting {(0,2),(2,0)} to its two coordinates and
+joining the projections invents (0,0) and (2,2).
+
+The factor-incidence graph has variable and factor nodes, joined when a
+variable belongs to a factor's scope. Connected components with disjoint
+variable sets factor exactly, conditional on the already fixed actual state.
+One cannot infer this independence merely from disconnected molecular
+components: grammar control, ring resources, or a shared constraint may
+still couple them. Nor does nonemptiness of every factor imply nonemptiness
+of their join.
+
+An explicit independence requirement is additive composition: if F_1,...,F_k
+have pairwise disjoint variable sets and already-built representations H_i,
+their conjunction can be represented with size at most O(k)+sum_i size(H_i)
+and O(k) new work, by retaining those operands. Its nonemptiness is the
+conjunction of their cached nonemptiness answers. This requirement concerns
+combining already-computed components, not the cost of discovering them or
+computing their answers. Those costs remain charged. Shared scopes require
+the general join semantics and receive no such automatic cost guarantee.
+
+4. The representation question: exact residual constraints
+
+Fix physical observation variables Z_G before choosing the compiler:
+
+  * For each vertex v: its normalized atom lexeme and the ordered list of
+    its incident edges as registered by the reference parse. Normalization
+    removes leading-zero padding only from isotope and atom-class fields;
+    other permitted spelling distinctions remain. Incoming bonds are
+    registered on atom entry, outgoing direct bonds on child entry, and
+    ring incidences when their ring reference is read. The fixed grammar
+    determines these events and their order.
+  * For each edge e: direct-bond versus paired-ring representation. For a
+    direct bond, record its direction of introduction, branch versus inline
+    attachment, and its explicit/omitted bond symbol. For a ring bond,
+    record the opening endpoint, numeric label, and the two endpoint bond
+    symbols and digit/percent spelling choices.
+
+These domains are finite for fixed G: each local list has length at most
+the degree, and normalization removes the unbounded padding. Atom facts,
+including stereo marks and numeric field values, bound the remaining lexeme
+possibilities. Each domain is an explicit product of these local fields;
+it does not contain a whole traversal or a global visit order.
+
+Every complete labelled serialization induces one tuple obs_G(s,lambda)
+over Z_G. This map is not injective: different global orders and padding
+lengths can have the same local observations. Define the exact residual
+relation
+
+  R_G(q) = { obs_G(s,lambda) : (s,lambda) in L^lab_I(G)
+                              extends q }.
+
+Seek a compiler C taking (G,q) to a factor system F_G(q), together with an
+incremental data structure H_G(q). Its variables include Z_G and may include
+auxiliary variables Y. Require
+
+  pi_{Z_G}(Sol(F_G(q))) = R_G(q).                         (R1)
+
+In particular, feasible(F_G(q)) iff Live_G(q). This preserves the joint
+physical-choice relation, not merely its nonemptiness bit. It still does
+not require storing its rows. Replacing F by a predicate named "Live(q)"
+would not satisfy this specification of its solution relation.
+
+H represents/caches this same relation. Given a raw local step a to q', an
+update must produce the representation for R_G(q'), not merely prove that
+each changed factor is individually satisfiable. Querying its nonemptiness
+decides whether a belongs to Next_G(q). R_G(q') is not assumed recoverable
+by conditioning R_G(q) alone: the actual grammar state also changes, and
+global orders erased by obs can matter. The compiler/update rules have
+access to G and those actual state changes.
+
+Preserving this specified projection is a stronger, explicit representation
+requirement than answering Live alone. A negative result for it need not
+rule out a different exact representation for Next. The following uniformity
+restrictions also prevent hiding completion search in a primitive relation.
+
+Fix chemistry/semantic class D, maximum physical degree Delta, ring capacity
+K, and maximum input numeric bit length b. Write theta=(D,Delta,K,b).
+For the standard language K=100; other values define restricted/generalized
+models for analysis, not new standard syntax. D fixes the finite vocabulary
+of atom/bond/stereo fact types and their interpretation. Numeric padding
+length is not bounded by b; b bounds numeric values in the input facts.
+
+The question quantifies over a single finite library T of template schemas
+for the fixed interpretation, chosen independently of G and q. Each template has
+explicit finite-domain relation semantics, bounded arity r(theta), and an
+evaluation/representation cost bounded by h(theta). A schema is a fixed
+algorithm generating such a local relation from parameters bounded by theta;
+it is not an arbitrary new predicate supplied per graph. A template may have
+parameters consisting of local input facts or actual control records; their
+encoding and access are charged. A template may not call Live, a suffix
+generator, or a whole-future planner.
+
+Physical observation variables and auxiliary variables have owners: a vertex,
+edge, an actual open ring slot, an actual stack frame, or the current lexical
+record. There are at most h(theta) slots per owner. A slot's domain consists
+of bounded local alternatives: finite type values and references to that
+owner's physical incidences or actually stored control attachments. Domain
+cardinality is at most h(theta); physical identifiers cost log|V| or log|E|
+bits and are not free finite constants.
+
+Examples of permitted meanings are an incident-edge role, a local incidence
+permutation, a stereo sign, or alternatives in a pending lexical record.
+Future global traversal positions, future entry times, future branch-end
+times, and variables indexed by future atom subsets or continuation strings
+are outside this proposed class. Actual stack order is legitimate actual
+state. Ordinary graph bookkeeping can remain procedural; it need not be
+turned into CSP variables to satisfy a uniform interface.
+
+Factors may relate variables of different owners, and intermediate relational
+summaries may have larger scopes. They must preserve the joint semantics;
+their construction, size, and recomputation are charged to the bounds below.
+There may be at most h(theta) times the number of physical/actual owners
+base factors. Derived summaries are not an escape hatch for storing future
+execution trees: their indices, payloads, and dependency edges all count.
+
+This is a specific proposed class, not a claim that every exact algorithm
+must use it. A proof that this class cannot express (R1) would refute this
+representation question, not the behavioral specification in section 2.
+
+5. Permitted updates and the exact online interface
+
+The incremental interface has three operations:
+
+  Init(G) -> H_G(q0), where q0 is the empty prefix.
+  List(H_G(q)) -> an iterator over exactly Next_G(q), plus Accept_G(q).
+  Select(a) -> H_G(q'), for one returned choice a.
+
+List must return each distinct reference successor once. Each returned
+record includes a persistent handle or compact delta sufficient to obtain
+its already-feasible successor without repeating a complete productivity
+decision on Select. The primary bound concerns one selected walk: after
+Select, the caller may discard unselected handles. Retaining a tree of
+successors requires a separate total-storage and shared-work bound.
+
+Let delta(q,a) be the actual parser/graph-record changes from taking a.
+Measure |delta(q,a)| by changed fixed-size record fields and explicit stack
+pushes/pops, with multiword values charged by their word lengths. Solver
+propagation, trial assignments, and derived cache changes are not actual
+changes and cannot be included in this number to make a bound tautological.
+
+An update to the BASE factor system consists of variable creation/deletion,
+domain restriction or replacement, and factor insertion/deletion/replacement.
+Allow replacement because advancing grammar phase changes which residual
+relations apply; we do not assume every update is unary conditioning of one
+static formula. The compiler must implement each local transition with at
+most h(theta)*(1+|delta(q,a)|) such base edits and account for producing them.
+Derived propagation may be nonlocal, but its work is charged separately.
+
+Updates for unselected candidates are tentative and reversible/persistent.
+Their cost, including rejection, belongs to List. The algorithm need not
+generate all raw candidates before emitting the first productive one.
+
+All public states along a selected walk must be productive. Init must also
+detect an empty target language. The factor/update correctness obligations
+cover dead raw candidates, since deciding which of those to reject is part
+of exact List. Supplied arbitrary prefixes can be processed by replaying raw
+updates; there is no free initialization for an arbitrary long prefix.
+
+6. A falsifiable work target
+
+Let N be the bit size of G. Use a word RAM with word length proportional to
+log(2+N+ell), where ell is the number of characters actually selected so far;
+values longer than a word require multiple operations. Fix this model before
+claiming a bound. Let Q be the number of List calls, R the total number of
+successor records actually returned by those calls, and
+
+  A = sum |delta(q,a)| over the selected actual transitions.
+
+Since outputs are one character plus a bounded number of handles/identifiers,
+R counts their word-sized records, not suffix strings. All allocations,
+reference maintenance, tentative rejected updates, and iterator exhaustion
+costs are charged. Repeated List calls count again in Q and R.
+
+Strong target: there exist a constant c and a computable function f of theta
+such that for every G in the class and every finite selected walk,
+
+  preprocessing <= f(theta)*N*log^c(2+N),
+
+  total work <= f(theta)*(N+Q+R+ell+A)*log^c(2+N+ell),      (W1)
+
+  live storage <= f(theta)*(N+S_q+R_live)*log^c(2+N+ell).  (W2)
+
+S_q is the size of actual parser/graph records and R_live the number of
+currently retained successor records in this one-walk interface. Neither
+includes hypothetical futures. The optional output transcript is separate;
+if retained, its actual storage must be added. Bounds include allocating
+already-valid successors and disposing of unselected ones.
+
+For a genuinely online result, also bound delay. After maintenance of the
+selected actual update, each iterator call must return the next record or
+exhaustion in at most f(theta)*log^c(2+N+ell) work. Maintenance itself is
+bounded by f(theta)*(1+|delta|)*log^c(2+N+ell). This forbids hiding a long
+initial or terminal search behind a large eventual total output.
+
+These are ambitious bounds, not premises. A negative answer should identify
+which term must grow and under what computational assumption. A weaker
+positive result must state its actual bound. Adding a structural parameter
+is legitimate, but define it on the physical/factor structure independently
+of the cost of the algorithm being analyzed. Do not set a parameter equal
+to the number of explored futures or the observed running time.
+
+In particular, bounded molecular degree is not a promise of bounded factor
+interaction width. If a theorem needs an additional width parameter k, its
+dependence belongs in f(theta,k); large k remains an acknowledged case of
+the original problem. No separator construction is prescribed here.
+
+7. The quantified research question
+
+For the fixed interpretation I and the reference query in section 2:
+
+Does there exist a uniform finite template library T, compiler/update rules
+C, and algorithms Init/List/Select satisfying the representation restrictions
+of section 4, such that for EVERY finite labelled molecular graph G and
+EVERY finite actual walk selected through productive choices:
+
+  1. the exact projected-relation invariant (R1) holds initially and after
+     every raw candidate update;
+  2. List returns exactly Next_G(q) and the correct acceptance decision;
+  3. Select installs the corresponding valid labelled successor;
+  4. independent factors obey the additive composition requirement in
+     section 3, without expanding their Cartesian product; and
+  5. (W1), (W2), and the stated delay bounds hold?
+
+The universal graph quantifier is stratified by theta; the SAME construction
+works across graphs and parameters, with the stated f(theta) dependence.
+If the answer requires a restricted semantic class or structural promise,
+state that restriction rather than silently redefining MAXIMAL.
+
+There are two separable possible obstructions:
+
+  Representability: no compact, locally updatable physical factor system
+  in the specified class can satisfy (R1).
+
+  Computation: such a system exists, but exact supported-successor queries
+  cannot meet the claimed preprocessing/storage/update/delay bounds.
+
+A counterexample to local propagation is not automatically either result:
+the proposed algorithm may preserve richer correlated relations. Conversely,
+existence of a factorization alone proves no efficient exact propagation.
+
+We exclude repeated future-execution planning operationally by allowing
+actual parser updates only for q and its immediate trial successors, and
+requiring further reasoning to operate on the physical factor relations.
+There are no recursive calls that advance a trial writer through hypothetical
+future prefixes. This operational condition is not by itself a complexity
+theorem: a solver could still perform equivalent expensive work symbolically.
+The representation restrictions and (W1)/(W2)/delay bounds are necessary to
+rule out merely renaming that work. Eliminating or composing bounded factor
+relations is allowed; its cost must satisfy those same bounds.
+
+8. What this attempt leaves open
+
+The problem's inputs, raw successors, exact answer, relation semantics,
+update operations, and proposed costs are specified above. Constructing T
+and C is part of the existence question, not an assumption that the desired
+constraints are already known. An expert can attack either existence clause
+or show that a particular representation restriction is unnecessarily strong.
+
+The single-character/atom-label reference model and the physical-owner slot
+restriction are deliberate modeling choices. They need comparison with the
+intended runtime before an algorithm for this formalization becomes a runtime
+correctness claim. I is fixed by the cited semantic contract, rather than
+replaced here by a new complete formalization of chemical stereochemistry.
+A mechanized theorem would additionally need a machine-readable definition
+of that interpretation and the fixed parser. This note claims neither one
+has been supplied nor that any of the requested existence results is proved.
+
+References
+
+[1] OpenSMILES specification, v1.0 (2016-05-15), syntax and interpretation:
+https://opensmiles.org/opensmiles.html
+https://raw.githubusercontent.com/opensmiles/OpenSMILES/master/opensmiles.asciidoc
+
+[2] Grimace, docs/api/smiles-language.md, read 2026-10-16.
+Normative project identity/MAXIMAL contract, including explicit interpretation
+choices and separation from RDKit writer support.
+
+[3] Grimace, notes/114_south_star2_clean_rust_incremental_constraint_walker.md,
+read 2026-10-16. Source for actual-state ownership, incremental factors, and
+productive successor-bearing choices. This new note is a formalization
+attempt, not an implementation-status report or a resumption of coding.

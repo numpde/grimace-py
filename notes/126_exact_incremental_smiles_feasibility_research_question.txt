@@ -1,0 +1,450 @@
+Exact online SMILES generation without repeated future-execution search
+Research proposal and request for expert critique — 2026-10-16
+
+We seek an exact online generator for every standard SMILES representation
+of a fixed molecular graph. At each step it must return precisely the local
+text emissions that still admit a complete valid serialization, together
+with their distinct labelled successor states. The central question is
+whether exact joint feasibility can be maintained under actual writer-state
+updates, with controlled work, without searching complete hypothetical
+writer executions for each candidate. Bounded compositional summaries over
+physical graph regions are one proposed route, not the definition of success.
+
+The requested result is a constructive theorem with explicit parameter and
+cost bounds, or a counterexample or lower bound identifying which proposed
+restriction makes that theorem impossible. This proposal is not a claim that
+such a theorem already holds. Correctness, effective construction, compact
+representation, and practical update costs are separate questions. An
+alternative architecture satisfying the same behavioral and work requirements
+is equally relevant. Failure of the separator route would not by itself
+disprove the overall vision.
+
+Intended readers: researchers in graph algorithms, dynamic constraint
+satisfaction, automata/grammar theory, enumeration, and chemical informatics.
+
+1. Target language and molecular identity
+
+Let G=(V,E,F) be a finite immutable labelled molecular graph. Vertex and edge
+identifiers distinguish physical objects; F records element, isotope,
+charge, hydrogen inventory, numeric atom class, bonding, aromatic facts,
+and specified or unspecified stereochemistry. Labels are operational
+identities, not extra characters that must appear in the SMILES. No quotient
+by graph automorphisms is taken inside the walker.
+
+Let O be the syntax of OpenSMILES v1.0 [1]. Use end-of-string as its
+terminator; transport whitespace and trailing record
+metadata are outside this proposal. Fix an explicit semantic interpretation
+I for matters requiring further precision. Define
+
+  L_I(G) = { s in O : there exists a fact-preserving bijection
+                     from the graph interpreted by I(s) to G }.
+
+Semantic failure makes s absent from L_I(G). The identity relation below is
+part of the model; different chemical equivalence conventions can define
+different languages even when they share the same string grammar.
+
+The bijection preserves graph vertices, their fields, edges, hydrogen
+inventory, and stereo assignment. Explicit graph hydrogens remain vertices;
+non-graph hydrogen counts remain counts. Aromatic/Kekule equivalence requires
+an explicit bonding-and-valence relation. It is not permission to accept
+whatever a particular toolkit normalizes. Unspecified stereo must not become
+specified. Isotope absence differs from isotope zero; numeric atom-class
+zero can have omitted or explicit spelling. Labelled executions retain the
+chosen bijection even when two executions emit identical text.
+
+OpenSMILES permits ring labels 0–99, matching numerically and reusable after
+closure; a label is one digit or '%' followed by two digits. Dot-separated
+segments can reconnect through ring bonds. Its branch grammar includes a
+leading dot. Its stereo repertoire exceeds tetrahedral and ordinary alkene
+stereo. These are obligations of the standard target [1, Formal Grammar;
+Reading SMILES: Rings, Disconnected Structures, and Chirality]. RDKit writer
+support is a separate, version-specific language; RDKit parser acceptance
+proves neither this language nor that writer's exact support.
+
+The project's MAXIMAL contract means every and only string in L_I(G), not
+the current implemented subset. The present interpretation allows unbounded
+leading zeros in numeric isotope/class fields and specifies aromatic
+hydrogen conventions where the reference is underspecified [2]. Experts
+should review those choices; they must be explicit hypotheses of a theorem.
+Consequently L_I(G) can be infinite for a finite graph. A finite enumeration
+of examples cannot define its coverage.
+
+For an initial theorem, parameterize a finite fact-domain signature D and
+its constraint relations, rather than silently treating today's chemistry
+implementation as the full standard. D must identify supported valence,
+aromaticity, stereo classes, constraint arities, and lexical residual types.
+Let b bound numeric input bit lengths when a finite-value parameter is needed;
+otherwise state their representation and costs explicitly. Full coverage
+requires an interpretation and treatment for every standard construct, including
+wildcards, quadruple bonding, extended and non-tetrahedral stereo, and mixed
+aromatic spellings. A theorem for a restricted D is valuable but remains
+restricted. Nonstandard toolkit extensions are deliberately outside O;
+missing standard constructs are unfinished obligations, not extensions.
+
+2. Actual states, local steps, and productivity
+
+A state q contains only actual commitments: emitted/visited graph objects,
+current owner and grammar phase, pending atom/bond/ring lexical residuals,
+open ring identities and endpoint obligations, actual saved branch frames,
+and remaining domains of joint chemical, ordering, and stereo constraints.
+The immutable graph is available throughout. A saved frame identifies its
+real return owner and permitted residual actions. The stack can have O(|V|)
+frames; bounded message size must not be confused with bounded total state.
+Future traversal ranks, chosen future entries, and future branch-end indices
+are not part of this proposed representation.
+
+Fix a finite-branching, effectively computable local transition relation
+
+  q --a/t--> q',
+
+where a identifies the labelled local decision and t its emitted text. Its
+event scheme includes atom entry/completion, bond and ring
+operations, branch entry/return, dot-segment starts, and lexical emissions.
+Its adequacy is a proof obligation, not an assumption that the present
+implementation exhausts the grammar. Local admissibility must be defined
+without invoking Live: it applies syntax rules and consequences of actual
+commitments, rather than calling the completion decision under study.
+A public choice is (t,q'), with one emitted character t and a successor
+q' consistent with the actual commitments. Distinct
+labelled successors survive even if their t values agree. Redundant
+bookkeeping paths to the same actual (t,q') need not create multiplicity.
+Choosing text retains all matching successors; it does not determinize them
+prematurely.
+
+The principal research question fixes single-character public emissions,
+retaining partial atoms, numbers, ring labels, and stereo markers in q.
+This fixes the output granularity before analyzing work; replacing a local
+choice by a whole future serialization would change the problem. Larger-token
+variants require separate delay and cost results, not just language equality.
+Finite branching must hold even when lexical loops produce arbitrarily long spellings.
+Existence of a finite completion, rather than eventual termination along
+every infinite sequence of choices, defines productivity.
+
+Let Accept(q) mean that grammar and lexical obligations are closed, every
+physical graph object is accounted for, ring pairs are discharged, and all
+facts/stereo agree with G. Let Live(q) mean that some finite legal execution
+from q reaches Accept. Let Cand_G(q) be the locally admissible public
+transitions. Required output is
+
+  Choices_G(q) = { (t,q') : (q --a/t--> q') in Cand_G(q)
+                            and Live(q') }.
+
+For every reachable public q, both inclusions are obligations: publish no
+dead successor and omit no productive local successor. Accepted labelled
+paths must project onto exactly L_I(G), realizing each qualifying graph
+bijection. Correctness of completed strings alone does not establish exact
+productivity of partial states.
+
+Acceptance is reported separately as an end-of-string option. If internal
+epsilon bookkeeping is used, define a public step as epsilon* / nonempty
+emission / epsilon*, preserving every distinct labelled result. Epsilon
+closure must be effectively finite or have a proved terminating quotient; epsilon cycles
+cannot conceal a future search. Physical decisions without text remain
+visible in the resulting state. Their event-to-grammar correspondence must
+be included in soundness and completeness proofs.
+
+3. The architectural question and proposed finite-interface route
+
+Exact joint relations may retain unresolved alternatives. Separate feasible
+traversal, capacity, and stereo marginals do not establish a jointly feasible
+serialization. The intended representation owns immutable physical facts,
+actual commitments, and their remaining constraints. A cached future-state
+tree, a relation indexed by all future visited-atom subsets, or future
+traversal schedules under renamed variables would not meet the goal.
+
+This restriction needs mathematical substance. A proposed construction must
+identify every stored index and bound its cardinality, describe the update
+operators, and bound their loops. Avoiding literal suffix strings is not a
+work bound. Finite elimination over a bounded interface relation is allowed;
+enumerating complete interior execution plans to build that relation is not
+the intended construction. Preprocessing cannot hide that cost.
+
+Decompose the physical constraint incidence structure into regions with
+separators B, |B|<=w; specify bag-size bounds separately if the chosen
+decomposition requires them. State exactly how chemical factors, stereo factors,
+graph incidences, and actual control obligations are assigned to regions.
+If a molecular-graph decomposition does not contain the necessary factor
+scopes, report the enlarged width; graph width alone is not a free bound
+on the joint problem. A decomposition indexes physical ownership, not
+subsets of atoms scheduled to be written in the future.
+
+An annotated region R consists of its physical subgraph, owned constraints,
+their current domains, and actual commitments restricted to that region.
+Its interface tau exposes boundary vertex/edge ports, relevant local fact
+types, open ring obligations, lexical/control phases, and the boundary
+attachment of actual active or saved frames. Physical boundary labels and
+their equality relations are allowed. Their encoding costs O(log |V|) or
+O(log |E|) bits each. Any nonlocal obligation crossing this interface must
+be exposed and counted. It cannot be hidden in an unbounded pointer payload.
+
+A compatible outside context C owns disjoint interior vertices, overlaps R
+only at identified boundary objects, and agrees on their facts and
+interface-exposed commitments. Gluing C[R] identifies those objects, combines
+owned constraints once, and connects the actual grammar/return interfaces. Contexts include
+all compatible outside physical graphs and actual frame arrangements, not
+only contexts observed in tests. Relabelling is allowed only as a consistent
+renaming of corresponding boundary ports; retained physical identities are
+not merged within an execution.
+
+Parameter convention for this question: D, b, K, and Delta constrain the
+region, outside context, and glued configuration. The interface must expose
+the boundary facts needed to decide compatibility with those promises
+independently of hidden interior details. Width w constrains the region's
+separator representation; outside contexts need not have bounded width.
+Any extra control parameter h bounds exposed control obligations at this
+interface, not the depth of the entire actual stack. Thus the proposed
+equivalence uses arbitrary-width outside contexts with matching interface
+promises. A theorem quantifying only over bounded-width outside contexts is
+a meaningful weaker alternative and must be identified as such. Failure of
+an attempted execution gives a false observation, not retrospective exclusion
+of its experiment from the common domain.
+
+For each interface type tau, fix a common set of tau-typed outside
+experiments independently of the region. An experiment supplies an outside
+context compatible with tau and a finite sequence of attempted outside-local
+commitments and boundary interactions. Local admissibility is defined by
+the event rules independently of Live. The experiment answers true exactly
+when at least one labelled execution realizes the prescribed interactions,
+allowing hidden interior steps between them, and its resulting state has a
+finite accepting completion. An unavailable interaction makes the answer
+false; it does not exclude the experiment from comparison. To distinguish
+particular successors at the interface, prescribe the tau-visible labelled
+action, not merely its emitted text. Define
+
+  R1 ~=_tau R2
+    iff every experiment in this common set has the same feasibility
+        answer with R1 and R2.
+
+Interior text is existentially hidden in this experiment. The equivalence
+does not require two different interiors to emit the same strings: even
+different path lengths would make that stronger demand unsuitable. The
+physical interior remains in G for later local emissions. When querying a
+candidate inside a region, descend/re-root to its owning physical objects,
+apply the actual local delta, and recompose; do not infer its outgoing
+labelled choices from an anonymous region code alone. A valid construction
+must prove that these operations preserve each candidate's Live answer.
+This is the bridge from contextual feasibility to exact labelled choices.
+
+Question A: for fixed theta=(w,K,Delta,D,b), possibly extended by an explicitly
+justified control parameter h, does ~=_tau have finite index
+uniformly over interior size and committed-history length, modulo boundary
+renaming? If not, exhibit fixed-parameter regions and compatible contexts
+separating arbitrarily many classes. The definition of ~= is a specification,
+not a data structure: taking the full continuation set as a summary does
+not answer the question.
+
+The number and size of interface types themselves must also be bounded by
+the declared parameters, modulo boundary renaming. Putting all interior
+history into tau evades this question even if each resulting type has only
+one equivalence class. Numeric facts must be in the declared bounded domain
+or represented with explicit bit costs; arbitrary values are not a finite
+alphabet merely because they are called types.
+
+Question B: can one effectively compute a code sigma(R) in a finite set
+S_theta whose equality, for a fixed tau, implies ~=_tau, using explicit
+local composition operators? It
+need not identify every equivalent pair. Its number of codes and encoding
+length must be bounded by stated parameters, not forgotten interior size.
+Finite index alone does not give an algorithm or a compact encoding. The
+gluing algebra, interface vocabulary, and observation protocol are themselves
+deliverables: their adequacy must be established against the event model,
+not chosen to make the equivalence theorem trivial.
+
+4. Candidate return-frontier skeleton
+
+The current candidate code combines:
+
+* Boundary ports and residual local incidence orders.
+* Actual active/saved-frame commitments and ordered nesting/return links.
+* Anonymous interior excursions between interface events, including
+  excursions with no remaining physical boundary port.
+* Joint chemical/stereo and ring-label domains plus correlated load tuples
+  describing occupancy at relevant entry, exit, and internal peaks.
+
+This is a hypothesis, not a proved sufficient statistic. If p is the number
+of physical boundary incidences, p<=Delta*|B| for maximum degree Delta.
+An O(p) skeleton claim must also account for portless excursions and any
+additional control ports. The incidence bound alone bounds neither these
+objects, load tuple dimensions, nor contextual equivalence classes.
+
+Correlations are essential. If one realizable excursion has resource tuple
+(0,2) and another (2,0), coordinatewise minima invent (0,0). Retain joint
+alternatives or prove a safe dominance rule for every compatible context.
+Likewise, separate feasible traversal, stereo, and capacity answers do not
+establish a jointly feasible serialization.
+
+Parameters must include w, ring capacity K, Delta, D (including stereo
+scope/domain bounds), and numeric-value bound b when applicable.
+OpenSMILES fixes the available numeric labels
+at 100; a proof for K=1 or 2 does not establish practicality at 100. An
+abstract generalized K is useful for complexity analysis but does not add
+nonstandard labels to MAXIMAL. If interface control obligations require an
+extra bound h, prove h is bounded by the advertised parameters or expose h
+as a limitation. Setting h equal to all forgotten stack/history is not a
+bounded-summary solution. The actual global stack remains legitimate.
+
+Required local operators include introducing a physical object/factor,
+joining compatible regions, forgetting a discharged interior object,
+updating a local actual commitment, and transferring a return obligation.
+Branch composition and inline continuation are different operations. A join
+must admit exactly grammar-permitted interleavings and switches. Forgetting
+must retain every unresolved consequence before erasing an object's ID.
+No operator may enumerate the region's complete future writer executions.
+
+Desired theorem, currently unproved:
+
+  (a) Equality of interface and code implies ~=_tau, uniformly over region
+      size and actual-history length, modulo consistent boundary renaming.
+  (b) Explicit introduce, join, forget, and actual-commitment operators
+      preserve that interpretation and compose to an exact root Live answer.
+  (c) Re-rooting/refining to expose a particular interior candidate, applying
+      its delta, and recomposing decides Live for that labelled successor.
+  (d) Code sizes and operator costs satisfy explicit parameterized bounds,
+      including boundary-identifier bits and any numeric-value payload.
+  (e) Accepted paths and qualifying standard strings/bijections correspond
+      in both directions, and Choices_G is exact at every reachable state.
+
+Boundary renaming in (a) compares abstract region types; it never merges
+distinct labelled successors in one execution. None of (a)-(e) follows
+merely from local consistency or tests against a sampled writer.
+
+5. Cost questions, separated from correctness
+
+Let N be the input encoding size, M the number of decomposition nodes, S the
+mutable state size, c(q) the number of tentative local candidates examined,
+and d(q,a) the number of summary nodes whose values must be recomputed for
+candidate a. Use theta as above, extended honestly if more parameters
+are necessary. Give costs in bits or a stated word-RAM model; large integer
+fields and label identities are not free.
+
+Count output as returned labelled successor records plus emitted text bytes
+and any independently materialized successor data. Equal text with distinct
+states counts multiple times. A handle to a persistent successor counts as
+a handle, while allocation, path copying, and retained shared storage are
+charged separately. Rejected candidates and propagation are work, not
+output. Exhaustion/zero-choice queries also have a cost.
+
+A qualified target is preprocessing P(N,theta), storage
+O(N + M*f(theta) + S), and query/update work bounded by
+
+  O(local candidate work
+    + sum over examined a of d(q,a)*g(theta)
+    + actual successor allocation and output size).
+
+This expression is useful only with independent bounds on preprocessing,
+f, g, local candidate work, and dirty-region size. Without those bounds it
+merely renames the cost. This is an accounting target, not an established
+bound. Specify dependency index construction, decomposition discovery,
+tentative updates/rollback,
+snapshot retention, and handling of multiple caller-retained successors.
+Persistent branching can duplicate update costs; an amortized theorem for
+one selected walk does not automatically cover a tree of retained states.
+
+The stronger ambition is small delay per productive successor after
+reasonable preprocessing, with total work near actual emitted output plus
+unavoidable input and actual-update costs. Can rejected candidates be
+avoided or charged to those costs? State worst-case or amortized guarantees,
+initial delay, terminal delay, and parameter dependence separately. For an
+enumeration API, a useful target form is
+
+  T(q) <= U(N,theta,delta_q) + (1 + B_out(q))*g(theta),
+
+where B_out counts returned labelled records and text, delta_q is the actual
+update from a retained predecessor state, and U has an independently proved
+maintenance bound. For an initial state use the stated preprocessing bound.
+U cannot be defined as whatever complete-future search the implementation
+performs. Give costs for a tree of retained successors separately from an
+amortized claim along one selected walk.
+
+To make the ambition falsifiable, one strong parameterized target would be
+
+  preprocessing <= N*f(theta)*polylog(2+N),
+  storage       <= N*f(theta) + actual retained-state storage,
+  T(q)          <= f(theta)*polylog(2+N)*(1 + |delta_q| + B_out(q)).
+
+Here |delta_q| measures the explicitly changed actual records, not all
+derived relation nodes subsequently touched. Retained-state storage must
+itself be bounded in terms of caller-retained actual states and shared
+physical data; it cannot hide an unbounded continuation cache. State the
+polynomial and parameter functions. If this target is impossible, identify
+the strongest weaker bound and the obstruction. None of these bounds is
+claimed established. Reading the input already costs Omega(N); writing ell
+bytes costs Omega(ell). A full
+copy of the live state is not constant-cost merely because the choice has a
+short text label. There is no proposed uniform O(output) theorem here.
+
+Unrestricted separator width must remain in scope as a mathematical case,
+even if it prevents a useful uniform bound. Exponential or worse dependence
+on w, K, Delta, or stereo domains may defeat the application. A finite
+implementation cap, width promise, or chemistry restriction must be named
+and cannot silently redefine MAXIMAL. Optional restricted spelling or
+RDKit-style profiles may sit above the core; a profile also needs exact
+productivity for its restricted language, not arbitrary late filtering.
+
+6. Existing evidence and deliberate falsification
+
+The implementation checkpoint [3] reports that production feasibility still
+assigns future ranks, entry points, and branch ends through EventSchedule,
+then searches complete compatible futures per candidate. Removing suffix
+strings while retaining that planning authority would not meet this goal.
+Neither a future-state tree nor an Inside-style DAG indexed by future atom
+subsets is the proposed physical separator mechanism.
+
+Test-only boundary-load profiles address a restricted all-Ring model: atoms
+are completed in an order and each physical edge is represented by paired
+ring events. Live load at a completed-prefix cut equals the number of edges
+crossing that cut. Optimizing that maximum is a cutwidth-type subproblem
+under the chosen model's order restrictions. This observation is not a
+complexity classification of full OpenSMILES. Any claimed hardness transfer
+must supply a reduction preserving grammar, rooting, degree, and parameters;
+inline edges, branches, and dots may invalidate an informal transfer.
+
+Those profiles and a dirty-ancestor cache have bounded-test agreement with
+restricted references. Their changed-node closure can cover the entire
+plan. They establish neither the contextual-equivalence theorem nor a small
+update bound. The checkpoint motivates retaining actual return-owner and
+order information, but does not prove that the richer skeleton is sufficient.
+
+Useful negative results would separate the skeleton by a compatible context;
+prove unbounded index for fixed advertised parameters; force large relation
+encodings; or force broad updates despite small output. Distinguish a lower
+bound for this particular representation from impossibility for every
+incremental algorithm. The coupling of ring reuse, nesting, local stereo
+order, and unresolved lexical ownership is the main suspected obstacle.
+
+7. Concrete request to experts
+
+Please assess the finite-interface question first. Supply a precise gluing
+algebra and sufficient summary with proofs, or the smallest separating
+family showing what information is missing. Then address effective
+construction, encoding size, and dynamic costs in that order. A restricted
+theorem should enumerate its grammar and chemistry omissions and explain
+which additional obligations might invalidate its composition argument.
+An unrestricted impossibility claim needs explicit assumptions and proof.
+
+The immediate decision is whether the return-frontier approach can replace
+global future planning while retaining exact labelled productivity. If it
+can, the next deliverable is the minimal joint relation and its operators.
+If it cannot, identify whether the obstruction belongs to this representation
+or to the broader algorithmic requirements, and suggest a different exact
+representation where justified. No implementation change is authorized by
+this research note.
+
+Sources and status
+
+[1] Craig A. James et al., OpenSMILES specification, v1.0, 2016-05-15.
+Primary source consulted 2026-10-16: Formal Grammar; Reading SMILES sections
+Atoms, Rings, Disconnected Structures, Chirality, and Aromaticity.
+https://raw.githubusercontent.com/opensmiles/OpenSMILES/master/opensmiles.asciidoc
+Published presentation: https://opensmiles.org/opensmiles.html
+The source URL tracks a branch; a formal proof should pin its exact revision
+and list any interpretation choices or subsequent textual amendments.
+
+[2] Grimace repository, docs/api/smiles-language.md, read 2026-10-16.
+Project interpretation and target contract; not independent standard proof.
+
+[3] Grimace repository, notes/125_south_star2_end_to_end_roadmap.md,
+2026-10-16 pause/resume checkpoint, implementation HEAD e3df41d7.
+Implementation/test status above is checkpoint evidence, not a fresh runtime
+qualification. No new tests, builds, or implementation experiments were run
+in preparing this proposal.

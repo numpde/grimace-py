@@ -1,0 +1,706 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[a4paper,margin=24mm,headheight=14pt]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,mathrsfs}
+\usepackage{booktabs,tabularx,array}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{needspace}
+\usepackage[hidelinks,pdfauthor={},pdftitle={Exact Incremental SMILES Generation as an Online Constraint Problem}]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5.2pt plus 1pt minus 1pt}
+\setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\setlist{nosep,leftmargin=1.6em,topsep=4pt}
+\renewcommand{\arraystretch}{1.12}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Exact incremental SMILES}
+\fancyhead[R]{\small Residual constraints and supported commitments}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\newtheorem{proposition}{Proposition}
+\newtheorem{hypothesis}{Hypothesis}
+\newcommand{\Sol}{\operatorname{Sol}}
+\newcommand{\Supp}{\operatorname{Supp}}
+\newcommand{\Accept}{\operatorname{Accept}}
+\newcommand{\obs}{\operatorname{obs}}
+\newcommand{\tw}{\operatorname{tw}}
+\newcommand{\sgn}{\operatorname{sgn}}
+\newcommand{\scope}{\operatorname{scope}}
+\newcommand{\Inc}{\operatorname{Inc}}
+\newcommand{\ind}[1]{\left[#1\right]}
+\newcommand{\R}{\mathcal R}
+\newcommand{\F}{\mathcal F}
+\newcommand{\cC}{\mathcal C}
+\newcommand{\cL}{\mathcal L}
+\newcommand{\ttt}[1]{\texttt{#1}}
+\newcommand{\none}{\bot}
+\newcommand{\softO}{\widetilde O}
+\begin{document}
+\thispagestyle{plain}
+\begin{center}
+{\LARGE\bfseries Exact Incremental SMILES Generation\par}
+\vspace{5pt}
+{\large An online constraint problem over physical commitments\par}
+\vspace{8pt}
+{\small 24 October 2026\par}
+\end{center}
+\vspace{3pt}
+
+A writer for a fixed molecule must offer exactly those next decisions that still
+permit a correct completion. The objective is to retain the consequences of
+unresolved choices as constraints, update those constraints after an actual
+commitment, and enumerate supported decisions without constructing hypothetical
+continuation runs. Constraint elimination may reason substantially about the
+future; it must preserve the correlations needed by later commitments.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+\(x\) & The \emph{actual configuration}: what has been committed and the current control state.\\
+\(z\) & One possible \emph{assignment} to unresolved constraint variables; not another writer state.\\
+\(H_G(x)\) & The stored factors, summaries, and indexes; not a list of all assignments or completions.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Fixed molecule, actual machine, exact support}
+\subsection{The input and the target language}
+Let \(G=(V,E,\partial,\alpha,\beta,\mathcal A,\mathcal S)\) be a finite molecular
+graph. The sets \(V,E\) contain distinct physical atom and bond identifiers;
+\(\partial(e)=\{u,v\}\) gives a bond's endpoints. Atom records \(\alpha\), bond
+records \(\beta\), aromatic/delocalization records \(\mathcal A\), and stereo
+records \(\mathcal S\) are fixed input. Physical identifiers are not SMILES atom
+classes and need not appear in the emitted string.
+
+The syntax and identity rules are fixed before choosing an algorithm. They
+preserve graph atoms, connectivity, element, isotope, charge, numeric atom class,
+hydrogen inventory, permitted bonding equivalences, and specified versus
+unspecified stereo. Explicit hydrogen vertices remain distinct from non-graph
+hydrogen counts; absent isotope is distinct from isotope zero. Aromatic/Kekul\'e
+equivalence requires explicit rules, not whatever a toolkit happens to
+normalize.\cite{note126,note127}
+
+A \emph{labelled serialization} is a pair \((s,\lambda)\), where \(s\) is a finite
+valid SMILES string for \(G\) and \(\lambda\) maps its atom occurrences bijectively
+to \(V\), preserving the fixed facts. Write \(\cL_G\) for all such pairs. Equal
+strings with different physical correspondences remain different labelled
+outputs. The permitted unbounded leading-zero padding in isotope and class fields
+can make \(\cL_G\) infinite even for finite \(G\); every accepting run is nevertheless
+finite.\cite{note127}
+
+\subsection{A local-commitment machine}
+A machine supplies an initial state \(x_0\), a finite set \(A_G(x)\) of locally
+admissible actions at each state, a deterministic update \(T_G(x,a)\), an
+acceptance predicate \(\Accept_G(x)\), and an emission
+\(\operatorname{emit}_G(x,a)\in\Sigma^*\). Here \(\Sigma\) is the character alphabet
+and \(\Sigma^*\) includes the empty string. An action makes a primitive physical,
+control, or lexical commitment; its permission rules do not call a completion
+oracle. The same emitted text may accompany different actions and successors.
+
+\Needspace{9\baselineskip}
+An actual configuration has the schema
+\[
+  x=(C,\kappa,O,B,L).
+\]
+The record \(C\) contains committed atom/edge representations and registered
+incidences; \(\kappa\) is the current owner and grammar phase; \(O\) is the actual
+ring table with bound physical endpoints; \(B\) is the ordered stack of saved
+branch-return records; and \(L\) is the current lexical residual, such as a
+partially written atom or number. Exact record types and primitive actions are
+part of a construction. Solver propagation and cache changes do not create new
+actual commitments. This separates physical state from its maintained constraint
+representation.\cite{note126}
+
+A \emph{run} is a sequence of actions applied through \(T_G\); its output concatenates
+the emissions and retains the physical atom correspondence. The machine is
+\emph{adequate} if its finite accepting runs produce exactly \(\cL_G\). Primitive
+actions cannot be whole future serializations or private solver steps disguised
+as writer progress. A character-stream interface is a separate refinement: it
+must preserve hidden physical distinctions and account for non-emitting steps.
+
+Let \(\cC_G(x)\) be the set of finite accepting continuations from \(x\). It includes
+the empty continuation exactly when \(\Accept_G(x)\) holds. The required next-choice
+set is
+\begin{equation}\label{eq:support}
+ \boxed{\Supp_G(x)=\{a\in A_G(x):\cC_G(T_G(x,a))\ne\varnothing\}.}
+\end{equation}
+This is a specification, not an instruction to enumerate \(\cC_G(x)\).
+Acceptance answers whether stopping \emph{now} is valid; support answers whether
+taking an action still permits eventual acceptance. Existence of a finite
+completion does not imply termination along every infinite sequence of choices.
+
+\section{The residual CSP: relation, not a list of futures}
+\subsection{Variables and factors}
+For fixed \(G,x\), a finite-domain constraint satisfaction problem (CSP) is
+\[
+ F_x=(U_x,\{D_u\}_{u\in U_x},\F_x).
+\]
+A variable \(u\in U_x\) has a declared meaning and a finite domain \(D_u\). A factor
+\(f\in\F_x\) has a scope \(S_f\subseteq U_x\) and a permitted relation
+\(R_f\subseteq\prod_{u\in S_f}D_u\). An assignment \(z\) chooses one value
+\(z(u)\in D_u\) for every variable. Its restriction to \(S_f\) is written
+\(z|_{S_f}\). Define
+\begin{equation}\label{eq:solutions}
+ \Sol(F_x)=\{z\in\textstyle\prod_{u\in U_x}D_u:
+                    z|_{S_f}\in R_f\text{ for every }f\in\F_x\}.
+\end{equation}
+The CSP is \emph{feasible} when this set is nonempty. Unary domain factors are
+included; zero-variable true and false relations are allowed.
+
+For relations \(P\) on variables \(A\) and \(Q\) on variables \(B\), define
+\[
+ P\Join Q=\{z\text{ on }A\cup B:z|_A\in P,\ z|_B\in Q\},
+ \qquad \pi_Y(P)=\{z|_Y:z\in P\}\quad(Y\subseteq A).
+\]
+These are \emph{natural join} and \emph{projection}. Thus
+\(\Sol(F_x)=\Join_{f\in\F_x}R_f\). Disjoint factors may remain separate: their
+Cartesian product need not be expanded. Shared scopes require agreement and
+preservation of correlations. For instance, replacing \(u\ne v\) on
+\(\{0,1\}^2\) by the two marginal domains incorrectly admits \((0,0)\) and
+\((1,1)\). Disconnected molecular components are not automatically independent
+when they share control or ring resources.\cite{note127}
+
+\subsection{What is represented exactly?}
+Let \(W_G\) be the fixed physical observation variables: normalized atom lexemes,
+local incidence-registration orders, and per-edge direct/ring representation
+records. A lexeme is a token spelling; normalization removes only the designated
+unbounded padding, not other permitted spelling alternatives. A complete labelled
+serialization induces an assignment \(\obs_G(s,\lambda)\) to \(W_G\). Different
+global orders and padding lengths may have the same observations.\cite{note127}
+
+Let \(\R_G(x)\) contain the observation tuples of all complete labelled
+serializations extending the actual commitments and control in \(x\).
+An \emph{exact physical factorization} has variables \(U_x=W_G\cup Y_x\), where
+\(Y_x\) are explicitly defined auxiliaries, and satisfies
+\begin{equation}\label{eq:exact}
+ \boxed{\pi_{W_G}\Sol(F_x)=\R_G(x).}
+\end{equation}
+Consequently \(\Sol(F_x)\ne\varnothing\) exactly when \(x\) is completable.
+Equation~\eqref{eq:exact} preserves the joint physical-choice relation, not merely
+its nonemptiness. It is stronger than the behavioral requirement
+\eqref{eq:support}; failure of this particular representation requirement would
+not rule out every exact generator.\cite{note127}
+
+\section{Concrete molecular variables and factors}
+\subsection{Atom and edge representations}
+An atom record fixes
+\[
+ \alpha(v)=(Z_v,\iota_v,q_v,h_v,c_v),
+\]
+where \(Z_v\) is the element (or a permitted wildcard), \(\iota_v\) is an optional
+isotope value, \(q_v\) is charge, \(h_v\) is the non-graph hydrogen count, and
+\(c_v\) is the numeric atom class. Let \(\Inc(v)\) be its incident physical edges.
+The following variables choose an encoding of these fixed facts, not a different
+molecule:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+Variable & Meaning\\
+\midrule
+\(L_v\) & Normalized atom token, including bracket choice, numeric fields, hydrogen spelling, and stereo mark.\\
+\(\Pi_v\) & A permutation of \(\Inc(v)\): its incidence-registration order.\\
+\(R_e\) & A direct/ring record. Direct: introducing endpoint, branch/inline attachment, bond symbol. Ring: opening endpoint, label, endpoint symbols and numeral spellings.\\
+\(b_e\) & Auxiliary decoded bond type for edge \(e\).\\
+\(d_{v,e}\) & Auxiliary directional mark viewed outward from \(v\): \(0,+1,-1\), with zero meaning unmarked.\\
+\(O_t\) & Ordered stereo carriers for stereo record \(t\), including any permitted non-graph placeholders.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+An atom factor
+\(A_v(L_v,(b_e)_{e\in\Inc(v)})\) accepts exactly the token/bond combinations
+that decode to \(\alpha(v)\). Explicit bracket hydrogen counts and shorthand
+implicit hydrogens are different decoding cases; no additional generic
+``chemically plausible valence'' filter is imposed. An edge factor
+\(E_e(L_u,L_v,R_e,b_e,d_{u,e},d_{v,e})\), for \(\partial(e)=\{u,v\}\), decodes
+its endpoint symbols consistently. For fixed nonaromatic bonding add
+\(\ind{b_e=\beta(e)}\), where \(\ind{P}\) is one if proposition \(P\) is true and
+zero otherwise. Aromatic alternatives require joint factors rather than this
+single equality.\cite{opensmiles,note127}
+
+\subsection{Stereo is a constraint on named carriers and their order}
+A stereo record is
+\((\mathrm{kind},\mathrm{focus},P_t,c_t^\star)\): the geometry, its atom/bond/axis
+focus, a reference list \(P_t\) of identified carriers, and its fixed target
+configuration \(c_t^\star\). An ordinary carrier is a physical bond incidence;
+a counted hydrogen or other prescribed implicit carrier is a distinct
+placeholder, not an invented graph vertex. The value \(\none\) denotes
+\emph{unspecified} configuration. It is not a variable ranging over the specified
+configurations.
+
+For a specified tetrahedral centre \(v\), let \(P_v=(p_1,p_2,p_3,p_4)\) and let
+\(\sigma_v\in\{+1,-1\}\) be the target orientation relative to this reference.
+Let \(\pi(O_v)\) be the permutation taking \(P_v\) to the carrier order \(O_v\).
+Choose the orientation convention \(\chi(\ttt{@})=+1\),
+\(\chi(\ttt{@@})=-1\), and normalize equivalent long-form marks when evaluating
+\(\chi\). With \(m(L_v)\) the mark decoded from the token, the factor is
+\begin{equation}\label{eq:tetra}
+ T_v(O_v,L_v)=
+ \ind{\chi(m(L_v))\sgn(\pi(O_v))=\sigma_v}.
+\end{equation}
+Here \(\sgn\) is permutation parity; an exchange of two carriers reverses its
+sign. The target configuration belongs to the molecule; \ttt{@} and \ttt{@@}
+belong to its order-dependent encoding.\cite{opensmiles}
+
+For reference carriers \((F,Cl,Br,I)\) and \(\sigma_v=+1\),
+\ttt{F[C@](Cl)(Br)I} and \ttt{F[C@@](Br)(Cl)I} obey the same factor.
+The second exchanges two carriers and also reverses the mark. A registration
+factor links \(O_v\) to \(\Pi_v\), the edge records, and the fixed rules for
+incoming attachments, implicit carriers, and ring references. The same order
+variables therefore participate in chemistry and control; testing their
+feasibility separately is insufficient.
+
+For an ordinary stereogenic double bond \(e=uv\), fix two non-axis carriers at
+each endpoint, numbered \(0,1\). Let \(d_0,d_1\in\{0,+1,-1\}\) be their written
+bond directions viewed outward from that endpoint: \(+1\) for a slash and
+\(-1\) for a backslash. Reversing the view reverses the sign; an unwritten
+hydrogen carrier has value zero. Introduce a reference-side value \(r\in\{\none,+1,-1\}\) with
+\[
+ \operatorname{Side}(d_0,d_1,r)\iff
+ \begin{cases}
+   d_0=d_1=0, &r=\none,\\
+   (d_0,d_1)\in\{(r,0),(0,-r),(r,-r)\}, &r\in\{+1,-1\}.
+ \end{cases}
+\]
+For a specified target \(\tau_e\), with \(+1\) meaning the reference carriers are
+on the same side and \(-1\) opposite, require
+\[
+ r_u\ne\none,\qquad r_v\ne\none,\qquad r_ur_v=\tau_e.
+\]
+A physical directional bond supplies shared variables with
+\(d_{u,e}=-d_{v,e}\); adjacent stereo systems cannot choose its direction
+independently. For an unspecified target, the decoded result must remain
+\(\none\), not become an existentially chosen specified result. This is a
+finite-table encoding of the ordinary two-ended convention, not a treatment of
+all extended stereo classes.
+
+Other geometries use a finite relation
+\[
+ T_t(O_t,L_{\mathrm{focus}(t)})=
+ \ind{\operatorname{Decode}_{\mathrm{kind}(t)}(O_t,m(L_{\mathrm{focus}(t)}))
+             =c_t^\star}.
+\]
+For an axis-centred geometry the token variable is the one designated by its
+syntax. Each decoder must be an explicit geometry/permutation table, including
+its unspecified value; parity alone does not describe every geometry.
+Extended systems may involve terminal carriers beyond the immediate neighbours
+of the marked atom. Their factor scopes must be counted, not assumed local
+because the stereo mark is local.\cite{note126}
+
+\subsection{Aromatic and structural coupling}
+For a benzene \emph{Kekul\'e assignment}, let \(k_i\in\{0,1\}\) encode a single
+or double cyclic edge. The six binary factors
+\[
+ \ind{k_{i-1}+k_i=1}\qquad(i\bmod 6)
+\]
+permit exactly the two alternating assignments. Independent single/double
+edge domains would admit invalid combinations. General aromatic systems need
+the declared bonding-and-valence relations for their element, charge, hydrogen,
+and external-bond context. These equations are an explicit example, not a
+complete aromaticity specification.
+
+\Needspace{8\baselineskip}
+The complete constraint system has the form
+\begin{equation}\label{eq:blocks}
+ \Phi_{G,x}=\Phi_G^{\mathrm{chem}}\land
+             \Phi_x^{\mathrm{commit}}\land
+             \Phi_{G,x}^{\mathrm{struct}}.
+\end{equation}
+The blocks are conjunctions of scoped factors. Chemical factors preserve the
+fixed facts; commitment factors restrict choices already made; structural
+factors must express joint realizability under introductions, branch control,
+ring reuse, lexical progress, and incidence registration. A necessary local
+factor, for example, permits at most one incident edge to introduce a given
+atom directly. It does not establish global realizability. Ring labels are
+not globally all-different: only simultaneous occupancy is exclusive.
+Constructing the exact structural factors is part of the question, not a supplied
+predicate named ``a serialization exists.''\cite{note127}
+
+\section{Online reduction and safe forgetting}
+\subsection{What changes when a choice is made?}
+At selected step \(t\), retain \(x_t,F_t,H_t\). Let \(\delta_t\) record only
+changed actual fields. An action \(a_t\) gives
+\[
+ x_{t+1}=T_G(x_t,a_t),\qquad
+ F_{t+1}=\operatorname{Edit}(F_t,\varepsilon_t(a_t)),
+\]
+where \(\varepsilon_t(a_t)\) is the generated collection of base-factor edits.
+It may create/delete variables, change domains, or insert/delete/replace
+factors. A mark commitment restricts \(L_v\); an incidence event restricts
+\(\Pi_v\); a ring opening fixes parts of \(R_e\) and changes actual slot records;
+a phase transition replaces applicable control constraints. The target molecule
+is known from the start: unvisited atoms' constraints are not postponed until
+arrival. An actual commitment restricts compatible complete runs; replacing
+factors does not authorize new completed encodings.\cite{note127}
+
+\emph{Conditioning} incorporates a decision, for example by adding \(u=d\).
+\emph{Propagation} derives consequences without making another decision.
+\emph{Elimination} removes variables while retaining their joint effect:
+\begin{equation}\label{eq:elim}
+ M(B)=\exists I\;\bigwedge_{f\in\F_{\rm region}} f.
+\end{equation}
+Here \(I\) are internal variables and \(B\) are retained boundary variables;
+factors in \eqref{eq:elim} are identified with their Boolean membership
+predicates. The relation \(M\) is a join followed by projection. It can be much
+larger than the original factors. A fixed point of incomplete domain propagation
+is not a certificate of global feasibility.\cite{poole}
+
+For a tetrahedral centre with its incoming carrier fixed, let the remaining
+carriers be \(a,b,c\), and choose the reference sign so \ttt{@} requires an even
+permutation. Committing \ttt{@} leaves
+\(O\in\{(a,b,c),(b,c,a),(c,a,b)\}\). Registering \(b\) next leaves only
+\(O=(b,c,a)\). The remaining stereo consequence is ``register \(c\), then \(a\).''
+This deduction does not perform either action, and the structural factors must
+still permit them. The fixed target stereo has not changed.
+
+A feasibility summary can answer the current query correctly yet lose
+information needed by the next commitment. For example, \(\exists m\,T_v(O,m)\) permits every carrier permutation, because each
+has a compatible mark. Committing \ttt{@} later cannot recover the required
+parity from that projection alone. Either keep \(m\) exposed, or retain the
+original factor and its dependencies so the affected region can be reopened,
+restricted, and summarized again.
+
+\begin{proposition}[Safe forgetting]\label{prop:forget}
+Let \(R(I,B)\) be a relation whose internal variables \(I\) do not occur in a
+later constraint \(C(B)\). Then
+\begin{equation}\label{eq:forget}
+ \exists I\,[R(I,B)\land C(B)]
+   =\bigl(\exists I\,R(I,B)\bigr)\land C(B).
+\end{equation}
+Consequently its boundary summary is sufficient for that later constraint.
+If a later edit touches \(I\), this guarantee does not apply.
+\end{proposition}
+\begin{proof}
+For a fixed assignment to \(B\), the truth of \(C\) is independent of the
+existentially quantified values of \(I\).
+\end{proof}
+
+``Already written'' therefore does not mean ``safe to discard.'' An atom can
+remain relevant through an open ring, a saved return, or a stereo correlation.
+A usable summary exposes every dependency through which outside constraints
+interact with its interior; otherwise an edit requires reopening that interior.
+Actual grammar state and base factors must remain available: the next projected
+relation need not be obtainable by conditioning the previous projection alone.
+Under \eqref{eq:exact}, eliminating physical observation variables from a query
+cache must retain their joint reconstruction factors or their committed values;
+otherwise the full physical relation has been lost. No single finite summary
+need encode every future interaction sequence in advance.\cite{note126,note127}
+
+\subsection{The online support query}
+For any immediate candidate action, form its successor system semantically as
+\(F_t^{\,a}=\operatorname{Edit}(F_t,\varepsilon_t(a))\). Exactness gives
+\begin{equation}\label{eq:online}
+ \boxed{\Supp_G(x_t)=
+   \{a\in A_G(x_t):\Sol(F_t^{\,a})\ne\varnothing\}.}
+\end{equation}
+When an action only sets \(u=d\), support is membership of \(d\) in the projection
+of the \emph{whole} solution relation onto \(u\). General actions replace factors
+or control records. Equation~\eqref{eq:online} does not require a separate full
+solve for every candidate.
+
+The interface is \(\operatorname{Init}(G)\), \(\operatorname{List}(H_G(x))\), and
+\(\operatorname{Select}(a)\). Initialization detects an empty target language.
+Listing reports acceptance and enumerates every supported primitive action
+once, with a successor handle or compact delta. Selection installs that
+already-feasible successor without repeating a complete support decision.
+Tentative candidates are reversible or persistent; their rejection costs belong
+to listing. Multiple satisfying assignments are witnesses, not duplicate machine
+outputs.\cite{note127}
+
+\section{A conditional support-enumeration kernel}
+Suppose a residual CSP has a fixed balanced binary composition tree with \(n\)
+leaf modules, height \(O(\log n)\), domain size at most \(d\), and at most \(w\)
+boundary variables per region. A leaf module is a bounded local group of factors.
+Assume every immediate action has one unique owning leaf and replaces only that
+module, with a bounded number of alternatives per leaf. Current factors and
+\emph{all candidate alternatives} must fit the same variable/interface envelope.
+An actual update changes \(r\) leaves, including changes in candidate availability.
+These are explicit sufficient conditions, not established SMILES properties.
+
+At a region \(t\) with boundary \(B_t\), retain \(M_t^0\), its feasible boundary
+assignments without an edit, and \(M_t^1\), its feasible boundary assignments
+after exactly one candidate edit somewhere inside. Leaf relations are computed
+from the current module and the union of its candidate replacements. For
+children \(l,r\), composition is
+\begin{align}
+ M_t^0&=\pi_{B_t}(M_l^0\Join M_r^0),\label{eq:zero}\\
+ M_t^1&=\pi_{B_t}\bigl((M_l^1\Join M_r^0)
+                    \cup(M_l^0\Join M_r^1)\bigr).\label{eq:one}
+\end{align}
+The single edit is in the left or right child; the other child stays unchanged.
+This summarizes immediate actions, not sequences of hypothetical writer steps.
+
+During enumeration, carry the outside-feasibility relation \(E_t\) on \(B_t\),
+with the outside unedited. Skip region \(t\) when
+\(M_t^1\Join E_t=\varnothing\). When descending left, use
+\[
+ E_l=\pi_{B_l}(E_t\Join M_r^0),
+\]
+and symmetrically for the right child. At a leaf, test its bounded alternative
+set and emit supported actions. The traversal follows action owners, not
+assignments, so different witnesses cannot duplicate an output. Outside
+relations are computed along queried paths rather than refreshed globally.
+
+Explicit boundary tables yield preprocessing/storage \(O(nd^{O(w)})\), maintenance
+\(O(rd^{O(w)}\log n)\), and initial, per-answer, and terminal delay
+\(O(d^{O(w)}\log n)\), plus output size. Between outputs only logarithmically
+many tree nodes need be crossed: empty subtrees are rejected at their roots.
+No claim follows when actions affect distant modules, candidate availability
+changes globally, or the common envelope has large width. Small factor arity
+alone does not supply the missing interface bound.
+
+\section{A structural fragment and its obstruction}\label{sec:fragment}
+\subsection{Nonbinding ring capacity}
+Consider the fixed-chemistry structural model of the working derivation, with
+no stereo or previously imposed incidence-order restrictions. The graph is
+simple; actions complete atom tokens or ring endpoints. A first ring endpoint
+binds its physical edge. Dot introductions, dot-prefixed branches, inline
+continuations, arbitrary nesting, and ring-label reuse are retained.
+The grammar places an atom's ring references before its branches; returning
+from a branch does not reopen its ring phase.\cite{opensmiles,attempt}
+
+Each atom is unentered (\(\mathsf U\)), current in ring phase (\(\mathsf R\)),
+current or saved in branch phase (\(\mathsf B\)), or permanently departed
+(\(\mathsf D\)). Edges are unrepresented, represented directly, open rings, or
+closed rings. For an unentered atom \(v\), define
+\[
+ f_x(v)=\#\{u:\ u\text{ has status }\mathsf B,
+                      \ uv\text{ is unrepresented}\}.
+\]
+An unrepresented edge from a \(\mathsf B\) owner must introduce its other endpoint
+directly: the owner can no longer emit a ring reference. Thus \(f_x(v)>1\)
+requires two different introductions of the same physical atom.
+
+\begin{proposition}[Exact local criterion for the structural fragment]
+Assume \(K\ge |E|\), so ring capacity cannot bind. A locally reachable
+configuration is completable exactly when \(f_x(v)\le1\) for every unentered
+atom and all edges satisfy the following availability test: an unrepresented
+edge has endpoint statuses \(\mathsf U\!\! -\!\mathsf U\),
+\(\mathsf R\!\! -\!\mathsf U\), or \(\mathsf B\!\! -\!\mathsf U\), in either
+order; an open ring's remaining endpoint is unentered or current in ring phase;
+and completed representations are valid.
+\end{proposition}
+\begin{proof}
+Necessity follows from unique introduction and the loss of endpoint opportunities.
+For sufficiency, enter an initial atom if necessary. At each current ring-phase atom,
+close incoming rings and open
+all its still-unrepresented edges to unentered atoms; capacity suffices. At each
+branch-phase owner, introduce its forced children as bonded branches. Each child
+performs the ring procedure and can return immediately, since no other owner
+needs to introduce it. Discharge saved owners in stack order. At the outermost
+owner, introduce remaining atoms through dots. Every ring eventually closes and
+all atoms are consumed. This proves existence; the runtime need not execute
+this particular completion strategy.\cite{attempt}
+\end{proof}
+
+Maintain edge violations, forced-parent counts, unrepresented-incidence counts,
+and the indexed set
+\(\operatorname{Free}(x)=\{v:\ v\text{ is unentered},\ f_x(v)=0\}\).
+At maximum degree \(\Delta\), actual changes affect \(O(\Delta)\) incidences.
+In branch phase, supported dot branches choose directly from
+\(\operatorname{Free}(x)\); an inline dot additionally requires no remaining
+unrepresented incidence at the departing owner. Every unrepresented incident
+edge supports bonded branch entry; bonded inline entry requires that it be the
+owner's last such edge. This gives local maintenance and indexed enumeration,
+not a scan of trial completions.\cite{attempt}
+
+\subsection{Binding capacity requires joint resource--control information}
+Take the complete graph on \(A,B,C,D\), with \(K=2\). Let \(A\) be a saved
+branch-phase owner, \(B\) current in ring phase, and \(C,D\) unentered. The edge
+\(AB\) is direct; \(AC\) and \(BC\) occupy both ring slots; \(AD,BD,CD\) are
+unrepresented. The local criterion passes. Nevertheless, \(AD\) forces \(D\)
+to be introduced from \(A\), so \(BD\) must open as a ring before \(B\) leaves
+ring phase. Both slots are released only at \(C\), but entering \(C\) irreversibly
+ends that phase. The required opportunity has expired before the resource is
+available.
+
+The parent with only \(AC\) open is completable: opening \(BD\) instead of
+\(BC\), entering \(C\) directly from \(B\), closing \(AC\), opening \(CD\),
+returning to \(A\), and introducing \(D\) completes the graph within two slots.
+Thus the obstruction is a dead candidate from a live parent, not merely an
+initially impossible graph. Occupancy counts and forced-parent counts alone
+cannot distinguish the alternatives. Exact factors must retain which endpoint
+releases a slot, which owner must introduce an atom, and which phase change
+removes an endpoint opportunity.\cite{attempt}
+
+\section{Representation restrictions and the research hypothesis}
+\subsection{An explicit, falsifiable cost contract}
+Fix parameters \(\theta=(\mathscr D,\Delta,K,b)\): a declared chemical/lexical
+relation vocabulary \(\mathscr D\), maximum physical degree \(\Delta\), ring
+capacity \(K\), and maximum bit length \(b\) of input numeric values. Standard
+numeric ring labels give \(K=100\); other budgets define analysis variants, not
+new standard syntax. The parameter \(b\) does not bound output padding. A uniform finite library supplies
+bounded-arity local factor schemas, with explicit parameter-bounded evaluation
+costs. Variables are owned by physical atoms/edges or actual ring slots, return
+frames, and lexical records. Per-owner slot counts and local domain sizes are
+parameter-bounded; physical identifiers and large numeric values still cost
+space. Each primitive actual change \(\delta\) generates at most
+\(O_\theta(1+|\delta|)\) base edits, with their construction charged.\cite{note127}
+
+No primitive factor may call a completion oracle. Storage may not be indexed
+by full future executions, future visited-atom subsets, or global future visit
+and branch-end schedules. Larger derived relations are permitted, with all
+indices, dependencies, construction, and recomputation charged. Ordinary
+physical bookkeeping may remain procedural. Already-built independent components
+must combine additively without expanding their Cartesian product. These
+restrictions define a proposed architecture, not a claim that all exact
+generators must use it.\cite{note126,note127}
+
+Let \(N\) be encoded input size, \(\ell\) the number of selected primitive actions,
+\(P\) the number of actual emitted bytes, \(Q\) the number of listing calls,
+\(R\) the total size of returned successor records, and
+\(A=\sum_t|\delta_t|\) the total encoded size of changed actual records.
+Let \(M\) be current actual-state storage and \(R_{\rm live}\) retained successor
+storage. Set \(\Lambda=\log(2+N+\ell+P+Q+R+A)\). Use a word RAM with word size
+proportional to \(\Lambda\); multiword values require multiple operations.
+All displayed work and storage bounds use this fixed accounting convention.
+
+The strong one-walk target asks for a computable function \(f\) and a constant
+\(c\), independent of the input and run, such that
+\begin{align}
+ \text{preprocessing}&\le f(\theta)N\log^c(2+N),\nonumber\\
+ \text{total work}&\le f(\theta)(N+Q+R+\ell+P+A)\Lambda^c,\label{eq:cost}\\
+ \text{live storage}&\le f(\theta)(N+M+R_{\rm live})\Lambda^c.\nonumber
+\end{align}
+After a selected edit, maintenance is at most
+\(f(\theta)(1+|\delta_t|)\Lambda^c\); each iterator call, including its first and
+exhaustion, costs at most \(f(\theta)(1+B)\Lambda^c\), where \(B\) is the returned
+record/payload size and is zero for exhaustion. Rejected trials and derived
+propagation are work, not actual changes or outputs. An optional transcript is
+charged separately in storage. Retaining a tree of successors requires an
+additional persistence bound. These are targets, not established properties.
+
+An additional independently defined interaction-width parameter gives a
+qualified target \(f(\theta,w)\), not a proof of the width-independent one.
+The width must describe the joint physical/control/factor structure and the
+candidate-edit effects; it cannot be defined as measured running time. A
+connectivity-width bound alone does not bound every possible factor scope.
+\Cref{app:width} gives a relevant structural bound, but not the missing exact
+constraint compiler.
+
+\begin{hypothesis}[Incremental exact physical support]\label{hyp:main}
+There exist an adequate local-commitment machine, a uniform physical-factor
+compiler and update rules, and algorithms \(\operatorname{Init/List/Select}\)
+such that, for every finite input graph and every finite walk selected through
+supported actions, \eqref{eq:exact} holds initially and for every immediate
+candidate successor, listing returns exactly \eqref{eq:support} and the correct
+acceptance answer, and the representation and cost requirements above hold.
+Feasibility reasoning beyond actual and immediate trial transitions operates
+on physical constraint relations, not recursively advanced hypothetical writer
+runs.
+\end{hypothesis}
+
+The unknown is both the exact encoding and its efficient maintenance. Small
+factors do not ensure small elimination results, and fast feasibility tests for
+individual candidates do not ensure small enumeration delay. A negative result
+must identify whether it concerns this representation class, its cost targets,
+or the broader behavioral problem. The central question is:
+\begin{quote}
+\textbf{Can the remaining physical choices be reduced exactly under actual
+commitments, preserving the correlations needed by later choices, so that all
+and only completable next decisions can be enumerated without expanding future
+executions?}
+\end{quote}
+
+\appendix
+\section{A bounded-width host for the structural model}\label{app:width}
+A \emph{tree decomposition} is a tree of vertex bags such that every graph vertex
+occurs, every graph edge has both endpoints in a bag, and the bags containing
+any fixed vertex form a connected subtree. Its width is the largest bag size
+minus one; \(\tw\) is the minimum such width. The following bounds concern the
+simple-graph structural model in \cref{sec:fragment},
+not arbitrary chemical factor scopes. They are the constructive statements
+from the working derivation.\cite{attempt}
+
+\begin{proposition}[Ring-budget host bounds]
+If a complete structural serialization uses at most \(K\) simultaneously open
+ring labels, then \(\tw(G)\le4K+5\). If \(x\) is completable and \(J_x\) augments
+\(G\) by actual introduction links (including virtual dot links) and the path
+through saved return owners ending at the current atom, then
+\(\tw(J_x)\le4K+9\).
+\end{proposition}
+\begin{proof}
+Connect every noninitial atom to the owner from which it is introduced, using
+a virtual link for a dot. These links form an ordered introduction tree \(T\)
+whose preorder is the atom-occurrence order. The other physical edges are ring
+edges. At most \(K\) ring edges cross any cut in this order, since their first
+endpoints have been emitted and their second endpoints have not.
+
+Replace each high-child-count tree owner by a chain of copies, retaining its
+ring incidences at the first copy. Attach successive children along the chain,
+visiting each child before continuing along it. The expanded tree has at most
+two children per node and preserves the original atom order. Contracting the
+copy chains recovers \(T\).
+
+Build a binary partition hierarchy by combining a node with its first complete
+child subtree and then its second. Each region is a preorder interval with at
+most three crossing tree edges. At most \(2K\) ring edges cross its two interval
+ends. Thus each region has at most \(s=2K+3\) internal boundary vertices, where
+a boundary vertex is one with a neighbour outside the region.
+
+Use singleton bags at leaves and, at an internal hierarchy node, the union of
+its two children's internal boundary sets. Bag size is at most \(2s\). Every
+edge is covered at the first join of its endpoints' regions. A vertex remains
+in consecutive ancestor bags until its region contains all its neighbours,
+which proves connected occurrence. Contraction and deletion preserve a
+no-larger decomposition, giving \(\tw(G)\le2s-1=4K+5\).
+
+For \(J_x\), choose an accepting extension only to prove existence of the layout.
+The actual introduction links belong to its introduction tree. Saved owners
+and the current atom occur in increasing preorder, so their path adds at most
+one crossing edge at any cut. Replace \(K\) by \(K+1\) in the construction.
+\end{proof}
+
+The proof does not instruct an implementation to find a completion before
+constructing a decomposition. It establishes existence of a bounded-width host.
+It neither supplies a bounded-width exact factor encoding on that host nor
+bounds the cost of maintaining one under all candidate edits. Deep actual
+stacks are compatible with the bound; unresolved stereo, resource, or control
+relations must still have their scopes and payloads accounted for.
+
+\begin{thebibliography}{9}
+\small
+\bibitem{note126}
+\emph{Exact online SMILES generation without repeated future-execution search}.
+Research question, 16 October 2026. Supplied file
+\texttt{126\_exact\_incremental\_smiles\_feasibility\_research\_question.txt}.
+Sections 1--5: molecular identity, actual-state semantics, joint feasibility,
+and accounting requirements.
+
+\bibitem{note127}
+\emph{Factored online SMILES generation: an attempt at a formal problem}.
+16 October 2026. Supplied file
+\texttt{127\_factored\_online\_smiles\_formal\_problem.txt}.
+Sections 3--8: relational semantics, exact projected invariant, physical-owner
+restrictions, online edits, and proposed work bounds.
+
+\bibitem{attempt}
+\emph{Derivations: a local kernel, its boundary, and a width bound}.
+Working derivation, supplied as \texttt{smiles\_kernel\_attempt/derivations.md}.
+Parts A--G: structural model, nonbinding-capacity criterion, two-slot
+counterexample, and physical/control host-width constructions.
+
+\bibitem{opensmiles}
+Craig A. James and contributors.
+\emph{OpenSMILES specification}, version 1.0, 15 May 2016.
+Formal Grammar; Reading SMILES: Atoms, Rings, Chirality, and Aromaticity.
+\url{https://opensmiles.org/opensmiles.html}.
+Source: \url{https://raw.githubusercontent.com/opensmiles/OpenSMILES/master/opensmiles.asciidoc}.
+
+\bibitem{poole}
+David L. Poole and Alan K. Mackworth.
+\emph{Artificial Intelligence: Foundations of Computational Agents},
+3rd ed., 2023. Section 4.5, Variable Elimination.
+\url{https://artint.info/3e/html/ArtInt3e.Ch4.S5.html}.
+\end{thebibliography}
+\end{document}
